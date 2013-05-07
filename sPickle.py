@@ -31,12 +31,19 @@ except ImportError:
 class SecurePickler(object):
     def __init__(self, checksum_key, file, *p, **kw):
         self.file = file
-        self.buf = StringIO()
         self.checksum_key = checksum_key
         
         self.backing_class = kw.pop('backing_class', cPickle.Pickler)
         self.backing_args = (p, kw)
         self.local = threading.local()
+
+    @property
+    def buf(self):
+        try:
+            return self.local.buf
+        except AttributeError:
+            self.local.buf = buf = StringIO()
+            return buf
 
     @property
     def pickler(self):
@@ -71,7 +78,6 @@ class SecurePickler(object):
 class SecureUnpickler(object):
     def __init__(self, checksum_key, file, *p, **kw):
         self.file = file
-        self.buf = StringIO()
         self.checksum_key = checksum_key
         
         self.backing_class = kw.pop('backing_class', cPickle.Unpickler)
@@ -79,7 +85,15 @@ class SecureUnpickler(object):
         self.local = threading.local()
 
     @property
-    def pickler(self):
+    def buf(self):
+        try:
+            return self.local.buf
+        except AttributeError:
+            self.local.buf = buf = StringIO()
+            return buf
+
+    @property
+    def unpickler(self):
         try:
             return self.local.unpickler
         except AttributeError:
