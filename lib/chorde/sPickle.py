@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 # This monster makes it all compatible with up to py2.0 :-o
 
+__all__ = [
+    "SecurePickler",
+    "SecureUnpickler",
+]
+
 try:
     from hashlib import sha256 as checksum_algo
 except ImportError:
