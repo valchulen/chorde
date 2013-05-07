@@ -16,7 +16,7 @@ checksum_algo_name = checksum_algo.__name__.replace('openssl_','')
 
 import hmac
 import struct
-
+import threading
 
 try:
     import cPickle
@@ -34,8 +34,18 @@ class SecurePickler(object):
         self.buf = StringIO()
         self.checksum_key = checksum_key
         
-        backing_class = kw.pop('backing_class', cPickle.Pickler)
-        self.pickler = backing_class(self.buf, *p, **kw)
+        self.backing_class = kw.pop('backing_class', cPickle.Pickler)
+        self.backing_args = (p, kw)
+        self.local = threading.local()
+
+    @property
+    def pickler(self):
+        try:
+            return self.local.pickler
+        except AttributeError:
+            p, kw = self.backing_args
+            self.local.pickler = pickler = self.backing_class(self.buf, *p, **kw)
+            return pickler
         
     @property
     def persistent_id(self):
@@ -64,8 +74,18 @@ class SecureUnpickler(object):
         self.buf = StringIO()
         self.checksum_key = checksum_key
         
-        backing_class = kw.pop('backing_class', cPickle.Unpickler)
-        self.unpickler = backing_class(self.buf, *p, **kw)
+        self.backing_class = kw.pop('backing_class', cPickle.Unpickler)
+        self.backing_args = (p, kw)
+        self.local = threading.local()
+
+    @property
+    def pickler(self):
+        try:
+            return self.local.unpickler
+        except AttributeError:
+            p, kw = self.backing_args
+            self.local.unpickler = unpickler = self.backing_class(self.buf, *p, **kw)
+            return unpickler
 
     @property
     def persistent_load(self):
