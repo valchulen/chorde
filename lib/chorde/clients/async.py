@@ -9,7 +9,7 @@ import weakref
 from multiprocessing.pool import ThreadPool
 from threading import Event
 
-from base_cache import BaseCacheClient, NONE
+from .base import BaseCacheClient, CacheMissError, NONE
 
 
 class _NONE:pass
@@ -213,7 +213,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
         # Ok, read the cache then
         value = self.client.get(key, default)
         if value is NONE:
-            raise KeyError, key
+            raise CacheMissError, key
         else:
             return value
     

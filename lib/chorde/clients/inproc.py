@@ -3,13 +3,13 @@ import time
 import threading
 import weakref
 
-import base_cache
+from . import base
 
 try:
 
     import lrucache
     Cache = lrucache.LRUCache
-    CacheMissError = base_cache.CacheMissError = lrucache.CacheMissError
+    CacheMissError = base.CacheMissError = lrucache.CacheMissError
     CacheIsThreadsafe = True
 
 except:
@@ -25,7 +25,7 @@ except:
             items = self.items()
             self.clear()
             self.update(items)
-    CacheMissError = base_cache.CacheMissError = KeyError
+    CacheMissError = base.CacheMissError = KeyError
     CacheIsThreadsafe = False
 
 _caches_mutex = threading.RLock()
@@ -121,7 +121,7 @@ def startCacheJanitorThread(sleep_interval=3600):
     thread.start()
     return thread
 
-class InprocCacheClient(base_cache.BaseCacheClient):
+class InprocCacheClient(base.BaseCacheClient):
     def __init__(self, size):
         self.store = Cache(size)
         _register_inproc(self)
@@ -139,8 +139,16 @@ class InprocCacheClient(base_cache.BaseCacheClient):
         except KeyError:
             pass
 
-    def get(self, key, default = base_cache.NONE):
-        return self.store.get(key, default)
+    def get(self, key, default = base.NONE):
+        rv = self.store.get(key, default)
+        if rv is not base.NONE:
+            rv, ttl = rv
+            if time.time() > ttl:
+                rv = default
+        if rv is base.NONE:
+            raise CacheMissError, key
+        else:
+            return rv
 
     def clear(self):
         self.store.clear()
@@ -170,5 +178,5 @@ class InprocCacheClient(base_cache.BaseCacheClient):
 if not CacheIsThreadsafe:
     InprocCacheClient_ = InprocCacheClient
     def InprocCacheClient(*p, **kw):
-        return base_cache.ReadWriteSyncAdapter(InprocCacheClient_(*p, **kw))
+        return base.ReadWriteSyncAdapter(InprocCacheClient_(*p, **kw))
 

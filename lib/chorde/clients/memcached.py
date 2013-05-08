@@ -4,7 +4,7 @@ import itertools
 import hashlib
 import memcache
 
-from base_cache import BaseCacheClient, NONE
+from .base import BaseCacheClient, NONE
 
 try:
     import cPickle
