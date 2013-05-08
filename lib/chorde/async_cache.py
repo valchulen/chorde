@@ -1,5 +1,4 @@
 from serialize import serialize
-import Queue
 import zlib
 import logging
 import time
