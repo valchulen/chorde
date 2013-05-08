@@ -3,6 +3,8 @@ import zlib
 import logging
 import time
 import weakref
+import itertools
+import hashlib
 
 # No need for real multiprocessing. In fact, using real
 # multiprocessing would force pickling of values, which would be
@@ -183,9 +185,8 @@ class MemcachedClient(object):
             key = "U#" + key.encode("utf-8")
 
         # keys cannot contain control characters or spaces
-        ord_ = ord
-        for c in key:
-            if ord_(c) < 33 or ord_(c) == 127:
+        for c in itertools.imap(ord,key):
+            if c < 33 or c == 127:
                 key = "B#" + key.encode("base64").replace("\n","")
                 break
         
@@ -193,7 +194,6 @@ class MemcachedClient(object):
             # keys cannot be too long, accept the possibility of collision,
             # and shorten it by truncating and perhaps appending an MD5 hash.
             try:
-                import hashlib
                 key = "H%s#%s" % (hashlib.md5(key).digest().encode("hex"),key[:self.max_backing_key_length-48])
             except ImportError:
                 key = "H%08X#%s" % (hash(key), key[:self.max_backing_key_length-16])
