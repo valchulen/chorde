@@ -58,14 +58,14 @@ class AsyncCacheWriterPool(ThreadPool):
             ev.clear()
 
     @staticmethod
-    def _writer(self, key, ttl):
+    def _writer(self, key):
         # self is weakref
         self = self()
         if self is None:
             return
 
         ev = self.done_event
-        value = self.dequeue(key)
+        value, ttl = self.dequeue(key)
 
         try:
             if value is _NONE:
@@ -117,10 +117,10 @@ class AsyncCacheWriterPool(ThreadPool):
     @serialize
     def _enqueue(self, key, value, ttl):
         if key not in self.queueset:
-            self.queueset[key] = value
-            self.apply_async(self._writer, (weakref.ref(self), key, ttl))
+            self.queueset[key] = value, ttl
+            self.apply_async(self._writer, (weakref.ref(self), key))
         else:
-            self.queueset[key] = value
+            self.queueset[key] = value, ttl
     
     def waitkey(self, key, timeout=None):
         if timeout is None:
@@ -132,7 +132,7 @@ class AsyncCacheWriterPool(ThreadPool):
                 self._wait_done(max(1.0, timeout))
                 timeout = tfin - time.time()
     
-    def get(self, key, default = None):
+    def getTtl(self, key, default = None):
         return self.queueset.get(key, default)
     
     def contains(self, key):
@@ -199,23 +199,24 @@ class AsyncWriteCacheClient(BaseCacheClient):
         if self.is_started():
             self.writer.purge()
     
-    def get(self, key, default = NONE):
+    def getTtl(self, key, default = NONE):
         if self.is_started():
             # Try to read pending writes as if they were on the cache
-            value = self.writer.get(key, _NONE)
+            value = self.writer.getTtl(key, _NONE)
             if value is not _NONE:
+                value, ttl = value
                 if not isinstance(value, Defer):
-                    return value
+                    return value, ttl
             # Yep, _NONE when querying the writer, because we don't want
             # to return a default if the writer doesn't have it, we must
             # still check the client.
         
         # Ok, read the cache then
-        value = self.client.get(key, default)
+        value, ttl = self.client.getTtl(key, default)
         if value is NONE:
             raise CacheMissError, key
         else:
-            return value
+            return value, ttl
     
     def contains(self, key):
         if self.is_started():

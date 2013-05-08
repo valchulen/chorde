@@ -26,11 +26,25 @@ class BaseCacheClient(object):
         raise NotImplementedError
 
     @abstractmethod
-    def get(self, key, default = NONE):
+    def getTtl(self, key, default = NONE):
+        """
+        Returns: a tuple (value, ttl). If a default is given and the value
+            is not in cache, return (default, -1). If a default is not given
+            and the value is not in cache, raises CacheMissError. If the value
+            is in the cache, but stale, ttl will be < 0, and value will be
+            other than NONE. Note that ttl=0 is a valid and non-stale result.
+        """
         if default is NONE:
             raise CacheMissError, key
         else:
-            return default
+            return (default, -1)
+    
+    def get(self, key, default = NONE):
+        rv, ttl = self.getTtl(key, default)
+        if ttl < 0 and default is NONE:
+            raise CacheMissError, key
+        else:
+            return rv
 
     @abstractmethod
     def clear(self):
@@ -68,8 +82,8 @@ class ReadWriteSyncAdapter(BaseCacheClient):
         return self.client.delete(key)
 
     @serialize_read
-    def get(self, key, default = NONE):
-        return self.client.get(key, default)
+    def getTtl(self, key, default = NONE):
+        return self.client.getTtl(key, default)
 
     @serialize_write
     def clear(self):

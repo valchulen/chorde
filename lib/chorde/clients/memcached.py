@@ -25,6 +25,7 @@ class MemcachedClient(BaseCacheClient):
             client_addresses, 
             max_backing_key_length = 250,
             max_backing_value_length = 1000*1024,
+            default_ttl = None,
             pickler = None,
             namespace = None,
             checksum_key = None, # CHANGE IT!
@@ -44,6 +45,7 @@ class MemcachedClient(BaseCacheClient):
         self.last_seen_stamp = 0
         self.pickler = pickler or cPickle
         self.namespace = namespace
+        self.default_ttl = default_ttl
         
         if self.namespace:
             self.max_backing_key_length -= len(self.namespace)+1
@@ -156,7 +158,7 @@ class MemcachedClient(BaseCacheClient):
         
         return data
     
-    def get(self, key, default=NONE):
+    def getTtl(self, key, default=NONE):
         # get the first page (gambling that most entries will span only a single page)
         # then query for the remaining ones in a single roundtrip, if present,
         # for a combined total of 2 roundtrips.
@@ -164,7 +166,7 @@ class MemcachedClient(BaseCacheClient):
         
         pages = { 0 : self.client.get(short_key+"|0") }
         if pages[0] is None or not isinstance(pages[0],tuple) or len(pages[0]) != 4:
-            return default
+            return default, -1
         
         npages = pages[0][0]
         if npages > 1:
@@ -174,17 +176,21 @@ class MemcachedClient(BaseCacheClient):
             cached_key, cached_value = self.decode_pages(pages)
             
             if cached_key == key:
-                return cached_value
+                return cached_value, self.default_ttl or 0
             else:
-                return default
+                return default, -1
         except ValueError:
-            return default
+            return default, -1
         except:
             self.logger.warning("Error decoding cached data", exc_info=True)
-            return default
+            return default, -1
         
     
     def put(self, key, value, ttl):
+        # if we don't have a ttl, guess it now
+        if self.default_ttl is None:
+            self.default_ttl = ttl / 10.0
+        
         # set_multi all pages in one roundtrip
         short_key = self.shorten_key(key)
         pages = dict([(page,data) for page,data in enumerate(self.encode_pages(key, value))])
