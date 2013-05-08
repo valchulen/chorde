@@ -145,7 +145,7 @@ cdef class LRUCache:
             self.next_prio = self.next_prio + 1
             if self.next_prio == 0:
                 self.c_rehash()
-	
+
     def __getitem__(LRUCache self not None, key):
         cdef _node node
 
@@ -155,7 +155,7 @@ cdef class LRUCache:
             node = self.emap[key]
             self.c_decrease(node)
             return node.value
-	
+
     def __delitem__(LRUCache self not None, key):
         cdef _node node, node2
 

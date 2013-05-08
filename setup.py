@@ -18,7 +18,10 @@ setup(
   license = "LGPLv3",
   long_description = readme,
   
-  packages = ["chorde"],
+  packages = [
+      "chorde",
+      "chorde.clients",
+  ],
   package_dir = {'':'lib'},
   
   classifiers=[
