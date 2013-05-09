@@ -3,6 +3,7 @@ import zlib
 import itertools
 import hashlib
 import memcache
+import time
 
 from .base import BaseCacheClient, NONE
 
@@ -11,7 +12,7 @@ try:
 except ImportError:
     import pickle as cPickle
 
-import sPickle
+from chorde import sPickle
 
 try:
     import json
@@ -25,7 +26,6 @@ class MemcachedClient(BaseCacheClient):
             client_addresses, 
             max_backing_key_length = 250,
             max_backing_value_length = 1000*1024,
-            default_ttl = None,
             pickler = None,
             namespace = None,
             checksum_key = None, # CHANGE IT!
@@ -45,7 +45,6 @@ class MemcachedClient(BaseCacheClient):
         self.last_seen_stamp = 0
         self.pickler = pickler or cPickle
         self.namespace = namespace
-        self.default_ttl = default_ttl
         
         if self.namespace:
             self.max_backing_key_length -= len(self.namespace)+1
@@ -115,7 +114,7 @@ class MemcachedClient(BaseCacheClient):
         self.last_seen_stamp = stamp
         return stamp
     
-    def encode_pages(self, key, value):
+    def encode_pages(self, key, ttl, value):
         # Always pickle & compress, since we'll always unpickle.
         # Note: compress with very little effort (level=1), 
         #   otherwise it's too expensive and not worth it
@@ -126,21 +125,22 @@ class MemcachedClient(BaseCacheClient):
         version = self.get_version_stamp()
         page = 0
         for page,start in enumerate(xrange(0,len(value),self.max_backing_value_length)):
-            yield (npages, page, version, value[start:start+pagelen])
+            yield (npages, page, ttl, version, value[start:start+pagelen])
         
         assert page == npages-1
-    
+
     def decode_pages(self, pages, canclear=True):
         if 0 not in pages:
             raise ValueError, "Missing page"
         
-        ref_npages, _, ref_version, _ = pages[0]
+        ref_npages, _, ref_ttl, ref_version, _ = pages[0]
         data = [None] * ref_npages
         
-        for pageno, (npages, page, version, pagedata) in pages.iteritems():
+        for pageno, (npages, page, ttl, version, pagedata) in pages.iteritems():
             if (    pageno != page 
                  or version != ref_version 
                  or npages != ref_npages 
+                 or ttl != ref_ttl
                  or not (0 <= page < ref_npages) 
                  or data[page] is not None
                  or not isinstance(pagedata,str) ):
@@ -165,9 +165,10 @@ class MemcachedClient(BaseCacheClient):
         short_key = self.shorten_key(key)
         
         pages = { 0 : self.client.get(short_key+"|0") }
-        if pages[0] is None or not isinstance(pages[0],tuple) or len(pages[0]) != 4:
+        if pages[0] is None or not isinstance(pages[0],tuple) or len(pages[0]) != 5:
             return default, -1
         
+        ttl = pages[0][2]
         npages = pages[0][0]
         if npages > 1:
             pages.update( self.client.get_multi(xrange(1,npages), key_prefix=short_key+"|") )
@@ -176,7 +177,7 @@ class MemcachedClient(BaseCacheClient):
             cached_key, cached_value = self.decode_pages(pages)
             
             if cached_key == key:
-                return cached_value, self.default_ttl or 0
+                return cached_value, ttl - time.time()
             else:
                 return default, -1
         except ValueError:
@@ -187,13 +188,9 @@ class MemcachedClient(BaseCacheClient):
         
     
     def put(self, key, value, ttl):
-        # if we don't have a ttl, guess it now
-        if self.default_ttl is None:
-            self.default_ttl = ttl / 10.0
-        
         # set_multi all pages in one roundtrip
         short_key = self.shorten_key(key)
-        pages = dict([(page,data) for page,data in enumerate(self.encode_pages(key, value))])
+        pages = dict([(page,data) for page,data in enumerate(self.encode_pages(key, ttl+time.time(), value))])
         self.client.set_multi(pages, ttl, key_prefix=short_key+"|")
     
     def delete(self, key):

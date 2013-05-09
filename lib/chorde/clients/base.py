@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from abc import ABCMeta, abstractmethod, abstractproperty
-from serialize import serialize_read, serialize_write
+from chorde.serialize import serialize_read, serialize_write
 
 # Overridden by inproc_cache based on LRUCache availability
 CacheMissError = KeyError

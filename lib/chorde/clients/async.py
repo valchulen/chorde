@@ -1,4 +1,5 @@
-from serialize import serialize
+from chorde.serialize import serialize
+
 import logging
 import time
 import weakref
@@ -71,6 +72,11 @@ class AsyncCacheWriterPool(ThreadPool):
             if value is _NONE:
                 # Something's hinky
                 return
+            elif isinstance(value, Defer):
+                try:
+                    value = value.undefer()
+                except:
+                    self.logger.error("Error in background cache refresh", exc_info=True)
             
             elif value is _DELETE:
                 try:
@@ -92,8 +98,6 @@ class AsyncCacheWriterPool(ThreadPool):
             
             else:
                 try:
-                    if isinstance(value, Defer):
-                        value = value.undefer()
                     self.client.put(key, value, ttl)
                 except:
                     self.logger.error("Error saving data in cache", exc_info=True)
