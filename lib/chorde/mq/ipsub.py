@@ -59,16 +59,22 @@ EVENT_FOR_REPLY = {
 ENCODINGS = {
     'json' : lambda x : json.dumps(x, separators=(',',':')),
     'pyobj' : lambda x : cPickle.dumps(x, 2),
+    'bytes' : lambda x : x,
+    'utf8' : lambda x : x.encode('utf8') if isinstance(x, unicode) else x,
 }
 
 DECODINGS = {
     'json' : json.loads,
     'pyobj' : cPickle.loads,
+    'bytes' : lambda x : x,
+    'utf8' : lambda x : x.decode('utf8'),
 }
 
 STREAMDECODINGS = {
     'json' : json.load,
     'pyobj' : cPickle.load,
+    'bytes' : lambda x : x.read(),
+    'utf8' : lambda x : x.read().decode('utf8'),
 }
 
 if hasattr(zmq, 'HWM'):
@@ -493,12 +499,16 @@ class IPSub(object):
             self._notify_all(EVENT_INCOMING_UPDATE, update)
 
     def publish_json(self, prefix, payload, copy = False):
-        payload = json.dumps(payload)
         self.publish(prefix, ['json',ENCODINGS['json'](payload)], copy)
 
     def publish_pyobj(self, prefix, payload, copy = False):
-        payload = cPickle.dumps(payload)
         self.publish(prefix, ['pyobj',ENCODINGS['pyobj'](payload)], copy)
+
+    def publish_bytes(self, prefix, payload, copy = False):
+        self.publish(prefix, ['bytes',ENCODINGS['bytes'](payload)], copy)
+
+    def publish_unicode(self, prefix, payload, copy = False):
+        self.publish(prefix, ['utf8',ENCODINGS['utf8'](payload)], copy)
 
     def publish_encode(self, prefix, encoding, payload, copy = False):
         self.publish(prefix, self.encode_payload(encoding, payload), copy)
@@ -516,9 +526,6 @@ class IPSub(object):
             stream_decoder: like decoder, but instead will take a
                 file-like object.
         """
-        if name in ENCODINGS or name in DECODINGS or name in STREAMDECODINGS:
-            raise ValueError, "Encoding already registered"
-        
         ENCODINGS[name] = encoder
         DECODINGS[name] = decoder
         STREAMDECODINGS[name] = stream_decoder
