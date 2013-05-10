@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
-import async
+from itertools import izip, islice
+
+from . import async
 from .base import NONE, CacheMissError, BaseCacheClient
 
 class NONE_: pass
 
 class TieredInclusiveClient(BaseCacheClient):
-    def __init__(self, *clients):
+    def __init__(self, *clients, **opts):
         self.clients = clients
+        self.ttl_fractions = opts.get('ttl_fractions', (1,)*len(clients))
         
     @property
     def async(self):
@@ -15,30 +18,35 @@ class TieredInclusiveClient(BaseCacheClient):
                 return True
         else:
             return False
-    
-    def __putnext(self, clients, key, value, ttl):
+
+    @staticmethod
+    def __putnext(self, clients, fractions, key, value, ttl):
         value = value.undefer()
-        for client in clients[1:]:
+        for client in islice(izip(fractions,clients), 1, None):
             client.put(key, value, ttl)
         return value
     
     def put(self, key, value, ttl):
+        clients = self.clients
+        fractions = self.ttl_fractions
         if isinstance(value, async.Defer):
             # Cannot just pass it, it would execute the result many times
-            if self.clients and self.clients[0].async:
+            if clients and clients[0].async:
                 # First call is async, meaning it will get queued up somwhere
                 # We can do the rest at that point
-                deferred = async.Defer(self.__putnext, key, value, ttl)
-                self.clients[0].put(key, deferred, ttl)
+                deferred = async.Defer(self.__putnext, 
+                    clients, fractions, 
+                    key, value, ttl)
+                clients[0].put(key, deferred, ttl * fractions[0])
             else:
                 # First call is sync, meaning we must undefer, no choice
                 value = value.undefer()
-                for client in self.clients:
-                    client.put(key, value, ttl)
+                for ttl_fraction,client in izip(fractions, clients):
+                    client.put(key, value, ttl * ttl_fraction)
         else:
             # Simple case
-            for client in self.clients:
-                client.put(key, value, ttl)
+            for ttl_fraction, client in izip(fractions, clients):
+                client.put(key, value, ttl * ttl_fraction)
     
     def delete(self, key):
         for client in self.clients:
