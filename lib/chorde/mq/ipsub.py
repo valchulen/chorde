@@ -179,11 +179,14 @@ class IPSub(object):
                 recv_update = owner._recv_update
                 recv_update_reply = owner._recv_update_reply
                 int_ = int
+                len_ = len
                 random_ = random.random
 
                 # Poll sockets
                 try:
                     while not owner.stop:
+                        if owner._needs_subscriptions:
+                            owner._subscribe()
                         if not no_updates():
                             poller_register(listener_req, POLLIN|POLLOUT)
                         activity = poller_poll(500 + int_(500 * random_()))
@@ -206,7 +209,11 @@ class IPSub(object):
                             break
                         for socket, what in activity:
                             if socket is pull:
-                                put_nowait(pull_recv_multipart(copy = F))
+                                pack = pull_recv_multipart(copy = F)
+                                if len_(pack) > 1:
+                                    # ^ else Wakeup call, ignore
+                                    put_nowait(pack)
+                                    del pack
                             elif socket is listener_req:
                                 if what & POLLOUT:
                                     if not no_updates():
@@ -300,9 +307,11 @@ class IPSub(object):
         self.broker_rep = self.broker_pub = None
         self.local = threading.local()
         self._ndebug = None
+        self._needs_subscriptions = True
         
         self.subscriptions = set(subscriptions)
         self.subscriptions.add(FRAME_HEARTBEAT)
+        self.current_subscriptions = set()
         self.identity = "%x-%x-%s" % (
             os.getpid(),
             id(self),
@@ -420,8 +429,10 @@ class IPSub(object):
         assert self.listener_sub is not None
 
         sub = self.listener_sub
-        for prefix in self.subscriptions:
+        for prefix in self.subscriptions - self.current_subscriptions:
             sub.setsockopt(zmq.SUBSCRIBE, prefix)
+        for prefix in self.current_subscriptions - self.subscriptions:
+            sub.setsockopt(zmq.UNSUBSCRIBE, prefix)
 
         return sub
     
@@ -430,23 +441,18 @@ class IPSub(object):
             # Ignore
             return
 
-        subscriptions = self.subscriptions
-        sub = self.listener_sub
-        if sub:
-            for prefix in set(prefixes) - set(subscriptions):
-                sub.setsockopt(zmq.SUBSCRIBE, prefix)
-                subscriptions.add(prefix)
+        self._needs_subscriptions = True
+        self.subscriptions.update(prefixes)
+        self.wake()
     
     def cancel_subscriptions(self, prefixes):
         if self.listener_sub is None:
             # Ignore
             return
-
-        subscriptions = self.subscriptions
-        sub = self.listener_sub
-        for prefix in set(prefixes) & set(subscriptions):
-            sub.setsockopt(zmq.UNSUBSCRIBE, prefix)
-            subscriptions.remove(prefix)
+        
+        self._needs_subscriptions = True
+        self.subscriptions -= set(prefixes)
+        self.wake()
     
     @property
     def has_updates(self):
@@ -583,6 +589,9 @@ class IPSub(object):
         self._pushsocket().send_multipart(
             [ prefix, self.identity ] + payload,
             copy = copy )
+
+    def wake(self):
+        self._pushsocket().send("")
 
     def listen(self, prefix, event, callback):
         """
