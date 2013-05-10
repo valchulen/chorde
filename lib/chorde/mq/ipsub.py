@@ -266,6 +266,7 @@ class IPSub(object):
                 put_nowait = owner.updates.put_nowait
                 send_update = owner._send_update
                 int_ = int
+                len_ = len
                 random_ = random.random
 
                 # Poll sockets
