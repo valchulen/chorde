@@ -98,10 +98,10 @@ class IPSub(object):
                 self._owner = weakref.ref(owner)
 
             def transition(self, newstate, data = None):
-                logging.debug("LEAVE %s", self.__class__.__name__)
+                logging.debug("IPSub.FSM: LEAVE %s", self.__class__.__name__)
                 self.leave(data)
                 self.__class__ = newstate
-                logging.debug("ENTER %s", self.__class__.__name__)
+                logging.debug("IPSub.FSM: ENTER %s", self.__class__.__name__)
                 self.enter(data)
 
             @abstractmethod
@@ -133,8 +133,8 @@ class IPSub(object):
                             # Not a transient error, shortcut to listener
                             return self.transition(IPSub.FSM.Listener)
                     except Exception as e:
-                        logging.info("Got %s", e, exc_info = True)
-                        logging.debug("Got %s", e, exc_info = True)
+                        logging.info("Got %s connecting", e)
+                        logging.debug("Got %s connecting", e, exc_info = True)
                         time.sleep(0.2)
                 else:
                     try:
@@ -163,7 +163,7 @@ class IPSub(object):
             def stay(self):
                 owner = self._owner()
                 
-                # Poll sockets
+                # Cache globals and attributes, to avoid memory allocations in the hottest loop of all
                 listener_req = self.listener_req
                 listener_sub = self.listener_sub
                 pull = self.pull
@@ -171,12 +171,22 @@ class IPSub(object):
                 POLLOUT = zmq.POLLOUT
                 POLLIN = zmq.POLLIN
                 HEARTBEAT_ = FRAME_HEARTBEAT
+                F = False
+                poller_poll = poller.poll
+                poller_register = poller.register
+                pull_recv_multipart = pull.recv_multipart
+                no_updates = owner.updates.empty
+                put_nowait = owner.updates.put_nowait
+                send_update = owner._send_update
+                recv_update = owner._recv_update
+                recv_update_reply = owner._recv_update_reply
 
+                # Poll sockets
                 try:
                     while not owner.stop:
-                        if owner.has_updates:
-                            poller.register(listener_req, POLLIN|POLLOUT)
-                        activity = poller.poll(1000)
+                        if not no_updates():
+                            poller_register(listener_req, POLLIN|POLLOUT)
+                        activity = poller_poll(1000)
                         if not activity:
                             # Heartbeat gap
                             # Try to send a heartbeat
@@ -196,17 +206,17 @@ class IPSub(object):
                             break
                         for socket, what in activity:
                             if socket is pull:
-                                owner.updates.put_nowait(pull.recv_multipart(copy = False))
+                                put_nowait(pull_recv_multipart(copy = F))
                             elif socket is listener_req:
                                 if what & POLLOUT:
-                                    if owner.has_updates:
-                                        owner._send_update(listener_req)
+                                    if not no_updates():
+                                        send_update(listener_req)
                                     else:
-                                        poller.register(listener_req, POLLIN)
+                                        poller_register(listener_req, POLLIN)
                                 if what & POLLIN:
-                                    owner._recv_update_reply(listener_req)
+                                    recv_update_reply(listener_req)
                             elif socket is listener_sub and what & POLLIN:
-                                owner._recv_update(listener_sub)
+                                recv_update(listener_sub)
                 except BootstrapNow:
                     self.transition(IPSub.FSM.Bootstrap)
                 except:
@@ -230,8 +240,8 @@ class IPSub(object):
 
             def stay(self):
                 owner = self._owner()
-                
-                # Poll sockets
+
+                # Cache globals and attributes, to avoid memory allocations in the hottest loop of all
                 broker_rep = self.broker_rep
                 broker_pub = self.broker_pub
                 pull = self.pull
@@ -239,25 +249,35 @@ class IPSub(object):
                 POLLOUT = zmq.POLLOUT
                 POLLIN = zmq.POLLIN
                 HEARTBEAT_ = FRAME_HEARTBEAT
+                T = True
+                F = False
+                poller_poll = poller.poll
+                poller_register = poller.register
+                poller_unregister = poller.unregister
+                pull_recv_multipart = pull.recv_multipart
+                no_updates = owner.updates.empty
+                put_nowait = owner.updates.put_nowait
+                send_update = owner._send_update
 
+                # Poll sockets
                 try:
                     while not owner.stop:
-                        if owner.has_updates:
-                            poller.register(broker_pub, POLLOUT)
-                        activity = poller.poll(500)
+                        if not no_updates():
+                            poller_register(broker_pub, POLLOUT)
+                        activity = poller_poll(500)
                         if not activity:
                             broker_pub.send(HEARTBEAT_)
                             break
                         for socket, what in activity:
                             if socket is pull:
-                                owner.updates.put_nowait(pull.recv_multipart(copy = False))
+                                put_nowait(pull_recv_multipart(copy = F))
                             elif socket is broker_rep and what & POLLIN:
                                 owner._handle_update_request(broker_rep)
                             elif socket is broker_pub and what & POLLOUT:
-                                if owner.has_updates:
-                                    owner._send_update(broker_pub, noreply=True)
+                                if not no_updates():
+                                    send_update(broker_pub, noreply = T)
                                 else:
-                                    poller.unregister(broker_pub)
+                                    poller_unregister(broker_pub)
                 except BootstrapNow:
                     self.transition(IPSub.FSM.Bootstrap)
                 except:
@@ -403,7 +423,9 @@ class IPSub(object):
         return sub
     
     def add_subscriptions(self, prefixes):
-        assert self.listener_sub is not None
+        if self.listener_sub is None:
+            # Ignore
+            return
 
         subscriptions = self.subscriptions
         sub = self.listener_sub
@@ -413,7 +435,9 @@ class IPSub(object):
                 subscriptions.add(prefix)
     
     def cancel_subscriptions(self, prefixes):
-        assert self.listener_sub is not None
+        if self.listener_sub is None:
+            # Ignore
+            return
 
         subscriptions = self.subscriptions
         sub = self.listener_sub
