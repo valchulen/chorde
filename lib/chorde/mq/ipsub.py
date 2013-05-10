@@ -629,7 +629,7 @@ class IPSub(object):
             identity = None
 
         if self._ndebug is None:
-            self._ndebug = logging.getLogger().isEnabledFor(logging.DEBUG)
+            self._ndebug = not logging.getLogger().isEnabledFor(logging.DEBUG)
         
         if identity is None or identity == self.identity:
             logging.debug("IPSub: (from myself) %s", EVENT_NAMES[event])
