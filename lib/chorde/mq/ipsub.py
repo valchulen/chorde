@@ -279,7 +279,11 @@ class IPSub(object):
                             break
                         for socket, what in activity:
                             if socket is pull:
-                                put_nowait(pull_recv_multipart(copy = F))
+                                pack = pull_recv_multipart(copy = F)
+                                if len_(pack) > 1:
+                                    # ^ else Wakeup call, ignore
+                                    put_nowait(pack)
+                                    del pack
                             elif socket is broker_rep and what & POLLIN:
                                 owner._handle_update_request(broker_rep)
                             elif socket is broker_pub and what & POLLOUT:
@@ -428,6 +432,7 @@ class IPSub(object):
     def _subscribe(self):
         assert self.listener_sub is not None
 
+        self._needs_subscriptions = False
         sub = self.listener_sub
         for prefix in self.subscriptions - self.current_subscriptions:
             sub.setsockopt(zmq.SUBSCRIBE, prefix)
