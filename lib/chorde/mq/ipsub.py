@@ -297,6 +297,7 @@ class IPSub(object):
         self.listener_req = self.listener_sub = None
         self.broker_rep = self.broker_pub = None
         self.local = threading.local()
+        self._ndebug = None
         
         self.subscriptions = set(subscriptions)
         self.subscriptions.add(FRAME_HEARTBEAT)
@@ -618,21 +619,27 @@ class IPSub(object):
         return self.fsm.__class__ is IPSub.FSM.DesignatedBroker
 
     def _notify_all(self, event, update):
+        listeners = self.listeners.get(event)
+        if not listeners and self._ndebug:
+            return
+        
         if event in IDENTITY_EVENTS and len(update) > 1:
             identity = update[1].bytes
         else:
             identity = None
+
+        if self._ndebug is None:
+            self._ndebug = logging.getLogger().isEnabledFor(logging.DEBUG)
         
         if identity is None or identity == self.identity:
             logging.debug("IPSub: (from myself) %s", EVENT_NAMES[event])
         else:
-            logging.debug("IPSub: (from %s) %s", identity, EVENT_NAMES[event])
+            logging.debug("IPSub: (from %r) %s", identity, EVENT_NAMES[event])
 
         if identity is not None and identity == self.identity:
             # Ehm... identified roundtrip -> ignore
             return
         
-        listeners = self.listeners.get(event)
         if listeners:
             if identity is None:
                 prefix = None
