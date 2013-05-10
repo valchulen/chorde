@@ -97,19 +97,19 @@ class IPSub(object):
             def __init__(self, owner):
                 self._owner = weakref.ref(owner)
 
-            def transition(self, newstate, data = None):
+            def transition(self, newstate):
                 logging.debug("IPSub.FSM: LEAVE %s", self.__class__.__name__)
-                self.leave(data)
+                self.leave()
                 self.__class__ = newstate
                 logging.debug("IPSub.FSM: ENTER %s", self.__class__.__name__)
-                self.enter(data)
+                self.enter()
 
             @abstractmethod
-            def enter(self, data = None):
+            def enter(self):
                 pass
 
             @abstractmethod
-            def leave(self, data = None):
+            def leave(self):
                 pass
 
             @abstractmethod
@@ -117,7 +117,7 @@ class IPSub(object):
                 pass
         
         class Bootstrap(State):
-            def enter(self, data = None):
+            def enter(self):
                 owner = self._owner()
 
                 # Initialize pull socket so others can connect rightaway
@@ -146,11 +146,11 @@ class IPSub(object):
             def stay(self):
                 pass
 
-            def leave(self, data = None):
+            def leave(self):
                 pass
         
         class Listener(State):
-            def enter(self, data = None):
+            def enter(self):
                 owner = self._owner()
                 self.listener_req = listener_req = owner._connect()
                 self.listener_sub = listener_sub = owner._subscribe()
@@ -224,11 +224,11 @@ class IPSub(object):
                     time.sleep(1)
                     self.transition(IPSub.FSM.Bootstrap)
             
-            def leave(self, data = None):
+            def leave(self):
                 self._owner()._disconnect()
         
         class DesignatedBroker(State):
-            def enter(self, data = None):
+            def enter(self):
                 owner = self._owner()
                 self.broker_rep = broker_rep = owner._repsocket()
                 self.broker_pub = broker_pub = owner._pubsocket()
@@ -285,7 +285,7 @@ class IPSub(object):
                     time.sleep(1)
                     self.transition(IPSub.FSM.Bootstrap)
     
-            def leave(self, data = None):
+            def leave(self):
                 self._owner()._unbind()
 
     def __init__(self, broker_addresses, subscriptions = ()):
