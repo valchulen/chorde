@@ -630,11 +630,12 @@ class IPSub(object):
 
         if self._ndebug is None:
             self._ndebug = not logging.getLogger().isEnabledFor(logging.DEBUG)
-        
-        if identity is None or identity == self.identity:
-            logging.debug("IPSub: (from myself) %s", EVENT_NAMES[event])
-        else:
-            logging.debug("IPSub: (from %r) %s", identity, EVENT_NAMES[event])
+
+        if not self._ndebug:
+            if identity is None or identity == self.identity:
+                logging.debug("IPSub: (from myself) %s", EVENT_NAMES[event])
+            else:
+                logging.debug("IPSub: (from %r) %s", identity, EVENT_NAMES[event])
 
         if identity is not None and identity == self.identity:
             # Ehm... identified roundtrip -> ignore
