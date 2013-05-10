@@ -7,6 +7,7 @@ import Queue
 import threading
 import json
 import os
+import random
 from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 
@@ -58,21 +59,18 @@ EVENT_FOR_REPLY = {
 
 ENCODINGS = {
     'json' : lambda x : json.dumps(x, separators=(',',':')),
-    'pyobj' : lambda x : cPickle.dumps(x, 2),
     'bytes' : lambda x : x,
     'utf8' : lambda x : x.encode('utf8') if isinstance(x, unicode) else x,
 }
 
 DECODINGS = {
     'json' : json.loads,
-    'pyobj' : cPickle.loads,
     'bytes' : lambda x : x,
     'utf8' : lambda x : x.decode('utf8'),
 }
 
 STREAMDECODINGS = {
     'json' : json.load,
-    'pyobj' : cPickle.load,
     'bytes' : lambda x : x.read(),
     'utf8' : lambda x : x.read().decode('utf8'),
 }
@@ -180,13 +178,15 @@ class IPSub(object):
                 send_update = owner._send_update
                 recv_update = owner._recv_update
                 recv_update_reply = owner._recv_update_reply
+                int_ = int
+                random_ = random.random
 
                 # Poll sockets
                 try:
                     while not owner.stop:
                         if not no_updates():
                             poller_register(listener_req, POLLIN|POLLOUT)
-                        activity = poller_poll(1000)
+                        activity = poller_poll(500 + int_(500 * random_()))
                         if not activity:
                             # Heartbeat gap
                             # Try to send a heartbeat
@@ -258,13 +258,15 @@ class IPSub(object):
                 no_updates = owner.updates.empty
                 put_nowait = owner.updates.put_nowait
                 send_update = owner._send_update
+                int_ = int
+                random_ = random.random
 
                 # Poll sockets
                 try:
                     while not owner.stop:
                         if not no_updates():
                             poller_register(broker_pub, POLLOUT)
-                        activity = poller_poll(500)
+                        activity = poller_poll(250 + int_(250 * random_()))
                         if not activity:
                             broker_pub.send(HEARTBEAT_)
                             break
@@ -554,6 +556,17 @@ class IPSub(object):
         ENCODINGS[name] = encoder
         DECODINGS[name] = decoder
         STREAMDECODINGS[name] = stream_decoder
+
+    @staticmethod
+    def register_pyobj(pickler, unpickler):
+        IPSub.register_encoding('pyobj', 
+            lambda x : pickler.dumps(x, 2), 
+            unpickler.loads, 
+            unpickler.load)
+    
+    @staticmethod
+    def register_default_pyobj():
+        IPSub.register_pyobj(cPickle.Pickler(), cPickle.Unpickler())
     
     @staticmethod
     def encode_payload(encoding, payload):
