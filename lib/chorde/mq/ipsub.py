@@ -614,8 +614,9 @@ class IPSub(object):
         False if the listener is to be removed.
 
         Listeners are not guaranteed to be called in any specific
-        or stable order, and should return fast, or the I/O thread
-        may stall.
+        or stable order, but they are guaranteed to be called just
+        once (per instance, not function name). They should return fast, 
+        or the I/O thread may stall.
         """
         self.listeners[event][prefix].add(callback)
         if event in IDENTITY_EVENTS:
@@ -676,13 +677,18 @@ class IPSub(object):
                 prefix = update[0].bytes
             else:
                 prefix = bytes(buffer(update[0], 0, MAX_PREFIX))
+            called = set()
             for cb_prefix, callbacks in listeners.items():
                 if prefix is None or prefix.startswith(cb_prefix):
                     byebye = set()
                     for callback in callbacks:
+                        if callback in called:
+                            continue
                         try:
                             if not callback(prefix, event, update):
                                 byebye.add(callback)
+                            else:
+                                called.add(callback)
                         except:
                             logging.error("Exception in handler", exc_info = True)
                             byebye.add(callback)
