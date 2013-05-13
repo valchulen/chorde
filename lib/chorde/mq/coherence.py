@@ -241,6 +241,12 @@ class CoherenceManager(object):
         rv = self.group_pending.get(key)
         if rv is not None and (time.time() - rv[1]) > PENDING_TIMEOUT:
             rv = None
+        elif rv is not None and (time.time() - rv[1]) > (PENDING_TIMEOUT/2):
+            # Um... ask for a referesh
+            try:
+                self.ipsub.publish_encode(self.listpendqprefix, self.encoding, None)
+            except:
+                pass
         if rv is not None:
             return rv[-1]
         else:
@@ -347,6 +353,12 @@ class CoherenceManager(object):
         if rv is not None and (time.time() - rv[1]) > PENDING_TIMEOUT:
             # Expired
             rv = None
+        elif rv is not None and (time.time() - rv[1]) > (PENDING_TIMEOUT/2):
+            # Um... ask for a referesh
+            try:
+                self.ipsub.publish_encode(self.listpendqprefix, self.encoding, None)
+            except:
+                pass
         if lock and rv is None:
             self.group_pending[key] = (txid, time.time(), contact)
         return ipsub.BrokerReply(json.dumps(rv))

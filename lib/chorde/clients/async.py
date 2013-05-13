@@ -77,7 +77,12 @@ class AsyncCacheWriterPool(ThreadPool):
                     value = value.undefer()
                 except:
                     self.logger.error("Error in background cache refresh", exc_info=True)
+                    value = _NONE
             
+            if value is _NONE:
+                # undefer probably decided not to compute anything (or an error arose, whatever)
+                return
+                
             elif value is _DELETE:
                 try:
                     self.client.delete(key)
