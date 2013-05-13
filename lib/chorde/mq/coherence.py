@@ -79,6 +79,20 @@ def _weak_callback(f):
 def _bound_weak_callback(self, f):
     return functools.partial(f, weakref.ref(self))
 
+def _swallow_connrefused(onerror):
+    def decor(f):
+        @functools.wraps(f)
+        def rv(*p, **kw):
+            try:
+                return f(*p, **kw)
+            except zmq.ZMQError:
+                return onerror(*p, **kw)
+        return rv
+    return decor
+
+def _noop(*p, **kw):
+    return
+
 class CoherenceManager(object):
     def __init__(self, namespace, private, shared, ipsub_, 
             p2p_pub_bindhosts = DEFAULT_P2P_BINDHOSTS, 
@@ -132,6 +146,7 @@ class CoherenceManager(object):
 
         # Key -> hash
         self.pending = dict()
+        self.group_pending = dict()
 
         if synchronous:
             self.waiter = SyncWaiter
@@ -143,7 +158,7 @@ class CoherenceManager(object):
             identity = ipsub_.identity
         )
         self.p2p_pub_bindhosts = [ bindhost % bindargs for bindhost in p2p_pub_bindhosts ]
-        self.p2p_pub_binds = None
+        self.p2p_pub_binds = [ipsub_.identity] # default contact is ipsub identity
 
         # Active broadcasts
         self.delprefix = namespace + '|c|del|'
@@ -178,6 +193,7 @@ class CoherenceManager(object):
         # Iterator is atomic, no need for locks
         return self._txid.next()
 
+    @_swallow_connrefused(_noop)
     def fire_deletion(self, key):
         txid = self.txid
         waiter = self.waiter(self, txid) # subscribe before publishing, or we'll miss it
@@ -218,6 +234,25 @@ class CoherenceManager(object):
         ipsub_.unlisten(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.encoded_pending_query )
 
+    def _query_pending_locally(self, key, expired, timeout = 2000, optimistic_lock = False):
+        rv = self.group_pending.get(key)
+        if rv is not None:
+            return rv[-1]
+        else:
+            rv = self.pending.get(key)
+            if rv is not None:
+                return self.p2p_pub_binds
+            elif expired():
+                if optimistic_lock:
+                    txid = self.txid
+                    self.group_pending[key] = (txid, self.p2p_pub_binds)
+                    self.pending[key] = txid
+                return None
+            else:
+                return OOB_UPDATE
+        return rv
+
+    @_swallow_connrefused(_query_pending_locally)
     def query_pending(self, key, expired, timeout = 2000, optimistic_lock = False):
         """
         Queries the cluster about the key's pending status,
@@ -233,10 +268,16 @@ class CoherenceManager(object):
             optimistic_lock: Request the broker to mark the key as pending if
                 there is noone currently computing, atomically.
         """
+        if self.ipsub.is_broker:
+            # Easy peachy
+            return self._query_pending_locally(key, expired, timeout, optimistic_lock)
+
+        # Listere... a tad more complex
         ipsub_ = self.ipsub
+        txid = self.txid if optimistic_lock else None
         req = ipsub_.encode_payload(self.encoding, (
             key, 
-            self.txid if optimistic_lock else None,
+            txid,
             self.p2p_pub_binds, 
             optimistic_lock))
         
@@ -244,8 +285,8 @@ class CoherenceManager(object):
         waiter = ctx.socket(zmq.PAIR)
         waiter_id = "inproc://qpw%x" % id(waiter)
         waiter.bind(waiter_id)
-        def signaler(prefix, event, message):
-            if message[0] == req:
+        def signaler(prefix, event, message, req = map(buffer,req)):
+            if map(buffer,message[0][2:]) == req:
                 # This is our message
                 signaler = ctx.socket(zmq.PAIR)
                 signaler.connect(waiter_id)
@@ -257,7 +298,7 @@ class CoherenceManager(object):
         ipsub_.listen('', ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
         ipsub_.publish(self.pendqprefix, req)
         for i in xrange(3):
-            if waiter.poll(timeout/3):
+            if waiter.poll(timeout/4):
                 break
             elif expired():
                 ipsub_.publish(self.pendqprefix, req)
@@ -265,18 +306,25 @@ class CoherenceManager(object):
                 break
         else:
             if expired():
-                waiter.poll(timeout/3)
+                waiter.poll(timeout/4)
         if waiter.poll(1):
-            rv = json.load(cStringIO.StringIO(buffer(waiter.recv(copy=False))))[-1]
+            rv = json.load(cStringIO.StringIO(buffer(waiter.recv(copy=False))))
+            if rv is not None:
+                rv = rv[-1]
+            elif not expired():
+                rv = OOB_UPDATE
         elif expired():
-            rv = OOB_UPDATE
-        else:
             rv = None
+        else:
+            rv = OOB_UPDATE
         ipsub_.unlisten('', ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
         waiter.close()
+        if optimistic_lock and rv is None:
+            # We acquired it
+            self.pending[key] = txid
         return rv
 
-    def publish_pending(self, keys):
+    def _publish_pending(self, keys):
         # Publish pending notification for anyone listening
         payload = (
             # pending data
@@ -292,7 +340,7 @@ class CoherenceManager(object):
         key, txid, contact, lock = payload
         rv = self.group_pending.get(key)
         if lock and rv is None:
-            self.group_pending[key] = (txid, frozenset(contact))
+            self.group_pending[key] = (txid, contact)
         return ipsub.BrokerReply(json.dumps(rv))
 
     @_weak_callback
@@ -300,14 +348,14 @@ class CoherenceManager(object):
         if self.ipsub.is_broker:
             txid, keys, contact = payload
             self.group_pending.update(itertools.izip(
-                keys, itertools.repeat((txid,frozenset(contact)),len(keys))))
+                keys, itertools.repeat((txid,contact),len(keys))))
 
     @_weak_callback
     def _on_done(self, prefix, event, payload):
         if self.ipsub.is_broker:
             txid, keys, contact = self.ipsub.decode_payload(payload)
             group_pending = self.group_pending
-            ctxid = (txid, frozenset(contact))
+            ctxid = (txid, contact)
             for key in keys:
                 if group_pending.get(key) == ctxid:
                     try:
@@ -315,6 +363,7 @@ class CoherenceManager(object):
                     except KeyError:
                         pass
 
+    @_swallow_connrefused(_noop)
     def mark_done(self, key):
         txid = self.pending.pop(key)
         if txid is not None:
