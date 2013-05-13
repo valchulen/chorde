@@ -101,6 +101,7 @@ class CoherenceManager(object):
             p2p_pub_bindhosts = DEFAULT_P2P_BINDHOSTS, 
             encoding = 'pyobj',
             synchronous = False,
+            quick_refresh = False,
             stable_hash = stable_hash,
             value_pickler = None):
         """
@@ -130,6 +131,9 @@ class CoherenceManager(object):
                 and monitoring and transmission of heartbeats to know about all peers.
                 If False, calls to fire_X().wait will be no-ops.
 
+            quick_refresh: If True, the manager will subscribe to all "done" events,
+                as to maintain private cache consistency as close as possible.
+
             stable_hash: If provided, it must be a callable that computes stable
                 key hashes, used to subscribe to specific key pending notifications.
                 If not provided, the default will be used, which can only handle
@@ -143,6 +147,7 @@ class CoherenceManager(object):
         self.local = threading.local()
         self.namespace = namespace
         self.synchronous = synchronous
+        self.quick_refresh = quick_refresh
         self.stable_hash = stable_hash
         self.encoding = encoding
         self._txid = itertools.cycle(xrange(0x7FFFFFFF))
@@ -256,6 +261,9 @@ class CoherenceManager(object):
         ipsub_ = self.ipsub
         ipsub_.listen(self.listpendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.bound_list_pending_query )
+        if self.quick_refresh:
+            self.encoded_done = ipsub_.listen_decode(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE, 
+                self.bound_done )
         return True
 
     @_weak_callback
@@ -263,6 +271,9 @@ class CoherenceManager(object):
         ipsub_ = self.ipsub
         ipsub_.unlisten(self.listpendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.bound_list_pending_query )
+        if self.quick_refresh:
+            ipsub_.unlisten(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE, 
+                self.encoded_done )
         return True
 
     def _query_pending_locally(self, key, expired, timeout = 2000, optimistic_lock = False):
@@ -419,7 +430,17 @@ class CoherenceManager(object):
                         del group_pending[key]
                     except KeyError:
                         pass
-            return True
+        else:
+            # Just deletion-like
+            txid, keys, contact = payload
+            private = self.private
+            for key in keys:
+                if private.contains(key):
+                    try:
+                        self.private.delete(key)
+                    except CacheMissError:
+                        pass
+        return True
 
     @_swallow_connrefused(_noop)
     def mark_done(self, key):

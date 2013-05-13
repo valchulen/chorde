@@ -11,6 +11,8 @@ import chorde.mq.coherence as coherence
 import chorde.clients.inproc as inproc
 
 class CoherenceProtocolTest(unittest.TestCase):
+    coherence_kwargs = {}
+    
     def setUp(self):
         ipsub.IPSub.register_default_pyobj()
         
@@ -38,9 +40,9 @@ class CoherenceProtocolTest(unittest.TestCase):
         self.private2 = inproc.InprocCacheClient(100)
         self.shared = inproc.InprocCacheClient(100)
 
-        self.coherence = coherence.CoherenceManager('ns', self.private, self.shared, self.ipsub)
-        self.coherence2 = coherence.CoherenceManager('ns', self.private2, self.shared, self.ipsub2)
-        self.coherence3 = coherence.CoherenceManager('ns', self.private2, self.shared, self.ipsub3)
+        self.coherence = coherence.CoherenceManager('ns', self.private, self.shared, self.ipsub, **self.coherence_kwargs)
+        self.coherence2 = coherence.CoherenceManager('ns', self.private2, self.shared, self.ipsub2, **self.coherence_kwargs)
+        self.coherence3 = coherence.CoherenceManager('ns', self.private2, self.shared, self.ipsub3, **self.coherence_kwargs)
 
         time.sleep(0.1)
         
@@ -237,3 +239,6 @@ class CoherenceProtocolTest(unittest.TestCase):
         # No crashing
         pending = self.coherence3.fire_deletion(1)
         
+
+class CoherenceQuickProtocolTest(CoherenceProtocolTest):
+    coherence_kwargs = {'quick_refresh':True}
