@@ -424,12 +424,18 @@ class CoherenceManager(object):
             ctxid = (txid, contact)
             proj = operator.itemgetter(0,-1)
             pnone = (None, None)
+            private = self.private
             for key in keys:
                 if proj(group_pending.get(key, pnone)) == ctxid:
                     try:
                         del group_pending[key]
                     except KeyError:
                         pass
+                    if private.contains(key):
+                        try:
+                            self.private.delete(key)
+                        except CacheMissError:
+                            pass
         else:
             # Just deletion-like
             txid, keys, contact = payload
