@@ -40,6 +40,8 @@ class IPSubTest(unittest.TestCase):
     def tearDown(self):
         self.ipsub.terminate()
         self.ipsub2.terminate()
+        self.ipsub.wake()
+        self.ipsub2.wake()
         self.ipsub_thread.join(5000)
         self.ipsub2_thread.join(5000)
         del self.ipsub, self.ipsub_thread, self.ipsub2, self.ipsub2_thread
@@ -95,6 +97,8 @@ class IPSubTest(unittest.TestCase):
         self.ipsub.publish_pyobj('mog',None)
         time.sleep(0.1)
         self.assertEqual(len(updates), 1)
+        for prefix, identity, message in updates:
+            assert prefix.startswith('msg')
 
     def test_simple_pub_with_sub_prefix_r(self):
         updates = []
@@ -107,4 +111,29 @@ class IPSubTest(unittest.TestCase):
         self.ipsub2.publish_pyobj('mog',None)
         time.sleep(0.1)
         self.assertEqual(len(updates), 1)
+        for prefix, identity, message in updates:
+            assert prefix.startswith('msg')
+
+    def test_update_reply_payload(self):
+        updates = []
+        replies = []
+        def req(prefix, identity, message):
+            updates.append(message)
+            return ipsub.BrokerReply(message)
+        def rep(prefix, identity, message):
+            replies.append(message[1])
+            return True
+        if self.ipsub.is_broker:
+            broker, listener = self.ipsub, self.ipsub2
+        else:
+            broker, listener = self.ipsub2, self.ipsub
+        broker.listen_decode('msg', ipsub.EVENT_INCOMING_UPDATE, req)
+        listener.listen('', ipsub.EVENT_UPDATE_ACKNOWLEDGED, rep)
+        time.sleep(0.1)
+        listener.publish_pyobj('msg',"2")
+        listener.publish_pyobj('msg',"1")
+        time.sleep(0.1)
+        self.assertEqual(len(updates), 2)
+        self.assertEqual(len(replies), 2)
+        self.assertEqual([r[-1].bytes for r in replies], updates)
 

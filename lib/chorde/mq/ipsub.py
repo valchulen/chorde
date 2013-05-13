@@ -26,14 +26,15 @@ FRAME_UPDATE_OK = "OK"
 FRAME_UPDATE_DROPPED = "DROP"
 FRAME_VALID_UPDATE_REPLIES = (FRAME_UPDATE_OK, FRAME_UPDATE_DROPPED)
 
+# EVENT KEY                         message payload format
 EVENT_INCOMING_UPDATE = 1         # [prefix, identity, payload]. Payload verbatim as sent
-EVENT_UPDATE_ACKNOWLEDGED = 2     # 
-EVENT_UPDATE_IGNORED = 3
-EVENT_UPDATE_SENT = 4
-EVENT_ENTER_BROKER = 5
-EVENT_LEAVE_BROKER = 6
-EVENT_ENTER_LISTENER = 7
-EVENT_LEAVE_LISTENER = 8
+EVENT_UPDATE_ACKNOWLEDGED = 2     # (update, reply frames)
+EVENT_UPDATE_IGNORED = 3          # (update, reply frames)
+EVENT_UPDATE_SENT = 4             # [prefix, identity, payload]. Payload verbatim as sent
+EVENT_ENTER_BROKER = 5            # None
+EVENT_LEAVE_BROKER = 6            # None
+EVENT_ENTER_LISTENER = 7          # None
+EVENT_LEAVE_LISTENER = 8          # None
 
 EVENT_NAMES = {
     EVENT_INCOMING_UPDATE : 'INCOMING_UPDATE',
@@ -697,7 +698,7 @@ class IPSub(object):
             self.cancel_subscriptions((prefix,))
 
     @property
-    def isbroker(self):
+    def is_broker(self):
         return self.fsm.__class__ is IPSub.FSM.DesignatedBroker
 
     def _notify_all(self, event, update):
