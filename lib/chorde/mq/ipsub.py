@@ -681,11 +681,14 @@ class IPSub(object):
         """
         See listen. The difference is that in this case, the payload
         in decoded form will be given to the callback, rather than
-        the entire message
+        the entire message.
+
+        Returns the actual callback to be used for unlistening.
         """
         def decoding_callback(prefix, event, message):
             return callback(prefix, event, IPSub.decode_payload(message))
         self.listen(prefix, event, decoding_callback)
+        return decoding_callback
 
     def unlisten(self, prefix, event, callback):
         if prefix in self.listeners[event]:
