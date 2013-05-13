@@ -105,7 +105,9 @@ class CoherenceProtocolTest(unittest.TestCase):
         def mark():
             time.sleep(0.1)
             self.coherence2.mark_done(1)
-        threading.Thread(target=mark).start()
+        t = threading.Thread(target=mark)
+        t.deamon = True
+        t.start()
         self.coherence.wait_done(1)
 
         time.sleep(0.1)
@@ -138,7 +140,9 @@ class CoherenceProtocolTest(unittest.TestCase):
         def mark():
             time.sleep(0.1)
             self.coherence.mark_done(1)
-        threading.Thread(target=mark).start()
+        t = threading.Thread(target=mark)
+        t.deamon = True
+        t.start()
         self.coherence2.wait_done(1)
 
         t1 = time.time()
