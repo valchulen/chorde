@@ -465,19 +465,11 @@ class IPSub(object):
         return sub
     
     def add_subscriptions(self, prefixes):
-        if self.listener_sub is None:
-            # Ignore
-            return
-
         self._needs_subscriptions = True
         self.subscriptions.update(prefixes)
         self.wake()
     
     def cancel_subscriptions(self, prefixes):
-        if self.listener_sub is None:
-            # Ignore
-            return
-        
         self._needs_subscriptions = True
         self.subscriptions -= set(prefixes)
         self.wake()
@@ -646,7 +638,11 @@ class IPSub(object):
             copy = copy )
 
     def wake(self):
-        self._pushsocket().send("")
+        try:
+            self._pushsocket().send("")
+        except zmq.ZMQError:
+            # Shit happens, probably not connected
+            pass
 
     def listen(self, prefix, event, callback):
         """
@@ -718,10 +714,16 @@ class IPSub(object):
             self._ndebug = not logging.getLogger().isEnabledFor(logging.DEBUG)
 
         if not self._ndebug:
-            if identity is None or identity == self.identity:
-                logging.debug("IPSub: (from myself) %s", EVENT_NAMES[event])
+            if identity is None and event != EVENT_UPDATE_SENT:
+                prefix = None
+            elif len(update[0]) < MAX_PREFIX:
+                prefix = update[0].bytes
             else:
-                logging.debug("IPSub: (from %r) %s", identity, EVENT_NAMES[event])
+                prefix = bytes(buffer(update[0], 0, MAX_PREFIX))
+            if identity is None or identity == self.identity:
+                logging.debug("IPSub: (from %r) %s (prefix %r)", self.identity, EVENT_NAMES[event], prefix)
+            else:
+                logging.debug("IPSub: (from %r) %s (prefix %r)", identity, EVENT_NAMES[event], prefix)
 
         if identity is not None and identity == self.identity:
             # Ehm... identified roundtrip -> ignore
