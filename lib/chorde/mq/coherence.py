@@ -6,6 +6,8 @@ import weakref
 import itertools
 import json
 import zmq
+import time
+import operator
 
 from . import ipsub
 
@@ -18,6 +20,7 @@ from chorde.clients import CacheMissError
 
 P2P_HWM = 10
 INPROC_HWM = 1 # Just for wakeup signals
+PENDING_TIMEOUT = 5.0
 
 class OOB_UPDATE:
     pass
@@ -64,7 +67,7 @@ HASHES = {
 }
 
 def stable_hash(x):
-    HASHES.get(type(x), HASHES.get(None))(x)
+    return HASHES.get(type(x), HASHES.get(None))(x)
 
 def _weak_callback(f):
     @functools.wraps(f)
@@ -98,7 +101,7 @@ class CoherenceManager(object):
             p2p_pub_bindhosts = DEFAULT_P2P_BINDHOSTS, 
             encoding = 'pyobj',
             synchronous = False,
-            stable_hash = None,
+            stable_hash = stable_hash,
             value_pickler = None):
         """
         Params
@@ -236,6 +239,8 @@ class CoherenceManager(object):
 
     def _query_pending_locally(self, key, expired, timeout = 2000, optimistic_lock = False):
         rv = self.group_pending.get(key)
+        if rv is not None and (time.time() - rv[1]) > PENDING_TIMEOUT:
+            rv = None
         if rv is not None:
             return rv[-1]
         else:
@@ -245,7 +250,7 @@ class CoherenceManager(object):
             elif expired():
                 if optimistic_lock:
                     txid = self.txid
-                    self.group_pending[key] = (txid, self.p2p_pub_binds)
+                    self.group_pending[key] = (txid, time.time(), self.p2p_pub_binds)
                     self.pending[key] = txid
                 return None
             else:
@@ -339,8 +344,11 @@ class CoherenceManager(object):
     def _on_pending_query(self, prefix, event, payload):
         key, txid, contact, lock = payload
         rv = self.group_pending.get(key)
+        if rv is not None and (time.time() - rv[1]) > PENDING_TIMEOUT:
+            # Expired
+            rv = None
         if lock and rv is None:
-            self.group_pending[key] = (txid, contact)
+            self.group_pending[key] = (txid, time.time(), contact)
         return ipsub.BrokerReply(json.dumps(rv))
 
     @_weak_callback
@@ -348,7 +356,7 @@ class CoherenceManager(object):
         if self.ipsub.is_broker:
             txid, keys, contact = payload
             self.group_pending.update(itertools.izip(
-                keys, itertools.repeat((txid,contact),len(keys))))
+                keys, itertools.repeat((txid,time.time(),contact),len(keys))))
 
     @_weak_callback
     def _on_done(self, prefix, event, payload):
@@ -356,8 +364,10 @@ class CoherenceManager(object):
             txid, keys, contact = payload
             group_pending = self.group_pending
             ctxid = (txid, contact)
+            proj = operator.itemgetter(0,-1)
+            pnone = (None, None)
             for key in keys:
-                if group_pending.get(key) == ctxid:
+                if proj(group_pending.get(key, pnone)) == ctxid:
                     try:
                         del group_pending[key]
                     except KeyError:
@@ -365,8 +375,49 @@ class CoherenceManager(object):
 
     @_swallow_connrefused(_noop)
     def mark_done(self, key):
-        txid = self.pending.pop(key, self.group_pending.pop(key, None))
+        txid = self.pending.pop(key, self.group_pending.pop(key, (None,))[0])
         if txid is not None:
-            self.ipsub.publish_encode(self.doneprefix, self.encoding, 
+            self.ipsub.publish_encode(self.doneprefix+str(self.stable_hash(key)), self.encoding, 
                 (txid, [key], self.p2p_pub_binds))
 
+    @_swallow_connrefused(_noop)
+    def wait_done(self, key, poll_interval = 1000):
+        """
+        Waits until the given key is removed from pending state.
+
+        If the entry is still expired after this function returns,
+        it's sensible to assume that the computation node has aborted,
+        and an optimistic lock should be re-attempted.
+
+        Params
+            key: The key to wait for
+            poll_interval: A timeout(ms), pending status
+                rechecks will be performed in this interval.
+        """
+        ipsub_ = self.ipsub
+        doneprefix = self.doneprefix+str(self.stable_hash(key))
+        
+        ctx = zmq.Context.instance()
+        waiter = ctx.socket(zmq.PAIR)
+        waiter_id = "inproc://qpw%x" % id(waiter)
+        waiter.bind(waiter_id)
+        def signaler(prefix, event, payload):
+            txid, keys, contact = payload
+            if key in keys:
+                # This is our message
+                signaler = ctx.socket(zmq.PAIR)
+                signaler.connect(waiter_id)
+                signaler.send("")
+                signaler.close()
+                return False
+            else:
+                return True
+        signaler = ipsub_.listen_decode(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
+        while True:
+            if waiter.poll(poll_interval):
+                break
+            # Request confirmation of pending status
+            if not self.query_pending(key, lambda:1, poll_interval, False):
+                break
+        ipsub_.unlisten(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
+        waiter.close()

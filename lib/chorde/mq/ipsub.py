@@ -741,7 +741,7 @@ class IPSub(object):
             for cb_prefix, callbacks in listeners.items():
                 if prefix is None or prefix.startswith(cb_prefix):
                     byebye = set()
-                    for callback in callbacks:
+                    for callback in set(callbacks):
                         if callback in called:
                             continue
                         try:

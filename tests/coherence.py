@@ -102,7 +102,11 @@ class CoherenceProtocolTest(unittest.TestCase):
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 not in self.coherence.pending) # Not locally pending
 
-        self.coherence2.mark_done(1)
+        def mark():
+            time.sleep(0.1)
+            self.coherence2.mark_done(1)
+        threading.Thread(target=mark).start()
+        self.coherence.wait_done(1)
 
         time.sleep(0.1)
 
@@ -131,9 +135,11 @@ class CoherenceProtocolTest(unittest.TestCase):
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 not in self.coherence2.pending) # Not locally pending
 
-        self.coherence.mark_done(1)
-
-        time.sleep(0.1)
+        def mark():
+            time.sleep(0.1)
+            self.coherence.mark_done(1)
+        threading.Thread(target=mark).start()
+        self.coherence2.wait_done(1)
 
         t1 = time.time()
         pending = self.coherence2.query_pending(1, lambda:1, optimistic_lock = True)
@@ -142,6 +148,37 @@ class CoherenceProtocolTest(unittest.TestCase):
         self.assertEqual(pending, None) # Not pending anymore on coherence2
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 in self.coherence2.pending) # Locally pending
+
+    def test_wait_on_dead(self):
+        t1 = time.time()
+        pending = self.coherence2.query_pending(1, lambda:1, optimistic_lock = True)
+        t2 = time.time()
+        
+        self.assertEqual(pending, None) # No pending
+        self.assertLess(t2-t1, 1.0) # No timeout
+        self.assertTrue(1 in self.coherence2.pending) # Locally pending now
+        
+        t1 = time.time()
+        pending = self.coherence.query_pending(1, lambda:1, optimistic_lock = True)
+        t2 = time.time()
+        
+        self.assertNotEqual(pending, None) # pending on coherence2
+        self.assertLess(t2-t1, 1.0) # No timeout
+        self.assertTrue(1 not in self.coherence.pending) # Not locally pending
+
+        # Coherence2 dies... coherence must pick up
+        self.ipsub2.terminate()
+        self.ipsub2.wake()
+        self.ipsub2_thread.join(5.0)
+
+        t1 = time.time()
+        waiter = threading.Thread(target=self.coherence.wait_done, args=(1,))
+        waiter.daemon = True
+        waiter.start()
+        waiter.join(3*coherence.PENDING_TIMEOUT)
+        t2 = time.time()
+
+        self.assertLess(t2-t1, 2*coherence.PENDING_TIMEOUT) # No excessive timeout
 
     def test_pendq_oob(self):
         t1 = time.time()
