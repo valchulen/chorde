@@ -353,7 +353,7 @@ class CoherenceManager(object):
     @_weak_callback
     def _on_done(self, prefix, event, payload):
         if self.ipsub.is_broker:
-            txid, keys, contact = self.ipsub.decode_payload(payload)
+            txid, keys, contact = payload
             group_pending = self.group_pending
             ctxid = (txid, contact)
             for key in keys:
@@ -365,7 +365,7 @@ class CoherenceManager(object):
 
     @_swallow_connrefused(_noop)
     def mark_done(self, key):
-        txid = self.pending.pop(key)
+        txid = self.pending.pop(key, self.group_pending.pop(key, None))
         if txid is not None:
             self.ipsub.publish_encode(self.doneprefix, self.encoding, 
                 (txid, [key], self.p2p_pub_binds))
