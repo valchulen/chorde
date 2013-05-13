@@ -178,6 +178,7 @@ class CoherenceManager(object):
         self.bound_pending = _bound_weak_callback(self, self._on_pending)
         self.bound_done = _bound_weak_callback(self, self._on_done)
         self.bound_pending_query = _bound_weak_callback(self, self._on_pending_query)
+        self.bound_list_pending_query = _bound_weak_callback(self, self._on_list_pending_query)
         self.bound_deletion = _bound_weak_callback(self, self._on_deletion)
         self.encoded_pending = self.encoded_done = self.encoded_pending_query = None
 
@@ -187,6 +188,17 @@ class CoherenceManager(object):
             _bound_weak_callback(self, self._on_enter_broker) )
         ipsub_.listen('', ipsub.EVENT_LEAVE_BROKER, 
             _bound_weak_callback(self, self._on_leave_broker) )
+        ipsub_.listen('', ipsub.EVENT_ENTER_LISTENER, 
+            _bound_weak_callback(self, self._on_enter_listener) )
+        ipsub_.listen('', ipsub.EVENT_LEAVE_LISTENER, 
+            _bound_weak_callback(self, self._on_leave_listener) )
+
+        if ipsub_.is_running:
+            # Must manually invoke enter event
+            if ipsub_.is_broker:
+                self._on_enter_broker(None, ipsub.EVENT_ENTER_BROKER, None)
+            else:
+                self._on_enter_listener(None, ipsub.EVENT_ENTER_BROKER, None)
 
     @property
     def txid(self):
@@ -226,6 +238,7 @@ class CoherenceManager(object):
         self.encoded_pending_query = ipsub_.listen_decode(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.bound_pending_query )
         ipsub_.publish_encode(self.listpendqprefix, self.encoding, None)
+        return True
 
     @_weak_callback
     def _on_leave_broker(self, prefix, event, payload):
@@ -236,6 +249,21 @@ class CoherenceManager(object):
             self.encoded_done )
         ipsub_.unlisten(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.encoded_pending_query )
+        return True
+
+    @_weak_callback
+    def _on_enter_listener(self, prefix, event, payload):
+        ipsub_ = self.ipsub
+        ipsub_.listen(self.listpendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
+            self.bound_list_pending_query )
+        return True
+
+    @_weak_callback
+    def _on_leave_listener(self, prefix, event, payload):
+        ipsub_ = self.ipsub
+        ipsub_.unlisten(self.listpendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
+            self.bound_list_pending_query )
+        return True
 
     def _query_pending_locally(self, key, expired, timeout = 2000, optimistic_lock = False):
         rv = self.group_pending.get(key)
@@ -364,11 +392,20 @@ class CoherenceManager(object):
         return ipsub.BrokerReply(json.dumps(rv))
 
     @_weak_callback
+    def _on_list_pending_query(self, prefix, event, payload):
+        if not self.ipsub.is_broker:
+            self._publish_pending(self.pending)
+            return True
+        else:
+            return False
+
+    @_weak_callback
     def _on_pending(self, prefix, event, payload):
         if self.ipsub.is_broker:
             txid, keys, contact = payload
             self.group_pending.update(itertools.izip(
                 keys, itertools.repeat((txid,time.time(),contact),len(keys))))
+        return True
 
     @_weak_callback
     def _on_done(self, prefix, event, payload):
@@ -384,6 +421,7 @@ class CoherenceManager(object):
                         del group_pending[key]
                     except KeyError:
                         pass
+        return True
 
     @_swallow_connrefused(_noop)
     def mark_done(self, key):

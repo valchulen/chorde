@@ -349,7 +349,7 @@ class IPSub(object):
 
     def run(self):
         # Must start in bootstrap
-        assert self.fsm.__class__ is IPSub.FSM.Bootstrap
+        assert not self.is_running
         
         self.stop = False
         self.fsm.enter()
@@ -699,6 +699,10 @@ class IPSub(object):
     @property
     def is_broker(self):
         return self.fsm.__class__ is IPSub.FSM.DesignatedBroker
+
+    @property
+    def is_running(self):
+        return self.fsm.__class__ is not IPSub.FSM.Bootstrap
 
     def _notify_all(self, event, update):
         listeners = self.listeners.get(event)
