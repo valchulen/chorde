@@ -142,4 +142,3 @@ class SecureUnpickler(object):
         buf.truncate()
         return rv
 
-

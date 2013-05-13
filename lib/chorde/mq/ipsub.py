@@ -26,16 +26,24 @@ FRAME_UPDATE_OK = "OK"
 FRAME_UPDATE_DROPPED = "DROP"
 FRAME_VALID_UPDATE_REPLIES = (FRAME_UPDATE_OK, FRAME_UPDATE_DROPPED)
 
-EVENT_INCOMING_UPDATE = 1
-EVENT_UPDATE_ACKNOWLEDGED = 2
+EVENT_INCOMING_UPDATE = 1         # [prefix, identity, payload]. Payload verbatim as sent
+EVENT_UPDATE_ACKNOWLEDGED = 2     # 
 EVENT_UPDATE_IGNORED = 3
 EVENT_UPDATE_SENT = 4
+EVENT_ENTER_BROKER = 5
+EVENT_LEAVE_BROKER = 6
+EVENT_ENTER_LISTENER = 7
+EVENT_LEAVE_LISTENER = 8
 
 EVENT_NAMES = {
     EVENT_INCOMING_UPDATE : 'INCOMING_UPDATE',
     EVENT_UPDATE_ACKNOWLEDGED : 'UPDATE_ACKNOWLEDGED',
     EVENT_UPDATE_IGNORED: 'UPDATE_DROPPED',
     EVENT_UPDATE_SENT : 'UPDATE_SENT',
+    EVENT_ENTER_BROKER : 'ENTER_BROKER',
+    EVENT_LEAVE_BROKER : 'LEAVE_BROKER',
+    EVENT_ENTER_LISTENER : 'ENTER_LISTENER',
+    EVENT_LEAVE_LISTENER : 'LEAVE_LISTENER',
 }
 
 IDENTITY_EVENTS = (EVENT_INCOMING_UPDATE,)
@@ -86,6 +94,11 @@ else:
 
 class BootstrapNow(Exception):
     pass
+
+class BrokerReply(object):
+    __slots__ = ('reply',)
+    def __init__(self, *reply_parts):
+        self.reply = reply_parts
 
 class IPSub(object):
     class FSM(object):
@@ -157,6 +170,7 @@ class IPSub(object):
                 poller.register(listener_sub, zmq.POLLIN)
                 poller.register(pull, zmq.POLLIN)
                 poller.register(listener_req, zmq.POLLIN | zmq.POLLOUT)
+                owner._notify_all(EVENT_ENTER_LISTENER, None)
 
             def stay(self):
                 owner = self._owner()
@@ -232,7 +246,10 @@ class IPSub(object):
                     self.transition(IPSub.FSM.Bootstrap)
             
             def leave(self):
-                self._owner()._disconnect()
+                owner = self._owner()
+                if owner is not None:
+                    owner._notify_all(EVENT_LEAVE_LISTENER, None)
+                    owner._disconnect()
         
         class DesignatedBroker(State):
             def enter(self):
@@ -244,6 +261,7 @@ class IPSub(object):
                 poller.register(broker_pub, zmq.POLLOUT)
                 poller.register(broker_rep, zmq.POLLIN)
                 poller.register(pull, zmq.POLLIN)
+                owner._notify_all(EVENT_ENTER_BROKER, None)
 
             def stay(self):
                 owner = self._owner()
@@ -300,7 +318,10 @@ class IPSub(object):
                     self.transition(IPSub.FSM.Bootstrap)
     
             def leave(self):
-                self._owner()._unbind()
+                owner = self._owner()
+                if owner is not None:
+                    owner._notify_all(EVENT_LEAVE_BROKER, None)
+                    owner._unbind()
 
     def __init__(self, broker_addresses, subscriptions = ()):
         self.broker_addresses = broker_addresses
@@ -499,16 +520,18 @@ class IPSub(object):
     def _recv_update_reply(self, socket):
         # Check format without copying, assertion failures result in re-bootstrapping
         reply = socket.recv_multipart(copy = False)
-        assert MIN_UPDATE_REPLY_FRAMES <= len(reply) <= MAX_UPDATE_REPLY_FRAMES
-        assert len(reply[0]) <= MAX_UPDATE_REPLY_FIRSTFRAME
 
-        reply_code = reply[0].bytes
-        if reply_code not in FRAME_VALID_UPDATE_REPLIES:
-            # Ignore
-            return
+        if ( MIN_UPDATE_REPLY_FRAMES <= len(reply) <= MAX_UPDATE_REPLY_FRAMES
+                 and len(reply[0]) <= MAX_UPDATE_REPLY_FIRSTFRAME ):
+             reply_code = reply[0].bytes
+             if reply_code not in FRAME_VALID_UPDATE_REPLIES:
+                 # Must be a reply payload, which implicitly means OK
+                 reply_code = FRAME_UPDATE_OK
+        else:
+             reply_code = FRAME_UPDATE_OK
         
         # Notify listeners
-        self._notify_all(EVENT_FOR_REPLY[reply_code], self.current_update)
+        self._notify_all(EVENT_FOR_REPLY[reply_code], (self.current_update, reply))
         self.current_update = None
 
     def _check_heartbeat(self, update):
@@ -521,7 +544,8 @@ class IPSub(object):
             and update[0].bytes == HEARTBEAT_
         )
 
-    def _handle_update_request(self, socket):
+    def _handle_update_request(self, socket, 
+            isinstance=isinstance, BrokerReply=BrokerReply):
         update = socket.recv_multipart(copy = False)
         if self._check_heartbeat(update):
             # Got a heartbeat, reply in kind
@@ -530,12 +554,19 @@ class IPSub(object):
             # Real update, handle it
             try:
                 self.updates.put_nowait(update)
-                socket.send(FRAME_UPDATE_OK)
+                dropped = False
             except Queue.Full:
-                socket.send(FRAME_UPDATE_DROPPED)
+                dropped = True
             
             # Notify listeners
-            self._notify_all(EVENT_INCOMING_UPDATE, update)
+            rv = self._notify_all(EVENT_INCOMING_UPDATE, update)
+            if isinstance(rv, BrokerReply):
+                socket.send_multipart(rv.reply, copy = False)
+            elif dropped:
+                socket.send(FRAME_UPDATE_DROPPED)
+            else:
+                socket.send(FRAME_UPDATE_OK)
+
 
     def publish_json(self, prefix, payload, copy = False):
         self.publish(prefix, ['json',ENCODINGS['json'](payload)], copy)
@@ -571,14 +602,31 @@ class IPSub(object):
 
     @staticmethod
     def register_pyobj(pickler, unpickler):
-        IPSub.register_encoding('pyobj', 
-            lambda x : pickler.dumps(x, 2), 
-            unpickler.loads, 
-            unpickler.load)
+        """
+        Registers a pickling encoding.
+
+        Params:
+            pickler, unpickler: pickler/unpickler factory callables
+                that take a file-like object to dump into. Can be
+                stdlib's Pickle/Unpickle classes, or cPickle's, or
+                sPickles, they both work out-of-the-box.
+        """
+        def dumps(x):
+            io = cStringIO.StringIO()
+            p = pickler(io,2)
+            p.dump(x)
+            return io.getvalue()
+        def loads(x):
+            io = cStringIO.StringIO(x)
+            p = unpickler(io)
+            return p.load()
+        def load(x):
+            return unpickler(x).load()
+        IPSub.register_encoding('pyobj', dumps, loads, load)
     
     @staticmethod
     def register_default_pyobj():
-        IPSub.register_pyobj(cPickle.Pickler(), cPickle.Unpickler())
+        IPSub.register_pyobj(cPickle.Pickler, cPickle.Unpickler)
     
     @staticmethod
     def encode_payload(encoding, payload):
@@ -611,7 +659,12 @@ class IPSub(object):
         Use decode_payload to decode, if needed.
 
         It should return True, if it is to be called again, or
-        False if the listener is to be removed.
+        False if the listener is to be removed. Designated
+        brokers can also return a BrokerReply wrapper, in which case 
+        the reply's payload will be returned to the listener where 
+        the update originated, providing a way to piggy-back the 
+        req-response connection among them. These are considered
+        as True, so they will not be automatically removed.
 
         Listeners are not guaranteed to be called in any specific
         or stable order, but they are guaranteed to be called just
@@ -678,6 +731,7 @@ class IPSub(object):
             else:
                 prefix = bytes(buffer(update[0], 0, MAX_PREFIX))
             called = set()
+            rv = None
             for cb_prefix, callbacks in listeners.items():
                 if prefix is None or prefix.startswith(cb_prefix):
                     byebye = set()
@@ -685,7 +739,8 @@ class IPSub(object):
                         if callback in called:
                             continue
                         try:
-                            if not callback(prefix, event, update):
+                            rv = callback(prefix, event, update)
+                            if not rv:
                                 byebye.add(callback)
                             else:
                                 called.add(callback)
@@ -694,5 +749,6 @@ class IPSub(object):
                             byebye.add(callback)
                     for callback in byebye:
                         self.unlisten(cb_prefix, event, callback)
+            return rv
 
 

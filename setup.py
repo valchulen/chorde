@@ -1,5 +1,8 @@
-from distutils.core import setup
-from distutils.extension import Extension
+try:
+    from setuptools import setup, Extension
+except ImportError:
+    from distutils.core import setup, Extension
+
 from Pyrex.Distutils import build_ext
 import os.path
 
@@ -23,6 +26,9 @@ setup(
       "chorde.clients",
   ],
   package_dir = {'':'lib'},
+  
+  tests_require = ['nose'],
+  test_suite = 'tests',
   
   classifiers=[
             "Development Status :: 1 - Planning",
