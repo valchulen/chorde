@@ -52,8 +52,8 @@ class IPSubTest(unittest.TestCase):
 
     def test_simple_pub_with_sub(self):
         updates = []
-        def listener(prefix, identity, message):
-            updates.append((prefix, identity, message))
+        def listener(prefix, event, message):
+            updates.append((prefix, event, message))
             return True
         self.ipsub2.listen('', ipsub.EVENT_INCOMING_UPDATE, listener)
         time.sleep(0.1)
@@ -62,10 +62,42 @@ class IPSubTest(unittest.TestCase):
         time.sleep(0.1)
         self.assertEqual(len(updates), 2)
 
+    def test_unlisten(self):
+        updates = []
+        def listener(prefix, event, message):
+            updates.append((prefix, event, message))
+            return True
+        self.ipsub2.listen('', ipsub.EVENT_INCOMING_UPDATE, listener)
+        time.sleep(0.1)
+        self.ipsub.publish_pyobj('msg',None)
+        self.ipsub.publish_pyobj('msg',None)
+        time.sleep(0.1)
+        self.ipsub2.unlisten('', ipsub.EVENT_INCOMING_UPDATE, listener)
+        self.ipsub.publish_pyobj('msg',None)
+        self.ipsub.publish_pyobj('msg',None)
+        time.sleep(0.1)
+        self.assertEqual(len(updates), 2)
+
+    def test_unlisten_decode(self):
+        updates = []
+        def listener(prefix, event, message):
+            updates.append((prefix, event, message))
+            return True
+        listener = self.ipsub2.listen_decode('', ipsub.EVENT_INCOMING_UPDATE, listener)
+        time.sleep(0.1)
+        self.ipsub.publish_pyobj('msg',None)
+        self.ipsub.publish_pyobj('msg',None)
+        time.sleep(0.1)
+        self.ipsub2.unlisten('', ipsub.EVENT_INCOMING_UPDATE, listener)
+        self.ipsub.publish_pyobj('msg',None)
+        self.ipsub.publish_pyobj('msg',None)
+        time.sleep(0.1)
+        self.assertEqual(len(updates), 2)
+
     def test_simple_pub_with_sub_r(self):
         updates = []
-        def listener(prefix, identity, message):
-            updates.append((prefix, identity, message))
+        def listener(prefix, event, message):
+            updates.append((prefix, event, message))
             return True
         self.ipsub.listen('', ipsub.EVENT_INCOMING_UPDATE, listener)
         time.sleep(0.1)
@@ -76,8 +108,8 @@ class IPSubTest(unittest.TestCase):
 
     def test_simple_pub_with_sub_autoremove(self):
         updates = []
-        def listener(prefix, identity, message):
-            updates.append((prefix, identity, message))
+        def listener(prefix, event, message):
+            updates.append((prefix, event, message))
             return False
         self.ipsub2.listen('', ipsub.EVENT_INCOMING_UPDATE, listener)
         time.sleep(0.1)
@@ -88,8 +120,8 @@ class IPSubTest(unittest.TestCase):
 
     def test_simple_pub_with_sub_prefix(self):
         updates = []
-        def listener(prefix, identity, message):
-            updates.append((prefix, identity, message))
+        def listener(prefix, event, message):
+            updates.append((prefix, event, message))
             return True
         self.ipsub2.listen('msg', ipsub.EVENT_INCOMING_UPDATE, listener)
         time.sleep(0.1)
@@ -97,13 +129,13 @@ class IPSubTest(unittest.TestCase):
         self.ipsub.publish_pyobj('mog',None)
         time.sleep(0.1)
         self.assertEqual(len(updates), 1)
-        for prefix, identity, message in updates:
+        for prefix, event, message in updates:
             assert prefix.startswith('msg')
 
     def test_simple_pub_with_sub_prefix_r(self):
         updates = []
-        def listener(prefix, identity, message):
-            updates.append((prefix, identity, message))
+        def listener(prefix, event, message):
+            updates.append((prefix, event, message))
             return True
         self.ipsub.listen('msg', ipsub.EVENT_INCOMING_UPDATE, listener)
         time.sleep(0.1)
@@ -111,16 +143,16 @@ class IPSubTest(unittest.TestCase):
         self.ipsub2.publish_pyobj('mog',None)
         time.sleep(0.1)
         self.assertEqual(len(updates), 1)
-        for prefix, identity, message in updates:
+        for prefix, event, message in updates:
             assert prefix.startswith('msg')
 
     def test_update_reply_payload(self):
         updates = []
         replies = []
-        def req(prefix, identity, message):
+        def req(prefix, event, message):
             updates.append(message)
             return ipsub.BrokerReply(message)
-        def rep(prefix, identity, message):
+        def rep(prefix, event, message):
             replies.append(message[1])
             return True
         if self.ipsub.is_broker:
