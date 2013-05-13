@@ -20,7 +20,7 @@ from chorde.clients import CacheMissError
 
 P2P_HWM = 10
 INPROC_HWM = 1 # Just for wakeup signals
-PENDING_TIMEOUT = 5.0
+PENDING_TIMEOUT = 10.0
 
 class OOB_UPDATE:
     pass
