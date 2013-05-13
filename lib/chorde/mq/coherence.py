@@ -396,8 +396,6 @@ class CoherenceManager(object):
         if not self.ipsub.is_broker:
             self._publish_pending(self.pending)
             return True
-        else:
-            return False
 
     @_weak_callback
     def _on_pending(self, prefix, event, payload):
@@ -405,7 +403,7 @@ class CoherenceManager(object):
             txid, keys, contact = payload
             self.group_pending.update(itertools.izip(
                 keys, itertools.repeat((txid,time.time(),contact),len(keys))))
-        return True
+            return True
 
     @_weak_callback
     def _on_done(self, prefix, event, payload):
@@ -421,7 +419,7 @@ class CoherenceManager(object):
                         del group_pending[key]
                     except KeyError:
                         pass
-        return True
+            return True
 
     @_swallow_connrefused(_noop)
     def mark_done(self, key):
@@ -451,10 +449,12 @@ class CoherenceManager(object):
         waiter = ctx.socket(zmq.PAIR)
         waiter_id = "inproc://qpw%x" % id(waiter)
         waiter.bind(waiter_id)
+        contact_cell = []
         def signaler(prefix, event, payload):
             txid, keys, contact = payload
             if key in keys:
                 # This is our message
+                contact_cell[:] = contact
                 signaler = ctx.socket(zmq.PAIR)
                 signaler.connect(waiter_id)
                 signaler.send("")
