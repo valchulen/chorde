@@ -42,8 +42,8 @@ class IPSubTest(unittest.TestCase):
         self.ipsub2.terminate()
         self.ipsub.wake()
         self.ipsub2.wake()
-        self.ipsub_thread.join(5000)
-        self.ipsub2_thread.join(5000)
+        self.ipsub_thread.join(5.0)
+        self.ipsub2_thread.join(5.0)
         del self.ipsub, self.ipsub_thread, self.ipsub2, self.ipsub2_thread
 
     def test_simple_pub_no_sub(self):

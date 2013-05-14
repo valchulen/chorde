@@ -210,11 +210,13 @@ class IPSub(object):
                             # Try to send a heartbeat
                             if not listener_req.poll(1000, POLLOUT):
                                 # Must be mute... dead broker?
+                                logging.warn("Mute req socket: dead broker? bootstrapping")
                                 raise BootstrapNow
                             else:
                                 listener_req.send(HEARTBEAT_)
                                 if not listener_req.poll(2000):
                                     # Dead again
+                                    logging.warn("No reply to heartbeat: dead broker? bootstrapping")
                                     raise BootstrapNow
                                 else:
                                     # Alive... lets validate the heartbeat pong and move on
@@ -344,7 +346,10 @@ class IPSub(object):
             id(self),
             os.urandom(8).encode("base64").strip('\t =\n'),
         )
-        
+
+        self.reset()
+
+    def reset(self):
         self.fsm = IPSub.FSM.Bootstrap(self)
 
     def run(self):

@@ -84,9 +84,9 @@ class TieredInclusiveClient(BaseCacheClient):
                 else:
                     return default, -1
     
-    def contains(self, key):
+    def contains(self, key, ttl = None):
         for client in self.clients:
-            if client.contains(key):
+            if client.contains(key, ttl):
                 return True
         else:
             return False

@@ -227,12 +227,12 @@ class AsyncWriteCacheClient(BaseCacheClient):
         else:
             return value, ttl
     
-    def contains(self, key):
+    def contains(self, key, ttl = None):
         if self.is_started():
             if self.writer.contains(key):
                 return True
             else:
-                return self.client.contains(key)
+                return self.client.contains(key, ttl)
         else:
-            return self.client.contains(key)
+            return self.client.contains(key, ttl)
 

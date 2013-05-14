@@ -16,13 +16,15 @@ try:
 except ImportError:
     import StringIO as cStringIO
 
-from chorde.clients import CacheMissError
+from chorde.clients import CacheMissError, NONE, Defer
 
 P2P_HWM = 10
 INPROC_HWM = 1 # Just for wakeup signals
 PENDING_TIMEOUT = 10.0
 
 class OOB_UPDATE:
+    pass
+class CLEAR:
     pass
 
 DEFAULT_P2P_BINDHOSTS = (
@@ -32,7 +34,7 @@ DEFAULT_P2P_BINDHOSTS = (
 
 class NoopWaiter(object):
     __slots__ = ()
-    def __init__(self, manager, txid):
+    def __init__(self, manager = None, txid = None):
         pass
     def wait(self):
         pass
@@ -50,6 +52,7 @@ class SyncWaiter(object):
     def __del__(self):
         manager = self.manager
         manager.unlisten(manager.ackprefix, ipsub.EVENT_INCOMING_UPDATE, self)
+
 
 def _psufix(x):
     return x[:16] + x[-16:]
@@ -88,8 +91,11 @@ def _swallow_connrefused(onerror):
         def rv(*p, **kw):
             try:
                 return f(*p, **kw)
-            except zmq.ZMQError:
-                return onerror(*p, **kw)
+            except zmq.ZMQError as e:
+                if e.errno in (zmq.ECONNREFUSED,):
+                    return onerror(*p, **kw)
+                else:
+                    raise
         return rv
     return decor
 
@@ -201,9 +207,9 @@ class CoherenceManager(object):
         if ipsub_.is_running:
             # Must manually invoke enter event
             if ipsub_.is_broker:
-                self._on_enter_broker(None, ipsub.EVENT_ENTER_BROKER, None)
+                self._on_enter_broker(weakref.ref(self), None, ipsub.EVENT_ENTER_BROKER, None)
             else:
-                self._on_enter_listener(None, ipsub.EVENT_ENTER_BROKER, None)
+                self._on_enter_listener(weakref.ref(self), None, ipsub.EVENT_ENTER_BROKER, None)
 
     @property
     def txid(self):
@@ -217,16 +223,25 @@ class CoherenceManager(object):
     def fire_deletion(self, key):
         txid = self.txid
         waiter = self.waiter(self, txid) # subscribe before publishing, or we'll miss it
-        self.ipsub.publish_encode(self.delprefix, self.encoding, (txid, key))
+        if key is CLEAR:
+            # Cannot use any other encoding for this
+            encoding = 'pyobj'
+        else:
+            encoding = self.encoding
+        self.ipsub.publish_encode(self.delprefix, encoding, (txid, key))
         return waiter
 
     @_weak_callback
     def _on_deletion(self, prefix, event, payload):
         txid, key = payload
-        try:
-            self.private.delete(key)
-        except CacheMissError:
-            pass
+        if key is CLEAR:
+            # Wowowow
+            self.private.clear()
+        else:
+            try:
+                self.private.delete(key)
+            except CacheMissError:
+                pass
         
         if self.synchronous:
             self.ipsub.publish_encode(self.delackprefix, self.encoding, txid)
@@ -448,15 +463,23 @@ class CoherenceManager(object):
                         pass
         return True
 
-    @_swallow_connrefused(_noop)
     def mark_done(self, key):
         txid = self.pending.pop(key, self.group_pending.pop(key, (None,))[0])
         if txid is not None:
-            self.ipsub.publish_encode(self.doneprefix+str(self.stable_hash(key)), self.encoding, 
-                (txid, [key], self.p2p_pub_binds))
+            self.fire_done([key], txid)
 
     @_swallow_connrefused(_noop)
-    def wait_done(self, key, poll_interval = 1000):
+    def fire_done(self, keys, txid = None):
+        if keys:
+            if txid is None:
+                txid = self.txid
+            first_key = iter(keys).next()
+            self.ipsub.publish_encode(self.doneprefix+str(self.stable_hash(first_key)), self.encoding, 
+                (txid, keys, self.p2p_pub_binds))
+        return NoopWaiter()
+
+    @_swallow_connrefused(_noop)
+    def wait_done(self, key, poll_interval = 1000, timeout = None):
         """
         Waits until the given key is removed from pending state.
 
@@ -464,10 +487,16 @@ class CoherenceManager(object):
         it's sensible to assume that the computation node has aborted,
         and an optimistic lock should be re-attempted.
 
+        Returns
+            True if the task is done, False otherwise. True always
+            if there's no timeout.
+
         Params
             key: The key to wait for
             poll_interval: A timeout(ms), pending status
                 rechecks will be performed in this interval.
+            timeout: maximum time to wait (in ms). If not None, 
+                the method's return value must be checked for success.
         """
         ipsub_ = self.ipsub
         doneprefix = self.doneprefix+str(self.stable_hash(key))
@@ -490,11 +519,17 @@ class CoherenceManager(object):
             else:
                 return True
         signaler = ipsub_.listen_decode(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
-        while True:
-            if waiter.poll(poll_interval):
+        success = False
+        while timeout is None or timeout > 0:
+            if waiter.poll(min(poll_interval, timeout)):
+                success = True
                 break
+            elif timeout is not None:
+                timeout -= poll_interval
             # Request confirmation of pending status
             if not self.query_pending(key, lambda:1, poll_interval, False):
+                success = True
                 break
         ipsub_.unlisten(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
         waiter.close()
+        return success

@@ -158,7 +158,7 @@ class MemcachedClient(BaseCacheClient):
         
         return data
     
-    def getTtl(self, key, default=NONE):
+    def _getTtl(self, key, default, decode = True):
         # get the first page (gambling that most entries will span only a single page)
         # then query for the remaining ones in a single roundtrip, if present,
         # for a combined total of 2 roundtrips.
@@ -170,6 +170,10 @@ class MemcachedClient(BaseCacheClient):
         
         ttl = pages[0][2]
         npages = pages[0][0]
+
+        if not decode:
+            return default, ttl - time.time()
+        
         if npages > 1:
             pages.update( self.client.get_multi(xrange(1,npages), key_prefix=short_key+"|") )
         
@@ -185,7 +189,12 @@ class MemcachedClient(BaseCacheClient):
         except:
             self.logger.warning("Error decoding cached data", exc_info=True)
             return default, -1
-        
+
+    def getTtl(self, key, default=NONE):
+        # This trampoline is necessary to avoid re-entrancy issues when this client
+        # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
+        # to avoid locking the wrapper's mutex.
+        return self._getTtl(key, default)
     
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
@@ -215,9 +224,34 @@ class MemcachedClient(BaseCacheClient):
         # Memcache does that itself
         pass
     
-    def contains(self, key):
+    def contains(self, key, ttl = None):
         # Exploit the fact that append returns True on success (the key exists)
         # and False on failure (the key doesn't exist), with minimal bandwidth
         short_key = self.shorten_key(key)
-        return self.client.append(short_key+"|0","")
-        
+        exists = self.client.append(short_key+"|0","")
+        if exists:
+            if ttl is None:
+                return True
+            else:
+                # Checking with a TTL margin requires some extra care, because
+                # pages can be very expensive to decode, we first only fetch
+                # the TTL in the first page, and validate pessimistically.
+                # When checking with a TTL margin a key that's stale, this will
+                # minimize bandwidth, but when it's valid, it will result in
+                # 3x roundtrips: check with append, get ttl, get key
+                
+                # check TTL quickly, no decoding (or fetching) of pages needed
+                # to check stale TTL
+                _, store_ttl = self._getTtl(key, NONE, False)
+                if store_ttl <= ttl:
+                    return False
+                else:
+                    # Must validate the key, so we must decode
+                    rv, store_ttl = self._getTtl(key, NONE)
+                    if rv is NONE:
+                        # wrong key
+                        return False
+                    else:
+                        return True
+        else:
+            return False

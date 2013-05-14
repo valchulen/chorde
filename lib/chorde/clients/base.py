@@ -62,7 +62,18 @@ class BaseCacheClient(object):
         raise NotImplementedError
 
     @abstractmethod
-    def contains(self, key):
+    def contains(self, key, ttl = None):
+        """
+        Verifies that a key is valid within the cache
+
+        Params
+
+            key: the key to check
+
+            ttl: If provided and not None, a TTL margin. Keys with this or less
+                time to live will be considered as stale. Provide if you want
+                to check about-to-expire keys.
+        """
         return False
 
 class ReadWriteSyncAdapter(BaseCacheClient):
@@ -94,5 +105,5 @@ class ReadWriteSyncAdapter(BaseCacheClient):
         return self.client.purge(timeout)
 
     @serialize_read
-    def contains(self, key):
-        return self.client.contains(key)
+    def contains(self, key, ttl = None):
+        return self.client.contains(key, ttl)

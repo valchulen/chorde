@@ -3,16 +3,19 @@ from .inproc import InprocCacheClient # before base, really, it injects CacheMis
 from .base import BaseCacheClient, ReadWriteSyncAdapter, NONE, CacheMissError
 from .async import AsyncWriteCacheClient, Defer
 from .tiered import TieredInclusiveClient
+from .coherent import CoherentDefer, CoherentWrapperClient
 
 __all__ = [
     "NONE",
     "CacheMissError",
+    "CoherentDefer",
     "Defer",
     
+    "AsyncWriteCacheClient",
+    "BaseCacheClient",
+    "CoherentWrapperClient",
     "InprocCacheClient",
     "ReadWriteSyncAdapter",
-    "BaseCacheClient",
-    "AsyncWriteCacheClient",
     "TieredInclusiveClient",
 ]
 
