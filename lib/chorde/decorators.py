@@ -2,6 +2,7 @@
 from functools import wraps
 import weakref
 import md5
+import time
 
 from .clients import base
 from .clients import async
@@ -60,7 +61,7 @@ def cached(client, ttl,
     be unreliable).
 
     Caches are thread-safe only if the provided clients are thread-safe, no additional safety is provided. If you
-    have a thread-unsafe client you want to make safe, use a ReadWriteSyncAdapter. Since synchronization adapters 
+    have a thread-unsafe client you want to make safe, use a (ReadWrite)SyncAdapter. Since synchronization adapters 
     only apply to store manipuation functions, and not the wrapped function, deadlocks cannot occur.
 
     The decorated function will provide additional behavior through attributes:
@@ -90,7 +91,7 @@ def cached(client, ttl,
             As such, it can be used to perform asynchronous operations on an otherwise synchronous function.
 
     Params
-        client: the cache store's client to be used
+        client: the cache store client to be used
 
         ttl: the time, in seconds, during which values remain valid.
 
@@ -163,13 +164,21 @@ def cached(client, ttl,
             except:
                 # Bummer
                 return f(*p, **kw)
-            
-            rv, rvttl = aclient[0].getTtl(callkey, _NONE)
-            
+
+            client = aclient[0]
+            rv, rvttl = client.getTtl(callkey, _NONE)
+
+            if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
+                # Launch background update
+                client.put(callkey, async.Defer(f, *p, **kw), ttl)
+
             if rv is _NONE:
-                rv = f(*p, **kw)
-            elif rvttl < ttl:
-                aclient[0].put(callkey, async.Defer(f, *p, **kw), ttl)
+                # Must wait for it
+                client.wait(callkey)
+                rv, rvttl = client.getTtl(callkey, _NONE)
+                if rv is _NONE or rvttl < async_ttl:
+                    # FUUUUU
+                    rv = f(*p, **kw)
 
             return rv
         
@@ -198,11 +207,12 @@ def cached(client, ttl,
             except:
                 # Bummer
                 raise CacheMissError
+
+            client = aclient[0]
+            rv, rvttl = client.getTtl(callkey, _NONE)
             
-            rv, rvttl = aclient[0].getTtl(callkey, _NONE)
-            
-            if rv is _NONE or rvttl < ttl:
-                aclient[0].put(callkey, async.Defer(f, *p, **kw), ttl)
+            if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
+                client.put(callkey, async.Defer(f, *p, **kw), ttl)
 
             if rv is _NONE:
                 raise CacheMissError, callkey
@@ -229,7 +239,9 @@ def cached(client, ttl,
                 # Bummer
                 return
 
-            aclient[0].put(callkey, async.Defer(f, *p, **kw), ttl)
+            client = aclient[0]
+            if not client.contains(callkey, 0):
+                client.put(callkey, async.Defer(f, *p, **kw), ttl)
         
 
         if client.async:
@@ -245,8 +257,10 @@ def cached(client, ttl,
                     aclient[:] = [async.AsyncWriteCacheClient(nclient, 
                         async_writer_queue_size, 
                         async_writer_workers)]
-                    
+                    async_cached_f.client = aclient[0]
                 return async_cached_f
+            async_cached_f.clear = nclient.clear
+            async_cached_f.client = None
             async_cached_f.async = weakref.ref(async_cached_f)
             async_cached_f.lazy = async_lazy_cached_f
             async_cached_f.refresh = async_refresh_f

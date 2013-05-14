@@ -16,7 +16,7 @@ try:
 except ImportError:
     import StringIO as cStringIO
 
-from chorde.clients import CacheMissError, NONE, Defer
+from chorde.clients import CacheMissError
 
 P2P_HWM = 10
 INPROC_HWM = 1 # Just for wakeup signals

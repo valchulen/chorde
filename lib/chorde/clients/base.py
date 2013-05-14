@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from abc import ABCMeta, abstractmethod, abstractproperty
-from chorde.serialize import serialize_read, serialize_write
+from chorde.serialize import serialize_read, serialize_write, serialize
 
 # Overridden by inproc_cache based on LRUCache availability
 CacheMissError = KeyError
@@ -16,6 +16,13 @@ class BaseCacheClient(object):
     @abstractproperty
     def async(self):
         return False
+
+    def wait(self, key, timeout = None):
+        """
+        Only valid for async clients, if there is a write pending, this
+        will wait for it to finish. If there is not, it will return immediately.
+        """
+        pass
     
     @abstractmethod
     def put(self, key, value, ttl):
@@ -109,6 +116,39 @@ class ReadWriteSyncAdapter(BaseCacheClient):
         return self.client.contains(key, ttl)
 
 
+class SyncAdapter(BaseCacheClient):
+    def __init__(self, client):
+        self.client = client
+
+    @property
+    def async(self):
+        return self.client.async
+
+    @serialize
+    def put(self, key, value, ttl):
+        return self.client.put(key, value, ttl)
+
+    @serialize
+    def delete(self, key):
+        return self.client.delete(key)
+
+    @serialize
+    def getTtl(self, key, default = NONE):
+        return self.client.getTtl(key, default)
+
+    @serialize
+    def clear(self):
+        return self.client.clear()
+
+    @serialize
+    def purge(self, timeout = 0):
+        return self.client.purge(timeout)
+
+    @serialize
+    def contains(self, key, ttl = None):
+        return self.client.contains(key, ttl)
+
+
 class DecoratedWrapper(BaseCacheClient):
     """
     A namespace wrapper client will decorate keys with a namespace, making it possible
@@ -124,6 +164,11 @@ class DecoratedWrapper(BaseCacheClient):
     def async(self):
         return self.client.async
 
+    def wait(self, key, timeout = None):
+        if self.key_decorator:
+            key = self.key_decorator(key)
+        return self.client.wait(key, timeout)
+    
     def put(self, key, value, ttl):
         if self.key_decorator:
             key = self.key_decorator(key)

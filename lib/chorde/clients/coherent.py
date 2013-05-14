@@ -97,6 +97,11 @@ class CoherentWrapperClient(BaseCacheClient):
     def async(self):
         return self.client.async
 
+    def wait(self, key, timeout = None):
+        # Hey, look at that. Since it all happens on a Defer, 
+        # we can just wait on the wrapped client :D
+        return self.client.wait(key, timeout)
+    
     def put(self, key, value, ttl):
         manager = self.manager
         if manager.quick_refresh:

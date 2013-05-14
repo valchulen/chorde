@@ -19,6 +19,11 @@ class TieredInclusiveClient(BaseCacheClient):
         else:
             return False
 
+    def wait(self, key, timeout = None):
+        for client in self.clients:
+            if client.async:
+                return client.wait(key, timeout)
+    
     @staticmethod
     def __putnext(self, clients, fractions, key, value, ttl):
         value = value.undefer()

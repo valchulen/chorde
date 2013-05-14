@@ -44,6 +44,7 @@ class AsyncCacheWriterPool(ThreadPool):
         # by key, providing some write-back coalescense in
         # high-load environments
         self.queueset = {}
+        self.workset = {}
         self.done_event = Event()
         
         ThreadPool.__init__(self, workers)
@@ -108,10 +109,15 @@ class AsyncCacheWriterPool(ThreadPool):
                     self.logger.error("Error saving data in cache", exc_info=True)
         finally:
             # Signal waiting threads
+            try:
+                del self.workset[key]
+            except KeyError:
+                pass
             ev.set()
         
     @serialize
     def dequeue(self, key):
+        self.workset[key] = None
         return self.queueset.pop(key, _NONE)
 
     def enqueue(self, key, value, ttl=None):
@@ -133,11 +139,11 @@ class AsyncCacheWriterPool(ThreadPool):
     
     def waitkey(self, key, timeout=None):
         if timeout is None:
-            while key in self.queueset:
+            while self.contains(key):
                 self._wait_done(1.0)
         else:
             tfin = time.time() + timeout
-            while key in self.queueset and tfin >= time.time():
+            while self.contains(key) and tfin >= time.time():
                 self._wait_done(max(1.0, timeout))
                 timeout = tfin - time.time()
     
@@ -145,7 +151,8 @@ class AsyncCacheWriterPool(ThreadPool):
         return self.queueset.get(key, default)
     
     def contains(self, key):
-        return key in self.queueset
+        # Not atomic, but it doesn't really matter much, very unlikely and benignly to fail
+        return key in self.queueset or key in self.workset
 
     def put(self, key, value, ttl):
         self.enqueue(key, value, ttl)
@@ -226,6 +233,9 @@ class AsyncWriteCacheClient(BaseCacheClient):
             raise CacheMissError, key
         else:
             return value, ttl
+    
+    def wait(self, key, timeout = None):
+        self.writer.waitkey(key, timeout)
     
     def contains(self, key, ttl = None):
         if self.is_started():

@@ -174,14 +174,14 @@ class InprocCacheClient(base.BaseCacheClient):
     def contains(self, key, ttl = None):
         if key in self.store:
             if ttl is None:
-                return True
+                ttl = 0
+
+            rv = self.store.get(key, base.NONE)
+            if rv is not base.NONE:
+                store_ttl = rv[1] - time.time()
+                return store_ttl > ttl
             else:
-                rv = self.store.get(key, base.NONE)
-                if rv is not base.NONE:
-                    store_ttl = rv[1] - time.time()
-                    return store_ttl <= ttl
-                else:
-                    return False
+                return False
         else:
             return False
 
