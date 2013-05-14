@@ -107,3 +107,79 @@ class ReadWriteSyncAdapter(BaseCacheClient):
     @serialize_read
     def contains(self, key, ttl = None):
         return self.client.contains(key, ttl)
+
+
+class DecoratedWrapper(BaseCacheClient):
+    """
+    A namespace wrapper client will decorate keys with a namespace, making it possible
+    to share one client among many sub-clients without key collisions.
+    """
+    def __init__(self, client, key_decorator = None, value_decorator = None, value_undecorator = None):
+        self.client = client
+        self.key_decorator = key_decorator
+        self.value_decorator = value_decorator
+        self.value_undecorator = value_undecorator
+
+    @property
+    def async(self):
+        return self.client.async
+
+    def put(self, key, value, ttl):
+        if self.key_decorator:
+            key = self.key_decorator(key)
+        if self.value_decorator:
+            value = self.value_decorator(value)
+        return self.client.put(key, value, ttl)
+
+    def delete(self, key):
+        if self.key_decorator:
+            key = self.key_decorator(key)
+        return self.client.delete(key)
+
+    def getTtl(self, key, default = NONE):
+        if self.key_decorator:
+            key = self.key_decorator(key)
+        rv = self.client.getTtl(key, default)
+        if rv is not default and self.value_undecorator:
+            rv = self.value_undecorator(rv)
+        return rv
+
+    def clear(self):
+        return self.client.clear()
+
+    def purge(self, timeout = 0):
+        return self.client.purge(timeout)
+
+    def contains(self, key, ttl = None):
+        if self.key_decorator:
+            key = self.key_decorator(key)
+        return self.client.contains(key, ttl)
+
+class NamespaceWrapper(DecoratedWrapper):
+    """
+    A namespace wrapper client will decorate keys with a namespace, making it possible
+    to share one client among many sub-clients without key collisions.
+    """
+    def __init__(self, namespace, client):
+        # super init not called on purpose, it would mess key_decorator
+        super(NamespaceWrapper, self).__init__(client)
+        self.namespace = namespace
+        self.revision = client.get((namespace,'REVMARK'), 0)
+
+    @property
+    def key_decorator(self):
+        return self._key_decorator
+
+    @key_decorator.setter
+    def key_decorator(self, value):
+        pass
+
+    def _key_decorator(self, key):
+        return (self.namespace, self.revision, key)
+
+    def clear(self):
+        # Cannot clear a shared client, so, instead, switch revisions
+        self.revision += 1
+        self.client.put((self.namespace, 'REVMARK'), self.revision)
+        return self.client.clear()
+

@@ -39,10 +39,9 @@ class TieredInclusiveClient(BaseCacheClient):
                     key, value, ttl)
                 clients[0].put(key, deferred, ttl * fractions[0])
             else:
-                # First call is sync, meaning we must undefer, no choice
-                value = value.undefer()
-                for ttl_fraction,client in izip(fractions, clients):
-                    client.put(key, value, ttl * ttl_fraction)
+                # Cannot undefer here, it might create deadlocks.
+                # Raise error.
+                raise ValueError, "Sync first tier, cannot undefer"
         else:
             # Simple case
             for ttl_fraction, client in izip(fractions, clients):
