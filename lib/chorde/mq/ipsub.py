@@ -471,6 +471,7 @@ class IPSub(object):
 
         self.listener_sub = sub
         self.listener_req = req
+        self.current_update = None
         return req
 
     def _disconnect(self):
@@ -484,6 +485,7 @@ class IPSub(object):
             pass
         self.listener_sub = None
         self.listener_req = None
+        self.current_update = None
 
     def _subscribe(self):
         assert self.listener_sub is not None
