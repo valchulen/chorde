@@ -191,6 +191,7 @@ class CoherenceManager(object):
         self.bound_pending_query = _bound_weak_callback(self, self._on_pending_query)
         self.bound_list_pending_query = _bound_weak_callback(self, self._on_list_pending_query)
         self.bound_deletion = _bound_weak_callback(self, self._on_deletion)
+        self.bound_tic = _bound_weak_callback(self, self._on_tic)
         self.encoded_pending = self.encoded_done = self.encoded_pending_query = None
 
         ipsub_.listen_decode(self.delprefix, ipsub.EVENT_INCOMING_UPDATE, 
@@ -257,6 +258,8 @@ class CoherenceManager(object):
             self.bound_done )
         self.encoded_pending_query = ipsub_.listen_decode(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.bound_pending_query )
+        self.encoded_pending_query = ipsub_.listen('', ipsub.EVENT_TIC, 
+            self.bound_tic )
         ipsub_.publish_encode(self.listpendqprefix, self.encoding, None)
         return True
 
@@ -269,6 +272,8 @@ class CoherenceManager(object):
             self.encoded_done )
         ipsub_.unlisten(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.encoded_pending_query )
+        ipsub_.unlisten('', ipsub.EVENT_TIC, 
+            self.bound_tic )
         return True
 
     @_weak_callback
@@ -291,16 +296,71 @@ class CoherenceManager(object):
                 self.encoded_done )
         return True
 
+    @_weak_callback
+    def _on_tic(self, prefix, event, payload):
+        if not self.ipsub.is_broker:
+            return False
+        
+        # Check pending freshness, ask for refreshers
+        now = time.time()
+        needs_refresh = False
+        _PENDING_TIMEOUT = PENDING_TIMEOUT
+        _REFRESH_TIMEOUT = PENDING_TIMEOUT/2
+        group_pending = self.group_pending
+        try:
+            # Try iterating
+            for rv in group_pending.itervalues():
+                if (now - rv[1]) > _REFRESH_TIMEOUT:
+                    needs_refresh = True
+                    break
+        except RuntimeError:
+            # Bah, gotta snapshot
+            for rv in group_pending.values():
+                if (now - rv[1]) > _REFRESH_TIMEOUT:
+                    needs_refresh = True
+                    break
+
+        if needs_refresh:
+            # First, clean up really expired values
+            clean = []
+            needs_refresh = False
+            try:
+                # Try iterating
+                for k,rv in group_pending.iteritems():
+                    delta = now - rv[1]
+                    if delta > _PENDING_TIMEOUT:
+                        clean.append(k)
+                    elif delta > _REFRESH_TIMEOUT:
+                        needs_refresh = True
+            except RuntimeError:
+                # Bah, gotta snapshot
+                for k,rv in group_pending.items():
+                    delta = now - rv[1]
+                    if delta > _PENDING_TIMEOUT:
+                        clean.append(k)
+                    elif delta > _REFRESH_TIMEOUT:
+                        needs_refresh = True
+
+            # Expire them
+            try:
+                for k in clean:
+                    del group_pending[k]
+            except KeyError:
+                pass
+
+            if needs_refresh:
+                # Ask for a refreshment
+                self.ipsub.publish_encode(self.listpendqprefix, self.encoding, None)
+
+        return True
+
     def _query_pending_locally(self, key, expired, timeout = 2000, optimistic_lock = False):
         rv = self.group_pending.get(key)
         if rv is not None and (time.time() - rv[1]) > PENDING_TIMEOUT:
             rv = None
         elif rv is not None and (time.time() - rv[1]) > (PENDING_TIMEOUT/2):
-            # Um... ask for a referesh
-            try:
-                self.ipsub.publish_encode(self.listpendqprefix, self.encoding, None)
-            except:
-                pass
+            # Um... belated tick?
+            self.ipsub.request_tic()
         if rv is not None:
             return rv[-1]
         else:
@@ -408,11 +468,8 @@ class CoherenceManager(object):
             # Expired
             rv = None
         elif rv is not None and (time.time() - rv[1]) > (PENDING_TIMEOUT/2):
-            # Um... ask for a referesh
-            try:
-                self.ipsub.publish_encode(self.listpendqprefix, self.encoding, None)
-            except:
-                pass
+            # Um... belated tick?
+            self.ipsub.request_tic()
         if rv is None:
             # Maybe the broker itself is computing...
             rv = self.pending.get(key)

@@ -35,6 +35,8 @@ EVENT_ENTER_BROKER = 5            # None
 EVENT_LEAVE_BROKER = 6            # None
 EVENT_ENTER_LISTENER = 7          # None
 EVENT_LEAVE_LISTENER = 8          # None
+EVENT_IDLE = 9                    # None
+EVENT_TIC = 10                    # None
 
 EVENT_NAMES = {
     EVENT_INCOMING_UPDATE : 'INCOMING_UPDATE',
@@ -45,6 +47,8 @@ EVENT_NAMES = {
     EVENT_LEAVE_BROKER : 'LEAVE_BROKER',
     EVENT_ENTER_LISTENER : 'ENTER_LISTENER',
     EVENT_LEAVE_LISTENER : 'LEAVE_LISTENER',
+    EVENT_IDLE : 'IDLE',
+    EVENT_TIC : 'TIC',
 }
 
 IDENTITY_EVENTS = (EVENT_INCOMING_UPDATE,)
@@ -60,6 +64,9 @@ MIN_UPDATE_REPLY_FRAMES = 1
 MAX_UPDATE_REPLY_FRAMES = 1
 MAX_UPDATE_REPLY_FIRSTFRAME = 10
 MAX_PREFIX = 256
+
+IDLE_PERIOD = 0.5
+TIC_PERIOD = 1.0
 
 EVENT_FOR_REPLY = {
     FRAME_UPDATE_OK : EVENT_UPDATE_ACKNOWLEDGED,
@@ -196,6 +203,8 @@ class IPSub(object):
                 int_ = int
                 len_ = len
                 random_ = random.random
+                tic_count = 100
+                buffer_ = buffer
 
                 # Poll sockets
                 try:
@@ -223,14 +232,21 @@ class IPSub(object):
                                     if listener_req.recv() != HEARTBEAT_:
                                         # Bad bad bad
                                         logging.error("IPSub: bad heartbeat")
+                            owner._idle()
                             break
+                        tic_count -= 1
+                        if tic_count < 0:
+                            owner._tic()
+                            tic_count = 100
                         for socket, what in activity:
                             if socket is pull:
                                 pack = pull_recv_multipart(copy = F)
                                 if len_(pack) > 1:
                                     # ^ else Wakeup call, ignore
                                     put_nowait(pack)
-                                    del pack
+                                elif buffer_(pack[0]) == buffer_("tic"):
+                                    tic_count = 0
+                                del pack
                             elif socket is listener_req:
                                 if what & POLLOUT:
                                     if not no_updates():
@@ -289,6 +305,8 @@ class IPSub(object):
                 int_ = int
                 len_ = len
                 random_ = random.random
+                tic_count = 100
+                buffer_ = buffer
 
                 # Poll sockets
                 try:
@@ -298,14 +316,21 @@ class IPSub(object):
                         activity = poller_poll(250 + int_(250 * random_()))
                         if not activity:
                             broker_pub.send(HEARTBEAT_)
+                            owner._idle()
                             break
+                        tic_count -= 1
+                        if tic_count < 0:
+                            owner._tic()
+                            tic_count = 100
                         for socket, what in activity:
                             if socket is pull:
                                 pack = pull_recv_multipart(copy = F)
                                 if len_(pack) > 1:
                                     # ^ else Wakeup call, ignore
                                     put_nowait(pack)
-                                    del pack
+                                elif buffer_(pack[0]) == buffer_("tic"):
+                                    tic_count = 0
+                                del pack
                             elif socket is broker_rep and what & POLLIN:
                                 owner._handle_update_request(broker_rep)
                             elif socket is broker_pub and what & POLLOUT:
@@ -346,6 +371,9 @@ class IPSub(object):
             id(self),
             os.urandom(8).encode("base64").strip('\t =\n'),
         )
+
+        self.last_idle = time.time()
+        self.last_tic = time.time()
 
         self.reset()
 
@@ -508,12 +536,38 @@ class IPSub(object):
         # Notify listeners
         self._notify_all(EVENT_UPDATE_SENT, update)
 
+    def _idle(self):
+        if EVENT_IDLE in self.listeners:
+            # Rate-limit idle events
+            if time.time() >= (self.last_idle + IDLE_PERIOD):
+                self._notify_all(EVENT_IDLE, None)
+                self.last_idle = time.time()
+
+        # Take the opportunity to check tic timestamp
+        self._tic()
+
+    def _tic(self):
+        if EVENT_TIC in self.listeners:
+            # Rate-limit tic events
+            if time.time() >= (self.last_tic + TIC_PERIOD):
+                self._notify_all(EVENT_TIC, None)
+                self.last_tic = time.time()
+
+    def request_tic(self):
+        try:
+            self._pushsocket().send("tic")
+        except zmq.ZMQError:
+            # Shit happens, probably not connected
+            pass
+    
     def _recv_update(self, socket):
         update = socket.recv_multipart(copy = False)
 
         if not self._check_heartbeat(update):
             # Notify listeners
             self._notify_all(EVENT_INCOMING_UPDATE, update)
+        else:
+            self._idle()
 
     def _recv_update_reply(self, socket):
         # Check format without copying, assertion failures result in re-bootstrapping
@@ -548,6 +602,7 @@ class IPSub(object):
         if self._check_heartbeat(update):
             # Got a heartbeat, reply in kind
             socket.send(FRAME_HEARTBEAT)
+            self._idle()
         else:
             # Real update, handle it
             try:
