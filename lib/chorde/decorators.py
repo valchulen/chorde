@@ -154,8 +154,7 @@ def cached(client, ttl,
         async_ttl = ttl / 2
 
     if _put_deferred is None:
-        def _put_deferred(client, f, key, ttl, *p, **kw):
-            return client.put(key, async.Defer(f, *p, **kw), ttl)
+        _put_deferred = _simple_put_deferred
 
     def decor(f):
         if namespace is None:
@@ -415,7 +414,7 @@ def coherent_cached(private, shared, ipsub, ttl,
             ntiered = tiered_
 
         if _namespace is not NO_NAMESPACE:
-            ntiered = base.NamespaceWrapper(namespace, ntiered)
+            ntiered = base.NamespaceWrapper(_namespace, ntiered)
             nprivate = base.NamespaceMirrorWrapper(ntiered, nprivate)
             nshared = base.NamespaceMirrorWrapper(ntiered, shared)
         else:

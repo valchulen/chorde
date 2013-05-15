@@ -206,7 +206,6 @@ class NamespaceWrapper(DecoratedWrapper):
     to share one client among many sub-clients without key collisions.
     """
     def __init__(self, namespace, client):
-        # super init not called on purpose, it would mess key_decorator
         super(NamespaceWrapper, self).__init__(client)
         self.namespace = namespace
         self.revision = client.get((namespace,'REVMARK'), 0)
