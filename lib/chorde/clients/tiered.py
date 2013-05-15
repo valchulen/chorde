@@ -26,7 +26,7 @@ class TieredInclusiveClient(BaseCacheClient):
     def __putnext(self, clients, fractions, key, value, ttl):
         deferred = value
         value = value.undefer()
-        if value not in (NONE, async._NONE):
+        if value is not NONE and value is not async._NONE:
             for fraction, client in islice(izip(fractions,clients), 1, None):
                 client.put(key, value, ttl * fraction)
         deferred.done()
