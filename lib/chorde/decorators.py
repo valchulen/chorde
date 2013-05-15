@@ -370,9 +370,13 @@ def coherent_cached(private, shared, ipsub, ttl,
     def decor(f):
         if coherence_namespace is None:
             _coherence_namespace = _make_namespace(f)
+        else:
+            _coherence_namespace = coherence_namespace
 
         if namespace is None:
             _namespace = _make_namespace(f)
+        else:
+            _namespace = namespace
 
         if not private.async:
             nprivate = async.AsyncWriteCacheClient(private, 
