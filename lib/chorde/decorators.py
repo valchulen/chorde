@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-from functools import wraps
+from functools import wraps, partial
 import weakref
 import md5
-import time
 
-from .clients import base
-from .clients import async
+from .clients import base, async, coherent, tiered
+
+from .mq import coherence
 
 from .clients.base import CacheMissError
 
@@ -46,14 +46,24 @@ def _make_namespace(f):
     except:
         return repr(f)
 
+def _simple_put_deferred(client, f, key, ttl, *p, **kw):
+    return client.put(key, async.Defer(f, *p, **kw), ttl)
+
+def _coherent_put_deferred(shared, async_ttl, client, f, key, ttl, *p, **kw):
+    return client.put_coherently(key, ttl, 
+        lambda : not shared.contains(key, async_ttl), 
+        f, *p, **kw)
+
 def cached(client, ttl,
         key = lambda *p, **kw:(p,frozenset(kw.items()) or ()),
         namespace = None,
+        coherence = None,
         value_serialization_function = None,
         value_deserialization_function = None,
         async_writer_queue_size = None, 
         async_writer_workers = None,
-        async_ttl = None ):
+        async_ttl = None,
+        _put_deferred = _simple_put_deferred ):
     """
     This decorator provides cacheability to suitable functions.
 
@@ -136,6 +146,10 @@ def cached(client, ttl,
     if async_ttl is None:
         async_ttl = ttl / 2
 
+    if _put_deferred is None:
+        def _put_deferred(client, f, key, ttl, *p, **kw):
+            return client.put(key, async.Defer(f, *p, **kw), ttl)
+
     def decor(f):
         if namespace is None:
             nclient = base.NamespaceWrapper(_make_namespace(f), client)
@@ -170,7 +184,7 @@ def cached(client, ttl,
 
             if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
                 # Launch background update
-                client.put(callkey, async.Defer(f, *p, **kw), ttl)
+                _put_deferred(client, f, callkey, ttl, *p, **kw)
 
             if rv is _NONE:
                 # Must wait for it
@@ -212,7 +226,7 @@ def cached(client, ttl,
             rv, rvttl = client.getTtl(callkey, _NONE)
             
             if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
-                client.put(callkey, async.Defer(f, *p, **kw), ttl)
+                _put_deferred(client, f, callkey, ttl, *p, **kw)
 
             if rv is _NONE:
                 raise CacheMissError, callkey
@@ -241,7 +255,7 @@ def cached(client, ttl,
 
             client = aclient[0]
             if not client.contains(callkey, 0):
-                client.put(callkey, async.Defer(f, *p, **kw), ttl)
+                _put_deferred(client, f, callkey, ttl, *p, **kw)
         
 
         if client.async:
@@ -286,3 +300,115 @@ def cached(client, ttl,
     return decor
 
 
+def coherent_cached(private, shared, ipsub, ttl,
+        key = lambda *p, **kw:(p,frozenset(kw.items()) or ()),
+        tiered_ = None,
+        namespace = None,
+        coherence_namespace = None,
+        coherence_encoding = 'pyobj',
+        coherence_timeout = None,
+        value_serialization_function = None,
+        value_deserialization_function = None,
+        async_writer_queue_size = None, 
+        async_writer_workers = None,
+        async_ttl = None,
+        tiered_opts = None,
+        **coherence_kwargs ):
+    """
+    This decorator provides cacheability to suitable functions, in a way that maintains coherency across
+    multiple compute nodes.
+
+    For suitability considerations and common parameters, refer to cached. The following describes the
+    aspects specific to the coherent version.
+
+    The decorated function will provide additional behavior through attributes:
+        coherence: the coherence manager created for this purpse
+
+        ipsub: the given IPSub channel
+
+    Params
+        ipsub: An IPSub channel that will be used to publish and subscribe to update events.
+
+        private: The private (local) cache client, the one that needs coherence.
+
+        shared: The shared cache client, that reflects changes made by other nodes.
+
+        tiered_: (optional) A client that queries both, private and shared. By default, a TieredInclusiveClient
+            is created with private and shared as first and second tier, which should be the most common case. 
+            The private client will be wrapped in an async wrapper if not async already, to be able to execute
+            the coherence protocol asynchronously. This should be adequate for most cases, but in some, 
+            it may be beneficial to provide a custom client.
+
+        tiered_opts: (optional) When using the default-constructed tiered client, you can pass additional (keyword)
+            arguments here.
+
+        coherence_namespace: (optional) There is usually no need to specify this value, the namespace in use 
+            by caching will be used for messaging as well, or if caching uses NO_NAMESPACE, the default that
+            would be used instead. However, for really high-volume channels, sometimes it is beneficial to pick
+            a more compact namespace (an id formatted with struct.pack for example).
+
+        coherence_encoding: (optional) Keys will have to be transmitted accross the channel, and this specifies
+            the encoding that will be used. The default 'pyobj' should work most of the time, but it has to 
+            be initialized, and 'json' or others could be more compact, depending on keys.
+            (see CoherenceManager for details on encodings)
+
+        coherence_timeout: (optional) Time (in ms) of peer silence that will be considered abnormal. Default
+            is 2000ms, which is sensible given the IPSub protocol. You may want to increase it if node load
+            creates longer hiccups.
+
+        Any extra argument are passed verbatim to CoherenceManager's constructor.
+    """
+    if async_ttl is None:
+        async_ttl = ttl / 2
+    
+    if not private.async:
+        if async_writer_queue_size is None:
+            async_writer_queue_size = 100
+        if async_writer_workers is None:
+            async_writer_workers = multiprocessing.cpu_count()
+    
+    def decor(f):
+        if coherence_namespace is None:
+            _coherence_namespace = _make_namespace(f)
+
+        if namespace is None:
+            _namespace = _make_namespace(f)
+
+        if not private.async:
+            nprivate = async.AsyncWriteCacheClient(private, 
+                async_writer_queue_size, 
+                async_writer_workers)
+        else:
+            nprivate = private
+
+        if tiered_ is None:
+            ntiered = tiered.TieredInclusiveClient(nprivate, shared, **(tiered_opts or {}))
+        else:
+            ntiered = tiered_
+
+        if _namespace is not NO_NAMESPACE:
+            ntiered = base.NamespaceWrapper(namespace, ntiered)
+            nprivate = base.NamespaceMirrorWrapper(ntiered, nprivate)
+            nshared = base.NamespaceMirrorWrapper(ntiered, shared)
+        else:
+            nshared = shared
+
+        coherence_manager = coherence.CoherenceManager(
+            _coherence_namespace, nprivate, nshared, ipsub,
+            encoding = coherence_encoding,
+            **coherence_kwargs)
+
+        nclient = coherent.CoherentWrapperClient(ntiered, coherence_manager, coherence_timeout)
+
+        rv = cached(nclient, ttl,
+            namespace = NO_NAMESPACE, # Already covered
+            value_serialization_function = value_serialization_function,
+            value_deserialization_function = value_deserialization_function,
+            async_writer_queue_size = async_writer_queue_size, 
+            async_writer_workers = async_writer_workers,
+            async_ttl = async_ttl,
+            _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl) )(f)
+        rv.coherence = coherence_manager
+        rv.ipsub = ipsub
+        return rv
+    return decor

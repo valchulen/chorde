@@ -228,3 +228,27 @@ class NamespaceWrapper(DecoratedWrapper):
         self.client.put((self.namespace, 'REVMARK'), self.revision)
         return self.client.clear()
 
+class NamespaceMirrorWrapper(NamespaceWrapper):
+    """
+    A namespace wrapper that takes its namespace info from the provided reference (mirrors it).
+    It also takes the internal revision number, to inherit namespace changes created by cache clears.
+    """
+    def __init__(self, reference, client):
+        super(NamespaceWrapper, self).__init__(client)
+        self.reference = reference
+
+    @property
+    def revision(self):
+        return self.reference.revision
+
+    @revision.setter
+    def revision(self, value):
+        pass
+
+    @property
+    def namespace(self):
+        return self.reference.namespace
+
+    @namespace.setter
+    def namespace(self):
+        pass

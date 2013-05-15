@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import time
+
 from .async import Defer
 from .base import BaseCacheClient, NONE
 
@@ -42,6 +44,8 @@ class CoherentDefer(Defer):
         self.expired = kwargs.pop('expired')
         self.key = kwargs.pop('key')
         self.timeout = kwargs.pop('timeout', 2000)
+        if self.timeout is None:
+            self.timeout = 2000
         self.wait_time = kwargs.pop('wait_time', 0)
         super(CoherentDefer, self).__init__(callable_, *args, **kwargs)
 
@@ -98,9 +102,20 @@ class CoherentWrapperClient(BaseCacheClient):
         return self.client.async
 
     def wait(self, key, timeout = None):
-        # Hey, look at that. Since it all happens on a Defer, 
-        # we can just wait on the wrapped client :D
-        return self.client.wait(key, timeout)
+        # Hey, look at that. Since locally it it all happens on a Defer, 
+        # we can just wait on the wrapped client first to wait for ourselves
+        if timeout is not None:
+            deadline = time.time() + timeout
+        else:
+            deadline = None
+        self.client.wait(key, timeout)
+
+        # But in the end we'll have to ask the manager to talk to the other nodes
+        if deadline is not None:
+            timeout = int(max(0, deadline - time().time()) * 1000)
+        else:
+            timeout = None
+        self.manager.wait_done(key, timeout)
     
     def put(self, key, value, ttl):
         manager = self.manager

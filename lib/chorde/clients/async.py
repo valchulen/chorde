@@ -70,7 +70,7 @@ class AsyncCacheWriterPool(ThreadPool):
         value, ttl = self.dequeue(key)
 
         try:
-            if value is _NONE:
+            if value in (_NONE, NONE):
                 # Something's hinky
                 return
             elif isinstance(value, Defer):
@@ -80,7 +80,7 @@ class AsyncCacheWriterPool(ThreadPool):
                     self.logger.error("Error in background cache refresh", exc_info=True)
                     value = _NONE
             
-            if value is _NONE:
+            if value in (_NONE, NONE):
                 # undefer probably decided not to compute anything (or an error arose, whatever)
                 return
                 
