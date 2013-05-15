@@ -337,7 +337,7 @@ class CoherenceManager(object):
             # Easy peachy
             return self._query_pending_locally(key, expired, timeout, optimistic_lock)
 
-        # Listere... a tad more complex
+        # Listener... a tad more complex
         ipsub_ = self.ipsub
         txid = self.txid if optimistic_lock else None
         req = ipsub_.encode_payload(self.encoding, (
@@ -413,6 +413,11 @@ class CoherenceManager(object):
                 self.ipsub.publish_encode(self.listpendqprefix, self.encoding, None)
             except:
                 pass
+        if rv is None:
+            # Maybe the broker itself is computing...
+            rv = self.pending.get(key)
+            if rv is not None:
+                rv = (rv, time.time(), self.p2p_pub_binds)
         if lock and rv is None:
             self.group_pending[key] = (txid, time.time(), contact)
         return ipsub.BrokerReply(json.dumps(rv))
@@ -420,7 +425,8 @@ class CoherenceManager(object):
     @_weak_callback
     def _on_list_pending_query(self, prefix, event, payload):
         if not self.ipsub.is_broker:
-            self._publish_pending(self.pending)
+            if self.pending:
+                self._publish_pending(list(self.pending))
             return True
 
     @_weak_callback
@@ -521,7 +527,7 @@ class CoherenceManager(object):
         signaler = ipsub_.listen_decode(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
         success = False
         while timeout is None or timeout > 0:
-            if waiter.poll(min(poll_interval, timeout)):
+            if waiter.poll(min(poll_interval, timeout or poll_interval)):
                 success = True
                 break
             elif timeout is not None:

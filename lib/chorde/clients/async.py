@@ -33,6 +33,9 @@ class Defer(object):
     def undefer(self):
         return self.callable_(*self.args, **self.kwargs)
 
+    def done(self):
+        pass
+
 class AsyncCacheWriterPool(ThreadPool):
     def __init__(self, size, workers, client):
         self.client = client
@@ -68,12 +71,14 @@ class AsyncCacheWriterPool(ThreadPool):
 
         ev = self.done_event
         value, ttl = self.dequeue(key)
+        deferred = _NONE
 
         try:
             if value in (_NONE, NONE):
                 # Something's hinky
                 return
             elif isinstance(value, Defer):
+                deferred = value
                 try:
                     value = value.undefer()
                 except:
@@ -107,6 +112,9 @@ class AsyncCacheWriterPool(ThreadPool):
                     self.client.put(key, value, ttl)
                 except:
                     self.logger.error("Error saving data in cache", exc_info=True)
+
+            if deferred is not _NONE:
+                deferred.done()
         finally:
             # Signal waiting threads
             try:

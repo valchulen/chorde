@@ -47,6 +47,7 @@ class CoherentDefer(Defer):
         if self.timeout is None:
             self.timeout = 2000
         self.wait_time = kwargs.pop('wait_time', 0)
+        self.computed = False
         super(CoherentDefer, self).__init__(callable_, *args, **kwargs)
 
     def undefer(self):
@@ -60,7 +61,7 @@ class CoherentDefer(Defer):
                     try:
                         return self.callable_(*self.args, **self.kwargs)
                     finally:
-                        self.manager.mark_done(self.key)
+                        self.computed = True
                 elif computer is coherence.OOB_UPDATE and not self.expired():
                     # Skip, tiered caches will read it from the shared cache and push it downstream
                     return NONE
@@ -72,6 +73,10 @@ class CoherentDefer(Defer):
                         continue
                 else:
                     return NONE
+
+    def done(self):
+        if self.computed:
+            self.manager.mark_done(self.key)
 
 class CoherentWrapperClient(BaseCacheClient):
     """
@@ -115,7 +120,7 @@ class CoherentWrapperClient(BaseCacheClient):
             timeout = int(max(0, deadline - time().time()) * 1000)
         else:
             timeout = None
-        self.manager.wait_done(key, timeout)
+        self.manager.wait_done(key, timeout=timeout)
     
     def put(self, key, value, ttl):
         manager = self.manager
@@ -164,13 +169,19 @@ class CoherentWrapperClient(BaseCacheClient):
             timeout = self.timeout,
             wait_time = wait_time,
             *args, **kwargs )
-        if not self.async:
-            # cannot put Defer s, so undefer right now
-            value = value.undefer()
-            if value is NONE:
-                # Abort
-                return
-        self.client.put(key, value, ttl)
+        deferred = None
+        try:
+            if not self.async:
+                # cannot put Defer s, so undefer right now
+                deferred = value
+                value = value.undefer()
+                if value is NONE:
+                    # Abort
+                    return
+            self.client.put(key, value, ttl)
+        finally:
+            if deferred is not None:
+                deferred.done()
     
     def delete(self, key):
         self.client.delete(key)

@@ -24,10 +24,12 @@ class TieredInclusiveClient(BaseCacheClient):
             client.wait(key, timeout)
     
     def __putnext(self, clients, fractions, key, value, ttl):
+        deferred = value
         value = value.undefer()
         if value not in (NONE, async._NONE):
             for fraction, client in islice(izip(fractions,clients), 1, None):
                 client.put(key, value, ttl * fraction)
+        deferred.done()
         return value
     
     def put(self, key, value, ttl):
