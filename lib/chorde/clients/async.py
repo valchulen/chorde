@@ -7,8 +7,9 @@ import weakref
 # No need for real multiprocessing. In fact, using real
 # multiprocessing would force pickling of values, which would be
 # undesirable, pushing pickling cost into foreground threads.
+import multiprocessing.dummy
 from multiprocessing.pool import ThreadPool
-from threading import Event
+from threading import Event, Thread
 
 from .base import BaseCacheClient, CacheMissError, NONE
 
@@ -38,6 +39,12 @@ class Defer(object):
 
 class AsyncCacheWriterPool(ThreadPool):
     def __init__(self, size, workers, client):
+        # This patches ThreadPool, which is broken when instanced 
+        # from inside a DummyThread (happens after forking)
+        current = multiprocessing.dummy.current_process()
+        if not hasattr(current, '_children'):
+            current._children = weakref.WeakKeyDictionary()
+        
         self.client = client
         self.logger = logging.getLogger("AsyncCache")
         self.size = size
