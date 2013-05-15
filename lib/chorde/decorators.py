@@ -42,7 +42,10 @@ def _make_namespace(f):
         fpath = ''
     
     try:
-        return "%s.%s#%s" % (mname,fname,md5.md5(fpath).digest().encode("base64").strip("=\n"))
+        body_digest = md5.md5(fpath)
+        if fcode:
+            body_digest.update(getattr(fcode, 'co_code', ''))
+        return "%s.%s#%s" % (mname,fname,body_digest.digest().encode("base64").strip("=\n"))
     except:
         return repr(f)
 
