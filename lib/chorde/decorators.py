@@ -63,6 +63,7 @@ def cached(client, ttl,
         async_writer_queue_size = None, 
         async_writer_workers = None,
         async_ttl = None,
+        initialize = None,
         _put_deferred = _simple_put_deferred ):
     """
     This decorator provides cacheability to suitable functions.
@@ -129,6 +130,9 @@ def cached(client, ttl,
 
         async_ttl: (optional) The TTL at which an async refresh starts. For example, async_ttl=1 means to start
             a refresh just 1 second before the entry expires. It must be smaller than ttl. Default is half the TTL.
+
+        initialize: (optional) A callable hook to be called right before all accesses. It should initialize whatever
+            is needed initialized (like daemon threads), and only once (it should be a no-op after it's called once)
     """
     if value_serialization_function or value_deserialization_function:
         client = base.DecoratedWrapper(client,
@@ -158,6 +162,8 @@ def cached(client, ttl,
 
         @wraps(f)
         def cached_f(*p, **kw):
+            if initialize is not None:
+                initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -173,6 +179,8 @@ def cached(client, ttl,
         
         @wraps(f)
         def async_cached_f(*p, **kw):
+            if initialize is not None:
+                initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -198,6 +206,8 @@ def cached(client, ttl,
         
         @wraps(f)
         def lazy_cached_f(*p, **kw):
+            if initialize is not None:
+                initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -208,6 +218,8 @@ def cached(client, ttl,
         
         @wraps(f)
         def invalidate_f(*p, **kw):
+            if initialize is not None:
+                initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -216,6 +228,8 @@ def cached(client, ttl,
         
         @wraps(f)
         def async_lazy_cached_f(*p, **kw):
+            if initialize is not None:
+                initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -235,6 +249,8 @@ def cached(client, ttl,
 
         @wraps(f)
         def refresh_f(*p, **kw):
+            if initialize is not None:
+                initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -247,6 +263,8 @@ def cached(client, ttl,
 
         @wraps(f)
         def async_refresh_f(*p, **kw):
+            if initialize is not None:
+                initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -266,6 +284,8 @@ def cached(client, ttl,
         
         if not client.async:
             def async_f():
+                if initialize is not None:
+                    initialize()
                 if not aclient:
                     # atomic
                     aclient[:] = [async.AsyncWriteCacheClient(nclient, 
@@ -312,6 +332,7 @@ def coherent_cached(private, shared, ipsub, ttl,
         async_writer_queue_size = None, 
         async_writer_workers = None,
         async_ttl = None,
+        initialize = None,
         tiered_opts = None,
         **coherence_kwargs ):
     """
@@ -411,6 +432,7 @@ def coherent_cached(private, shared, ipsub, ttl,
             async_writer_queue_size = async_writer_queue_size, 
             async_writer_workers = async_writer_workers,
             async_ttl = async_ttl,
+            initialize = initialize,
             _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl) )(f)
         rv.coherence = coherence_manager
         rv.ipsub = ipsub
