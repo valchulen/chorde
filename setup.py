@@ -24,6 +24,7 @@ setup(
   packages = [
       "chorde",
       "chorde.clients",
+      "chorde.mq",
   ],
   package_dir = {'':'lib'},
   
