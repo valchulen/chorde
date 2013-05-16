@@ -67,6 +67,7 @@ def cached(client, ttl,
         async_writer_workers = None,
         async_ttl = None,
         initialize = None,
+        decorate = None,
         _put_deferred = _simple_put_deferred ):
     """
     This decorator provides cacheability to suitable functions.
@@ -81,6 +82,8 @@ def cached(client, ttl,
     The decorated function will provide additional behavior through attributes:
         client: the backing cache client. The provided client is never used as-is, and instead is wrapped in a 
             NamespaceWrapper. This is it.
+
+        ttl: The configured TTL
 
         clear(): forget all cached values. Since the client might be shared, it will only increase an internal
             revision mark used to decorate keys, so the cache will not be immediately purged. For that, use
@@ -136,6 +139,9 @@ def cached(client, ttl,
 
         initialize: (optional) A callable hook to be called right before all accesses. It should initialize whatever
             is needed initialized (like daemon threads), and only once (it should be a no-op after it's called once)
+
+        decorate: (optional) A decorator to apply to all call-like decorated functions. Since @cached creates many
+            variants of the function, this is a convenience over manually decorating all variants.
     """
     if value_serialization_function or value_deserialization_function:
         client = base.DecoratedWrapper(client,
@@ -178,6 +184,8 @@ def cached(client, ttl,
                 rv = f(*p, **kw)
                 nclient.put(callkey, rv, ttl)
             return rv
+        if decorate is not None:
+            cached_f = decorate(cached_f)
         
         @wraps(f)
         def async_cached_f(*p, **kw):
@@ -205,6 +213,8 @@ def cached(client, ttl,
                     rv = f(*p, **kw)
 
             return rv
+        if decorate is not None:
+            async_cached_f = decorate(async_cached_f)
         
         @wraps(f)
         def lazy_cached_f(*p, **kw):
@@ -217,6 +227,8 @@ def cached(client, ttl,
                 raise CacheMissError
             
             return nclient.get(callkey)
+        if decorate is not None:
+            lazy_cached_f = decorate(lazy_cached_f)
         
         @wraps(f)
         def invalidate_f(*p, **kw):
@@ -227,6 +239,8 @@ def cached(client, ttl,
             except:
                 return
             nclient.delete(callkey)
+        if decorate is not None:
+            invalidate_f = decorate(invalidate_f)
         
         @wraps(f)
         def async_lazy_cached_f(*p, **kw):
@@ -248,6 +262,8 @@ def cached(client, ttl,
                 raise CacheMissError, callkey
             else:
                 return rv
+        if decorate is not None:
+            async_lazy_cached_f = decorate(async_lazy_cached_f)
 
         @wraps(f)
         def refresh_f(*p, **kw):
@@ -262,6 +278,8 @@ def cached(client, ttl,
             rv = f(*p, **kw)
             nclient.put(callkey, rv, ttl)
             return rv
+        if decorate is not None:
+            refresh_f = decorate(refresh_f)
 
         @wraps(f)
         def async_refresh_f(*p, **kw):
@@ -276,7 +294,8 @@ def cached(client, ttl,
             client = aclient[0]
             if not client.contains(callkey, 0):
                 _put_deferred(client, f, callkey, ttl, *p, **kw)
-        
+        if decorate is not None:
+            async_refresh_f = decorate(async_refresh_f)
 
         if client.async:
             cached_f = async_cached_f
@@ -302,6 +321,7 @@ def cached(client, ttl,
             async_cached_f.refresh = async_refresh_f
             async_cached_f.peek = lazy_cached_f
             async_cached_f.invalidate = invalidate_f
+            async_cached_f.ttl = async_ttl
             cached_f.async = async_f
             cached_f.lazy = lazy_cached_f
             cached_f.refresh = refresh_f
@@ -317,6 +337,7 @@ def cached(client, ttl,
         
         cached_f.clear = nclient.clear
         cached_f.client = nclient
+        cached_f.ttl = ttl
         
         return cached_f
     return decor
@@ -335,6 +356,7 @@ def coherent_cached(private, shared, ipsub, ttl,
         async_writer_workers = None,
         async_ttl = None,
         initialize = None,
+        decorate = None,
         tiered_opts = None,
         **coherence_kwargs ):
     """
@@ -435,6 +457,7 @@ def coherent_cached(private, shared, ipsub, ttl,
             async_writer_workers = async_writer_workers,
             async_ttl = async_ttl,
             initialize = initialize,
+            decorate = decorate,
             _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl) )(f)
         rv.coherence = coherence_manager
         rv.ipsub = ipsub
