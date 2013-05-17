@@ -15,7 +15,7 @@ try:
 except:
 
     class Cache(dict):
-        def __init__(self, size):
+        def __init__(self, size, touch_on_read = True):
             self.size = size
         def __setitem__(self, key, value):
             if len(self) >= self.size:

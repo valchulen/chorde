@@ -43,15 +43,17 @@ cdef class LRUCache:
 
     cdef unsigned int next_prio
     cdef readonly unsigned int size
+    cdef readonly unsigned int touch_on_read
     cdef list pqueue
     cdef dict emap
     
-    def __init__(LRUCache self, unsigned int size):
+    def __init__(LRUCache self, unsigned int size, unsigned int touch_on_read = 1):
         self.size = size
+        self.touch_on_read = touch_on_read
         self.pqueue = []
         self.emap = {}
         self.next_prio = 0
-	
+
     def __len__(LRUCache self not None):
         return len(self.pqueue)
     
@@ -153,7 +155,8 @@ cdef class LRUCache:
             raise CacheMissError(key)
         else:
             node = self.emap[key]
-            self.c_decrease(node)
+            if self.touch_on_read:
+                self.c_decrease(node)
             return node.value
 
     def __delitem__(LRUCache self not None, key):

@@ -17,6 +17,7 @@ except ImportError:
     import StringIO as cStringIO
 
 from chorde.clients import CacheMissError
+from chorde.clients import inproc
 
 P2P_HWM = 10
 INPROC_HWM = 1 # Just for wakeup signals
@@ -109,7 +110,8 @@ class CoherenceManager(object):
             synchronous = False,
             quick_refresh = False,
             stable_hash = stable_hash,
-            value_pickler = None):
+            value_pickler = None,
+            max_pending = 10240):
         """
         Params
             namespace: A namespace that will use to identify events in subscription
@@ -144,6 +146,14 @@ class CoherenceManager(object):
                 key hashes, used to subscribe to specific key pending notifications.
                 If not provided, the default will be used, which can only handle
                 basic types. It should be fast.
+
+            max_pending: When running in as a designated broker, IPSub will have to
+                track all pending computations. This limits how many pending keys
+                are kept in-memory. It defaults to 10k. While it is rare you'll
+                have 10k pending keys in a node, you might have 10k missed done
+                notifications within a task timeout period, and that could eat all
+                your node's RAM rather quickly. This setting avoids OOM conditions,
+                by expiring old pending entries as the list reaches this limit.
         """
         assert value_pickler or shared
         
@@ -160,7 +170,7 @@ class CoherenceManager(object):
 
         # Key -> hash
         self.pending = dict()
-        self.group_pending = dict()
+        self.group_pending = inproc.Cache(max_pending, False)
 
         if synchronous:
             self.waiter = SyncWaiter
