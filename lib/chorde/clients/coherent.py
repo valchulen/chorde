@@ -44,7 +44,7 @@ class CoherentDefer(Defer):
         self.manager = kwargs.pop('manager')
         self.expired = kwargs.pop('expired')
         self.key = kwargs.pop('key')
-        self.timeout = kwargs.pop('timeout', 2000)
+        self.timeout = kwargs.pop('timeout', None)
         if self.timeout is None:
             self.timeout = self.manager.ipsub.heartbeat_push_timeout
         self.wait_time = kwargs.pop('wait_time', 0)
