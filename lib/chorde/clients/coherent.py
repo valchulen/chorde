@@ -29,7 +29,8 @@ class CoherentDefer(Defer):
             key: The key associated with this computation, to be provided to the CoherenceManager.
 
             timeout: Coherence protocol timeout, in ms, if the peers don't answer in this time, 
-                detached operation will be assumed and computation will proceed. Default: 2000ms
+                detached operation will be assumed and computation will proceed. 
+                Default: whatever the heartbeat timeout is on the underlying IPSub channel
 
             wait_time: Whether and how long to wait for other node's computation to be done.
                 Normally, the default value of 0, which means "no wait", is preferrable so as not
@@ -45,7 +46,7 @@ class CoherentDefer(Defer):
         self.key = kwargs.pop('key')
         self.timeout = kwargs.pop('timeout', 2000)
         if self.timeout is None:
-            self.timeout = 2000
+            self.timeout = self.manager.ipsub.heartbeat_push_timeout
         self.wait_time = kwargs.pop('wait_time', 0)
         self.computed = False
         super(CoherentDefer, self).__init__(callable_, *args, **kwargs)
