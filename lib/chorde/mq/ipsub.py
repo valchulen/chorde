@@ -205,6 +205,9 @@ class IPSub(object):
                 random_ = random.random
                 tic_count = 100
                 buffer_ = buffer
+                hb_period_base = owner.heartbeat_avg_period * 2
+                hb_period_spread = hb_period_base * 2
+                hb_timeout = owner.heartbeat_push_timeout
 
                 # Poll sockets
                 try:
@@ -213,17 +216,17 @@ class IPSub(object):
                             owner._subscribe()
                         if not no_updates():
                             poller_register(listener_req, POLLIN|POLLOUT)
-                        activity = poller_poll(500 + int_(500 * random_()))
+                        activity = poller_poll(hb_period_base + int_(hb_period_spread * random_()))
                         if not activity:
                             # Heartbeat gap
                             # Try to send a heartbeat
-                            if not listener_req.poll(1000, POLLOUT):
+                            if not listener_req.poll(hb_timeout, POLLOUT):
                                 # Must be mute... dead broker?
                                 logging.warn("Mute req socket: dead broker? bootstrapping")
                                 raise BootstrapNow
                             else:
                                 listener_req.send(HEARTBEAT_)
-                                if not listener_req.poll(2000):
+                                if not listener_req.poll(hb_timeout):
                                     # Dead again
                                     logging.warn("No reply to heartbeat: dead broker? bootstrapping")
                                     raise BootstrapNow
@@ -307,13 +310,15 @@ class IPSub(object):
                 random_ = random.random
                 tic_count = 100
                 buffer_ = buffer
+                hb_period_base = owner.heartbeat_avg_period / 2
+                hb_period_spread = hb_period_base * 2
 
                 # Poll sockets
                 try:
                     while not owner.stop:
                         if not no_updates():
                             poller_register(broker_pub, POLLOUT)
-                        activity = poller_poll(250 + int_(250 * random_()))
+                        activity = poller_poll(hb_period_base + int_(hb_period_spread * random_()))
                         if not activity:
                             broker_pub.send(HEARTBEAT_)
                             owner._idle()
@@ -374,6 +379,9 @@ class IPSub(object):
 
         self.last_idle = time.time()
         self.last_tic = time.time()
+
+        self.heartbeat_avg_period = 500
+        self.heartbeat_push_timeout = 4000
 
         self.reset()
 
