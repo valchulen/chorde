@@ -4,6 +4,7 @@ import itertools
 import hashlib
 import memcache
 import time
+import random
 
 from .base import BaseCacheClient, NONE
 
@@ -105,12 +106,19 @@ class MemcachedClient(BaseCacheClient):
     
     def get_version_stamp(self):
         stamp_key = "#--version-counter--#"
-        stamp = self.client.incr(stamp_key)
+        try:
+            stamp = self.client.incr(stamp_key)
+        except ValueError:
+            # Sometimes shit happens when there's memory pressure, we lost the stamp
+            stamp = None
         if stamp is None:
-            import random
-            self.client.add(stamp_key, 
-                self.last_seen_stamp + 100 + int(random.random() * 1000) )
-            stamp = self.client.incr(stamp_key) or 0
+            stamp = self.last_seen_stamp + 100 + int(random.random() * 1000)
+            self.client.add(stamp_key, stamp )
+            try:
+                stamp = self.client.incr(stamp_key) or 0
+            except ValueError:
+                # Again, this is fucked up
+                pass
         self.last_seen_stamp = stamp
         return stamp
     
