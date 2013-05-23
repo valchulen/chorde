@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from itertools import izip, islice
+import logging
 
 from . import async
 from .base import NONE, CacheMissError, BaseCacheClient
@@ -28,7 +29,10 @@ class TieredInclusiveClient(BaseCacheClient):
         value = value.undefer()
         if value is not NONE and value is not async._NONE:
             for fraction, client in islice(izip(fractions,clients), 1, None):
-                client.put(key, value, ttl * fraction)
+                try:
+                    client.put(key, value, ttl * fraction)
+                except:
+                    logging.error("Error propagating deferred value through tier %r", client)
         deferred.done()
         return value
     
