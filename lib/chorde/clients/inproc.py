@@ -7,9 +7,9 @@ from . import base
 
 try:
 
-    import lrucache
-    Cache = lrucache.LRUCache
-    CacheMissError = base.CacheMissError = lrucache.CacheMissError
+    import chorde.lrucache
+    Cache = chorde.lrucache.LRUCache
+    CacheMissError = base.CacheMissError = chorde.lrucache.CacheMissError
     CacheIsThreadsafe = True
 
 except:
