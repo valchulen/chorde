@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
-import zlib
-import itertools
+import collections
 import hashlib
+import itertools
+import logging
 import memcache
-import time
 import random
+import time
+import weakref
+import zlib
+from threading import Event, Thread
 
 from .base import BaseCacheClient, NONE
 
@@ -63,8 +67,16 @@ class MemcachedClient(BaseCacheClient):
         
         if 'unpickler' not in client_args:
             client_args['unpickler'] = lambda *p, **kw: sPickle.SecureUnpickler(checksum_key, *p, **kw)
-        
-        self.client = memcache.Client(client_addresses, **client_args)
+
+        self._client_args = client_args
+        self._client_addresses = client_addresses
+        self._client = None
+
+    @property
+    def client(self):
+        if self._client is None:
+            self._client = memcache.Client(self._client_addresses, **self._client_args)
+        return self._client
 
     @property
     def async(self):
@@ -110,7 +122,13 @@ class MemcachedClient(BaseCacheClient):
             stamp = self.client.incr(stamp_key)
         except ValueError:
             # Sometimes shit happens when there's memory pressure, we lost the stamp
-            stamp = None
+            # Some other times, the client gets borked
+            logging.warn("MemcachedClient: Error reading version counter, resetting client")
+            self._client = None
+            try:
+                stamp = self.client.incr(stamp_key)
+            except ValueError:
+                stamp = None
         if stamp is None:
             stamp = self.last_seen_stamp + 100 + int(random.random() * 1000)
             self.client.add(stamp_key, stamp )
@@ -118,6 +136,7 @@ class MemcachedClient(BaseCacheClient):
                 stamp = self.client.incr(stamp_key) or 0
             except ValueError:
                 # Again, this is fucked up
+                logging.warn("MemcachedClient: Error again reading version counter")
                 pass
         self.last_seen_stamp = stamp
         return stamp
@@ -195,7 +214,7 @@ class MemcachedClient(BaseCacheClient):
         except ValueError:
             return default, -1
         except:
-            self.logger.warning("Error decoding cached data", exc_info=True)
+            logging.warning("Error decoding cached data", exc_info=True)
             return default, -1
 
     def getTtl(self, key, default=NONE):
@@ -261,5 +280,231 @@ class MemcachedClient(BaseCacheClient):
                         return False
                     else:
                         return True
+        else:
+            return False
+
+
+class FastMemcachedClient(BaseCacheClient):
+    """
+    Like MemcachedClient, but it doesn't support massive keys or values,
+    is a lot more lightweight, and is optimized for high numbers of writes
+    and reads rather than thoughput with big values. It also uses json
+    serialization so it supports only a subset of python types, but it then
+    requires no checksum key and is thus faster.
+
+    Params:
+        key_pickler: specify a json-like implementation. It must support loads
+            and dumps, and dumps must take a "separators" keyword argument
+            just as stdlib json.dumps does, but it doesn't need to honour it
+            aside from not generating control chars (spaces). 
+            You can use cjson for instance, but you'll have to wrap it as it
+            doesn't support separators and it will generate spaces. 
+            Do not pass Pickle or its other  implementations, as it will work, 
+            but the pickle protocol isn't  secure. Use MemcachedClient 
+            if you need the features of pickling.
+        pickler: specify a json-like implementation. Like key_pickler, except
+            it can completely dishonor separators without major issues, as
+            spaces and control chars will be accepted for values. If not
+            specified, key_pickler will be used.
+    """
+    
+    def __init__(self, 
+            client_addresses, 
+            max_backing_key_length = 250,
+            max_backing_value_length = 1000*1024,
+            key_pickler = None,
+            pickler = None,
+            namespace = None,
+            **client_args):
+        
+        max_backing_key_length = min(
+            max_backing_key_length,
+            memcache.SERVER_MAX_KEY_LENGTH)
+
+        if key_pickler is None:
+            key_pickler = json
+        
+        self.max_backing_key_length = max_backing_key_length 
+        self.max_backing_value_length = max_backing_value_length - 32 # 32-bytes for various overheads
+        self.key_pickler = key_pickler
+        self.pickler = pickler or key_pickler
+        self.namespace = namespace
+        
+        if self.namespace:
+            self.max_backing_key_length -= len(self.namespace)+1
+        
+        assert self.max_backing_key_length > 48
+        assert self.max_backing_value_length > 128
+        
+        self._client_args = client_args
+        self._client_addresses = client_addresses
+        self._client = None
+        
+        self.queueset = {}
+        self.workset = {}
+        self.workev = Event()
+
+        self._bgwriter_thread = Thread(target=self._bgwriter, args=(weakref.ref(self),))
+        self._bgwriter_thread.setDaemon(True)
+
+    @property
+    def client(self):
+        if self._client is None:
+            self._client = memcache.Client(self._client_addresses, **self._client_args)
+        return self._client
+
+    @property
+    def async(self):
+        return False
+    
+    def _enqueue_put(self, key, value, ttl):
+        # Atomic insert
+        value = value, ttl
+        self.queueset[key] = value
+        self.workev.set()
+
+        if not self._bgwriter_thread.isAlive():
+            try:
+                self._bgwriter_thread.start()
+            except:
+                # Might have been started by other thread
+                pass
+
+    def _dequeue_put(self):
+        # Almost-Atomic swap, time.sleep after extracting and it's fully-atomic
+        # as other threads don't keep references to queueset for long,
+        # it does require only one consumer thread though
+        self.workset, self.queueset = self.queueset, self.workset
+        time.sleep(0)
+        return self.workset
+
+    @staticmethod
+    def _bgwriter(wself):
+        while True:
+            self = wself()
+            if self is None:
+                break
+
+            workev = self.workev
+            workev.clear()
+            workset = self._dequeue_put()
+
+            # Separate into deletions, puttions, and group by ttl
+            # since put_multi can only handle one ttl.
+            # Deletions are value=NONE
+            plan = collections.defaultdict(dict)
+            deletions = []
+            for i in xrange(2):
+                # It can explode if a thread lingers, so restart if that happens
+                try:
+                    for key, (value, ttl) in workset.iteritems():
+                        if value is NONE:
+                            deletions.append(key)
+                        else:
+                            plan[ttl][key] = value
+                    break
+                except RuntimeError:
+                    pass
+
+            if deletions:
+                try:
+                    self.client.delete_multi(deletions)
+                except:
+                    logging.error("Exception in background writer", exc_info = True)
+            if plan:
+                for ttl, batch in plan.iteritems():
+                    try:
+                        self.client.set_multi(batch, ttl)
+                    except:
+                        logging.error("Exception in background writer", exc_info = True)
+            workset.clear()
+            
+            # Let us be suicidal
+            del self, plan, deletions, workset
+            key = value = ttl = batch = None
+            workev.wait(1)
+    
+    def encode_key(self, key):
+        return self.key_pickler.dumps((self.namespace, key), separators = JSON_SEPARATORS)
+    
+    def encode(self, key, ttl, value):
+        # Always pickle & compress, since we'll always unpickle.
+        # Note: compress with very little effort (level=1), 
+        #   otherwise it's too expensive and not worth it
+        return self.pickler.dumps((value, ttl), separators = JSON_SEPARATORS)
+
+    def decode(self, value):
+        value, ttl = self.pickler.loads(value)
+        return value, ttl
+    
+    def _getTtl(self, key, default):
+        key = self.encode_key(key)
+        
+        # Quick check for a concurrent put
+        value = self.queueset.get(key, self.workset.get(key, NONE))
+        if value is NONE:
+            value = self.client.get(key)
+        else:
+            value = value[0]
+            if value is NONE:
+                # A deletion is queued, so we deleted
+                value = None
+        
+        if value is None:
+            return default, -1
+        
+        try:
+            value, ttl = self.decode(value)
+            return value, ttl - time.time()
+        except ValueError:
+            return default, -1
+        except:
+            logging.warning("Error decoding cached data (%r)", value, exc_info=True)
+            return default, -1
+
+    def getTtl(self, key, default=NONE):
+        # This trampoline is necessary to avoid re-entrancy issues when this client
+        # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
+        # to avoid locking the wrapper's mutex.
+        return self._getTtl(key, default)
+    
+    def put(self, key, value, ttl):
+        # set_multi all pages in one roundtrip
+        key = self.encode_key(key)
+        value = self.encode(key, ttl+time.time(), value)
+        self._enqueue_put(key, value, ttl)
+    
+    def delete(self, key):
+        key = self.encode_key(key)
+        self._enqueue_put(key, NONE, 0)
+    
+    def clear(self):
+        # We don't want to clear memcache, it might be shared
+        pass
+
+    def purge(self):
+        # Memcache does that itself
+        pass
+    
+    def contains(self, key, ttl = None):
+        key = self.encode_key(key)
+
+        # Quick check against worker queues
+        if key in self.queueset or key in self.workset:
+            return True
+
+        # Else exploit the fact that append returns True on success (the key exists)
+        # and False on failure (the key doesn't exist), with minimal bandwidth
+        exists = self.client.append(key,"")
+        if exists:
+            if ttl is None:
+                return True
+            else:
+                # Checking with a TTL margin requires some extra care.
+                # When checking with a TTL margin a key that's stale, this will
+                # minimize bandwidth, but when it's valid, it will result in
+                # 2x roundtrips: check with append, get ttl
+                _, store_ttl = self._getTtl(key, NONE)
+                return store_ttl > ttl
         else:
             return False

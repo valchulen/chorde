@@ -3,6 +3,7 @@ from chorde.serialize import serialize
 import logging
 import time
 import weakref
+import functools
 
 # No need for real multiprocessing. In fact, using real
 # multiprocessing would force pickling of values, which would be
@@ -261,3 +262,68 @@ class AsyncWriteCacheClient(BaseCacheClient):
         else:
             return self.client.contains(key, ttl)
 
+class Future(object):
+    __slots__ = ('_cb', '_value')
+    
+    def __init__(self):
+        self._cb = []
+    
+    def set(self, value):
+        for cb in self._cb:
+            cb(value)
+        self._value = value
+
+    def on_value(self, callback, hasattr=hasattr):
+        cbap = self._cb.append
+        if hasattr(self, '_value'):
+            callback(self._value)
+        cbap(callback)
+
+class AsyncCacheProcessor(ThreadPool):
+    """
+    An async cache processor will allow asynchronous reads
+    and writes to a cache, Efficiently fitting into an async
+    framework by passing and invoking callbacks.
+
+    It modifies the cache interface to return a Future
+    instead of a value, upon which an on_value(callback)
+    method will retrieve the result, if any.
+    """
+    def __init__(self, workers, client):
+        # This patches ThreadPool, which is broken when instanced 
+        # from inside a DummyThread (happens after forking)
+        current = multiprocessing.dummy.current_process()
+        if not hasattr(current, '_children'):
+            current._children = weakref.WeakKeyDictionary()
+        
+        self.client = client
+        self.logger = logging.getLogger("AsyncCache")
+        self.workers = workers
+
+        ThreadPool.__init__(self, workers)
+
+    def _enqueue(self, action):
+        future = Future()
+        def wrapped_action():
+            future.set(action())
+        self.apply_async(wrapped_action, ())
+        return future
+    
+    def getTtl(self, key, default = None):
+        return self._enqueue(functools.partial(self.client.getTtl, key, default))
+    
+    def contains(self, key):
+        return self._enqueue(functools.partial(self.client.contains, key))
+
+    def put(self, key, value, ttl):
+        return self._enqueue(functools.partial(self.client.put, key, value, ttl))
+
+    def delete(self, key):
+        return self._enqueue(functools.partial(self.client.delete, key))
+
+    def clear(self):
+        return self._enqueue(self.client.clear)
+
+    def purge(self):
+        return self._enqueue(self.client.purge)
+    
