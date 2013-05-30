@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from .inproc import InprocCacheClient # before base, really, it injects CacheMissError
 from .base import BaseCacheClient, ReadWriteSyncAdapter, NONE, CacheMissError
-from .async import AsyncWriteCacheClient, Defer
+from .async import AsyncWriteCacheClient, Deferk, AsyncCacheProcessor
 from .tiered import TieredInclusiveClient
 from .coherent import CoherentDefer, CoherentWrapperClient
 
@@ -21,7 +21,7 @@ __all__ = [
 
 # Optionals below
 try:
-    from .memcached import MemcachedClient
-    __all__.append("MemcachedClient")
+    from .memcached import MemcachedClient, FastMemcachedClient
+    __all__.extend(["MemcachedClient", "FastMemcachedClient"])
 except ImportError:
     pass
