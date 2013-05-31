@@ -126,7 +126,7 @@ cdef class LRUCache:
     def __iter__(LRUCache self not None):
         return self.iterkeys()
 
-    def __setitem__(LRUCache self not None, object key, object val):
+    cdef int c__setitem__(LRUCache self, object key, object val) except -1:
         cdef _node node
 
         if key in self.emap:
@@ -147,8 +147,13 @@ cdef class LRUCache:
             self.next_prio = self.next_prio + 1
             if self.next_prio == 0:
                 self.c_rehash()
+        
+        return 0
 
-    def __getitem__(LRUCache self not None, key):
+    def __setitem__(LRUCache self not None, object key, object val):
+        self.c__setitem__(key, val)
+
+    cdef object c__getitem__(LRUCache self, key):
         cdef _node node
 
         if key not in self.emap:
@@ -158,8 +163,11 @@ cdef class LRUCache:
             if self.touch_on_read:
                 self.c_decrease(node)
             return node.value
+    
+    def __getitem__(LRUCache self not None, key):
+        return self.c__getitem__(key)
 
-    def __delitem__(LRUCache self not None, key):
+    cdef int c__delitem__(LRUCache self, key) except -1:
         cdef _node node, node2
 
         if key not in self.emap:
@@ -175,7 +183,11 @@ cdef class LRUCache:
 
             del self.emap[key]
             del self.pqueue[-1]
+            
+            return 0
 
+    def __delitem__(LRUCache self not None, key):
+        self.c__delitem__(key)
 
     def get(LRUCache self not None, object key, object deflt = None):
         cdef _node node
@@ -187,11 +199,17 @@ cdef class LRUCache:
             self.c_decrease(node)
             return node.value
     
-    def pop(LRUCache self not None, object key):
+    def pop(LRUCache self not None, object key, object deflt = CacheMissError):
         cdef object rv
-        
-        rv = self[key]
-        del self[key]
+
+        if key not in self.emap:
+            if deflt is CacheMissError:
+                raise CacheMissError(key)
+            else:
+                rv = deflt
+        else:
+            rv = self.c__getitem__(key)
+            self.c__delitem__(key)
         
         return rv
 
@@ -199,12 +217,20 @@ cdef class LRUCache:
         cdef _node node
 
         if key not in self.emap:
-            self[key] = deflt
+            self.c__setitem__(key, deflt)
             return deflt
         else:
             node = self.emap[key]
             self.c_decrease(node)
             return node.value
+
+    def update(LRUCache self not None, object iterOrDict):
+        if isinstance(iterOrDict, dict) or isinstance(iterOrDict, LRUCache):
+            for k,v in iterOrDict.iteritems():
+                self[k] = v
+        else:
+            for k,v in iterOrDict:
+                self[k] = v
 
     def clear(LRUCache self not None):
         self.pqueue = []
