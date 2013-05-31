@@ -10,7 +10,8 @@ import weakref
 import zlib
 from threading import Event, Thread
 
-from .base import BaseCacheClient, NONE
+from .base import BaseCacheClient, CacheMissError, NONE
+from .inproc import Cache
 
 try:
     import cPickle
@@ -25,6 +26,7 @@ except ImportError:
     json = None
 JSON_SEPARATORS = (',',':')
 
+FAILFAST_TIME = 0.1
 
 class MemcachedClient(BaseCacheClient):
     def __init__(self, 
@@ -71,6 +73,8 @@ class MemcachedClient(BaseCacheClient):
         self._client_args = client_args
         self._client_addresses = client_addresses
         self._client = None
+        
+        self._failfast_cache = Cache(100)
 
     @property
     def client(self):
@@ -185,7 +189,9 @@ class MemcachedClient(BaseCacheClient):
         
         return data
     
-    def _getTtl(self, key, default, decode = True):
+    def _getTtl(self, key, default, decode = True, ttlcut = None):
+        now = time.time()
+        
         # get the first page (gambling that most entries will span only a single page)
         # then query for the remaining ones in a single roundtrip, if present,
         # for a combined total of 2 roundtrips.
@@ -199,7 +205,13 @@ class MemcachedClient(BaseCacheClient):
         npages = pages[0][0]
 
         if not decode:
-            return default, ttl - time.time()
+            return default, ttl - now
+        elif ttlcut is not None and ttl < ttlcut:
+            return default, -1
+        # Check failfast cache, before making a huge effort decoding for not
+        # When there's a key collision, this avoids misses being expensive
+        elif self._failfast_cache.get(key) > (now - FAILFAST_TIME):
+            return default, -1
         
         if npages > 1:
             pages.update( self.client.get_multi(xrange(1,npages), key_prefix=short_key+"|") )
@@ -208,12 +220,15 @@ class MemcachedClient(BaseCacheClient):
             cached_key, cached_value = self.decode_pages(pages)
             
             if cached_key == key:
-                return cached_value, ttl - time.time()
+                return cached_value, ttl - now
             else:
+                self._failfast_cache[key] = now
                 return default, -1
         except ValueError:
+            self._failfast_cache[key] = now
             return default, -1
         except:
+            self._failfast_cache[key] = now
             logging.warning("Error decoding cached data", exc_info=True)
             return default, -1
 
@@ -222,12 +237,24 @@ class MemcachedClient(BaseCacheClient):
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
         return self._getTtl(key, default)
+
+    def get(self, key, default=NONE):
+        rv, ttl = self.getTtl(key, default, ttlcut = 0)
+        if ttl < 0 and default is NONE:
+            raise CacheMissError, key
+        else:
+            return rv
     
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
         short_key = self.shorten_key(key)
         pages = dict([(page,data) for page,data in enumerate(self.encode_pages(key, ttl+time.time(), value))])
         self.client.set_multi(pages, ttl, key_prefix=short_key+"|")
+        
+        try:
+            del self._failfast_cache[key]
+        except:
+            pass
     
     def delete(self, key):
         # delete the first page (gambling that most entries will span only a single page)
@@ -258,6 +285,10 @@ class MemcachedClient(BaseCacheClient):
         exists = self.client.append(short_key+"|0","")
         if exists:
             if ttl is None:
+                try:
+                    del self._failfast_cache[key]
+                except:
+                    pass
                 return True
             else:
                 # Checking with a TTL margin requires some extra care, because
@@ -279,6 +310,10 @@ class MemcachedClient(BaseCacheClient):
                         # wrong key
                         return False
                     else:
+                        try:
+                            del self._failfast_cache[key]
+                        except:
+                            pass
                         return True
         else:
             return False
