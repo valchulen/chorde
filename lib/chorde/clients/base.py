@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from abc import ABCMeta, abstractmethod, abstractproperty
+import operator
 from chorde.serialize import serialize_read, serialize_write, serialize
 
 # Overridden by inproc_cache based on LRUCache availability
@@ -182,10 +183,11 @@ class DecoratedWrapper(BaseCacheClient):
         return self.client.delete(key)
 
     def getTtl(self, key, default = NONE):
-        if self.key_decorator:
-            key = self.key_decorator(key)
+        key_decorator = self.key_decorator
+        if key_decorator is not None:
+            key = key_decorator(key)
         rv = self.client.getTtl(key, default)
-        if rv is not default and self.value_undecorator:
+        if rv is not default and self.value_undecorator is not None:
             rv = self.value_undecorator(rv)
         return rv
 
@@ -196,8 +198,9 @@ class DecoratedWrapper(BaseCacheClient):
         return self.client.purge(timeout)
 
     def contains(self, key, ttl = None):
-        if self.key_decorator:
-            key = self.key_decorator(key)
+        key_decorator = self.key_decorator
+        if key_decorator is not None:
+            key = key_decorator(key)
         return self.client.contains(key, ttl)
 
 class NamespaceWrapper(DecoratedWrapper):
@@ -210,13 +213,9 @@ class NamespaceWrapper(DecoratedWrapper):
         self.namespace = namespace
         self.revision = client.get((namespace,'REVMARK'), 0)
 
-    @property
-    def key_decorator(self):
-        return self._key_decorator
-
-    @key_decorator.setter
-    def key_decorator(self, value):
-        pass
+    key_decorator = property(
+        operator.attrgetter('_key_decorator'),
+        lambda self, value : None)
 
     def _key_decorator(self, key):
         return (self.namespace, self.revision, key)

@@ -139,12 +139,12 @@ class InprocCacheClient(base.BaseCacheClient):
         except KeyError:
             pass
 
-    def getTtl(self, key, default = base.NONE):
-        rv = self.store.get(key, base.NONE)
-        if rv is not base.NONE:
+    def getTtl(self, key, default = base.NONE, baseNONE = base.NONE, time=time.time):
+        rv = self.store.get(key, baseNONE)
+        if rv is not baseNONE:
             rv, ttl = rv
-            return rv, ttl - time.time()
-        elif default is base.NONE:
+            return rv, ttl - time()
+        elif default is baseNONE:
             raise CacheMissError, key
         else:
             return default, -1

@@ -72,10 +72,11 @@ class TieredInclusiveClient(BaseCacheClient):
     
     def getTtl(self, key, default = NONE):
         ttl = -1
+        NONE__ = NONE_
         for i,client in enumerate(self.clients):
             # Yeap, separate NONE_, we must avoid CacheMissError s
-            rv, ttl = client.getTtl(key, NONE_)
-            if rv is not NONE_ and ttl >= 0:
+            rv, ttl = client.getTtl(key, NONE__)
+            if rv is not NONE__ and ttl >= 0:
                 # Cool
                 if i > 0 and ttl > 0:
                     # Um... not first-tier
@@ -86,7 +87,7 @@ class TieredInclusiveClient(BaseCacheClient):
             # Ok, gotta inspect other tiers
         else:
             # Or not
-            if rv is not NONE_:
+            if rv is not NONE__:
                 return rv, ttl
             else:
                 if default is NONE:
