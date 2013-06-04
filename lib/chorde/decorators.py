@@ -97,6 +97,12 @@ def cached(client, ttl,
         invalidate(...): mimicking the underlying function's signature, it will, instead of invoking the function,
             invalidate cached entries sharing the call's key.
 
+        put(_cache_put, ...): mimicking the underlying function's signature after the first positional argument,
+            except for one keyword argument _cache_put, it will forcibly set the cached value for that key to
+            be what's supplied in _cache_put. Although there will be no invocation of the target function,
+            the write will be synchronous unless the underlying cache client is async, and for external caches
+            this might still mean a significant delay.
+
         refresh(...): mimicking the underlying function's signature, it will forcefully invoke the function,
             regardless of cache status, and refresh the cache with the returned value.
 
@@ -248,6 +254,32 @@ def cached(client, ttl,
             invalidate_f = decorate(invalidate_f)
         
         @wraps(f)
+        def put_f(*p, **kw):
+            value = kw.pop('_cache_put')
+            if initialize is not None:
+                initialize()
+            try:
+                callkey = key(*p, **kw)
+            except:
+                return
+            nclient.put(callkey, value, ttl)
+        if decorate is not None:
+            put_f = decorate(put_f)
+        
+        @wraps(f)
+        def async_put_f(*p, **kw):
+            value = kw.pop('_cache_put')
+            if initialize is not None:
+                initialize()
+            try:
+                callkey = key(*p, **kw)
+            except:
+                return
+            aclient[0].put(callkey, value, ttl)
+        if decorate is not None:
+            async_put_f = decorate(async_put_f)
+        
+        @wraps(f)
         def async_lazy_cached_f(*p, **kw):
             if initialize is not None:
                 initialize()
@@ -326,12 +358,14 @@ def cached(client, ttl,
             async_cached_f.refresh = async_refresh_f
             async_cached_f.peek = lazy_cached_f
             async_cached_f.invalidate = invalidate_f
+            async_cached_f.put = async_put_f
             async_cached_f.ttl = async_ttl
             cached_f.async = async_f
             cached_f.lazy = lazy_cached_f
             cached_f.refresh = refresh_f
             cached_f.peek = lazy_cached_f
             cached_f.invalidate = invalidate_f
+            cached_f.put = put_f
         else:
             aclient = [nclient]
             cached_f.async = weakref.ref(cached_f)
@@ -339,6 +373,7 @@ def cached(client, ttl,
             cached_f.refresh = async_refresh_f
             cached_f.peek = lazy_cached_f
             cached_f.invalidate = invalidate_f
+            cached_f.put = put_f
         
         cached_f.clear = nclient.clear
         cached_f.client = nclient
