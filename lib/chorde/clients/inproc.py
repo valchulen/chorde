@@ -14,18 +14,9 @@ try:
 
 except:
 
-    class Cache(dict):
-        def __init__(self, size, touch_on_read = True):
-            self.size = size
-        def __setitem__(self, key, value):
-            if len(self) >= self.size:
-                del self[iter(self).next()]
-            super(self.__class__,self).__setitem__(key,value)
-        def defrag(self):
-            items = self.items()
-            self.clear()
-            self.update(items)
-    CacheMissError = base.CacheMissError = KeyError
+    import chorde.pylrucache
+    Cache = chorde.pylrucache.LRUCache
+    CacheMissError = base.CacheMissError = chorde.pylrucache.CacheMissError
     CacheIsThreadsafe = False
 
     import warnings
