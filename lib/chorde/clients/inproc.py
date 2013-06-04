@@ -28,6 +28,12 @@ except:
     CacheMissError = base.CacheMissError = KeyError
     CacheIsThreadsafe = False
 
+    import warnings
+    warnings.warn("LRUCache extension module not built in, "
+        "using pure-python version which is not atomic and requires"
+        "explicit synchronization. Decreased performance will be noticeable")
+    del warnings
+
 _caches_mutex = threading.RLock()
 _caches = weakref.WeakKeyDictionary()
 

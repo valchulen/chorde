@@ -3,17 +3,15 @@ from .inproc import InprocCacheClient # before base, really, it injects CacheMis
 from .base import BaseCacheClient, ReadWriteSyncAdapter, NONE, CacheMissError
 from .async import AsyncWriteCacheClient, Defer, AsyncCacheProcessor
 from .tiered import TieredInclusiveClient
-from .coherent import CoherentDefer, CoherentWrapperClient
 
 __all__ = [
     "NONE",
     "CacheMissError",
-    "CoherentDefer",
     "Defer",
     
+    "AsyncCacheProcessor",
     "AsyncWriteCacheClient",
     "BaseCacheClient",
-    "CoherentWrapperClient",
     "InprocCacheClient",
     "ReadWriteSyncAdapter",
     "TieredInclusiveClient",
@@ -23,5 +21,11 @@ __all__ = [
 try:
     from .memcached import MemcachedClient, FastMemcachedClient
     __all__.extend(["MemcachedClient", "FastMemcachedClient"])
+except ImportError:
+    pass
+
+try:
+    from .coherent import CoherentDefer, CoherentWrapperClient
+    __all__.extend(["CoherentWrapperClient", "CoherentDefer"])
 except ImportError:
     pass
