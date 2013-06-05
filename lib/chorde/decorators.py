@@ -147,6 +147,8 @@ def cached(client, ttl,
 
         async_ttl: (optional) The TTL at which an async refresh starts. For example, async_ttl=1 means to start
             a refresh just 1 second before the entry expires. It must be smaller than ttl. Default is half the TTL.
+            If negative, it means ttl - async_ttl, which reverses the logic to mean "async_ttl" seconds after
+            creation of the cache entry.
 
         initialize: (optional) A callable hook to be called right before all accesses. It should initialize whatever
             is needed initialized (like daemon threads), and only once (it should be a no-op after it's called once)
@@ -169,6 +171,8 @@ def cached(client, ttl,
 
     if async_ttl is None:
         async_ttl = ttl / 2
+    elif async_ttl < 0:
+        async_ttl = ttl - async_ttl
 
     if _put_deferred is None:
         _put_deferred = _simple_put_deferred
