@@ -68,7 +68,7 @@ class CacheStats(object):
         'hits', 'misses', 'errors',
         'sync_misses', 'sync_errors',
         'min_miss_time', 'max_miss_time', 'sum_miss_time', 'sum_miss_time_sq',
-        'miss_time_histogram', 'miss_time_histogram_bins', 'miss_time_histogram_max',
+        'miss_time_histogram', 'miss_time_histogram_bins', 'miss_time_histogram_max', 'wait_time',
     )
 
     def __init__(self):
@@ -77,7 +77,7 @@ class CacheStats(object):
 
     def clear(self):
         self.hits = self.misses = self.errors = self.sync_misses = self.sync_errors = 0
-        self.max_miss_time = self.sum_miss_time = self.sum_miss_time_sq = 0
+        self.max_miss_time = self.sum_miss_time = self.sum_miss_time_sq = self.wait_time = 0
         self.min_miss_time = None
 
     def set_histogram_bins(self, bins, maxtime):
@@ -168,6 +168,8 @@ def cached(client, ttl,
                 bins and limits are set.
             miss_time_histogram_bins - number of bins configured
             miss_time_histogram_max - maximum histogram time configured
+
+            wait_time - time spent waiting for async updates, that's sync miss time on async queries
 
             reset(): clear all statistics
             set_histogram_bins(bins, max): configure histogram collection to use "bins" bins spanning
@@ -336,6 +338,8 @@ def cached(client, ttl,
 
             if rv is _NONE:
                 # Must wait for it
+                if timings:
+                    t0 = time.time()
                 client.wait(callkey)
                 rv, rvttl = client.getTtl(callkey, _NONE)
                 if rv is _NONE or rvttl < async_ttl:
@@ -344,6 +348,10 @@ def cached(client, ttl,
                 else:
                     stats.sync_misses += 1
                     stats.misses += 1
+                if timings:
+                    t1 = time.time()
+                    t = t1-t0
+                    stats.wait_time += t
 
             return rv
         if decorate is not None:
