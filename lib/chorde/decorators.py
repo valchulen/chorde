@@ -237,7 +237,7 @@ def cached(client, ttl,
     if async_ttl is None:
         async_ttl = ttl / 2
     elif async_ttl < 0:
-        async_ttl = ttl - async_ttl
+        async_ttl = ttl + async_ttl
 
     if _put_deferred is None:
         _put_deferred = _simple_put_deferred

@@ -136,9 +136,9 @@ cdef class LRUCache:
             self.c_decrease(node)
         elif len(self.pqueue) >= self.size:
             node = self.pqueue[0]
-            del self.emap[node.key]
             oldkey = node.key   # delay collection of old key/value, to avoid
             oldval = node.value # firing python code and thus releasing the GIL
+            del self.emap[node.key]
             node.key = key
             node.value = val
             self.emap[key] = node
