@@ -2,6 +2,7 @@
 from functools import wraps, partial
 import weakref
 import md5
+import time
 
 from .clients import base, async, tiered
 
@@ -62,6 +63,38 @@ def _coherent_put_deferred(shared, async_ttl, client, f, key, ttl, *p, **kw):
         lambda : not shared.contains(key, async_ttl), 
         f, *p, **kw)
 
+class CacheStats(object):
+    __slots__ = (
+        'hits', 'misses', 'errors',
+        'sync_misses', 'sync_errors',
+        'min_miss_time', 'max_miss_time', 'sum_miss_time', 'sum_miss_time_sq',
+        'miss_time_histogram', 'miss_time_histogram_bins', 'miss_time_histogram_max',
+    )
+
+    def __init__(self):
+        self.clear()
+        self.set_histogram_bins(0, None)
+
+    def clear(self):
+        self.hits = self.misses = self.errors = self.sync_misses = self.sync_errors = 0
+        self.max_miss_time = self.sum_miss_time = self.sum_miss_time_sq = 0
+        self.min_miss_time = None
+
+    def set_histogram_bins(self, bins, maxtime):
+        if bins <= 0:
+            self.miss_time_histogram = self.miss_time_histogram_bins = self.miss_time_histogram_max = None
+        else:
+            self.miss_time_histogram = [0] * bins
+            self.miss_time_histogram_bins = bins
+            self.miss_time_histogram_max = maxtime
+
+    def add_histo(self, time, min=min):
+        if self.miss_time_histogram:
+            hmax = self.miss_time_histogram_max
+            hbins = self.miss_time_histogram_bins
+            hbin = min(hbins-1, min(hmax, time) * hbins / hmax)
+            self.miss_time_histogram[hbin] += 1
+
 def cached(client, ttl,
         key = lambda *p, **kw:(p,frozenset(kw.items()) or ()),
         namespace = None,
@@ -73,6 +106,7 @@ def cached(client, ttl,
         async_ttl = None,
         initialize = None,
         decorate = None,
+        timings = True,
         _put_deferred = _simple_put_deferred ):
     """
     This decorator provides cacheability to suitable functions.
@@ -118,6 +152,32 @@ def cached(client, ttl,
             be another decorated function, created on demand, backed by the same client wrapped in an async adapter.
             As such, it can be used to perform asynchronous operations on an otherwise synchronous function.
 
+        stats: cache statistics, containing:
+            hits - number of cache hits
+            misses - number of cache misses
+            errors - number of exceptions caught
+            sync_misses - number of synchronous (blocking) misses
+            sync_errors - number of synchronous exceptions (propagated to caller)
+
+            min_miss_time - minimum time spent computing a miss
+            max_miss_time - maximum time spent computing a miss
+            sum_miss_time - total time spent computing a miss (divide by misses and get an average)
+            sum_miss_time_sq - sum of squared times spent computing a miss (to compute standard deviation)
+
+            miss_time_histogram - histogram of times spent computing misses, computed only if histogram
+                bins and limits are set.
+            miss_time_histogram_bins - number of bins configured
+            miss_time_histogram_max - maximum histogram time configured
+
+            reset(): clear all statistics
+            set_histogram_bins(bins, max): configure histogram collection to use "bins" bins spanning
+                from 0 to max. If bins is set to 0, max is ignored, and histogram collection is disabled
+
+            All values are approximate, as no synchroniation is attempted while updating.
+
+            sync_misses and sync_errors are caller-visible misses or exceptions. The difference with 
+            misses and errors respectively are the number of caller-invisible misses or errors.
+
     Params
         client: the cache store client to be used
 
@@ -155,6 +215,9 @@ def cached(client, ttl,
 
         decorate: (optional) A decorator to apply to all call-like decorated functions. Since @cached creates many
             variants of the function, this is a convenience over manually decorating all variants.
+
+        timings: (optional) Whether to gather timing statistics. If true, misses will be timed, and timing data
+            will be included in the stats attribute. It does imply some overhead. Default is True.
     """
     if value_serialization_function or value_deserialization_function:
         client = base.DecoratedWrapper(client,
@@ -183,6 +246,53 @@ def cached(client, ttl,
         else:
             nclient = client
 
+        stats = CacheStats()
+
+        # Wrap and track misses and timings
+        if timings:
+            of = f
+            @wraps(f)
+            def af(*p, **kw):
+                stats.misses += 1
+                try:
+                    t0 = time.time()
+                    rv = of(*p, **kw)
+                    t1 = time.time()
+                    t = t1-t0
+                    try:
+                        stats.max_miss_time = max(stats.max_miss_time, t)
+                        stats.min_miss_time = t if stats.min_miss_time is None else min(stats.min_miss_time, t)
+                        stats.sum_miss_time += t
+                        stats.sum_miss_time_sq += t*t
+                        if stats.miss_time_histogram:
+                            stats.add_histo(t)
+                    except:
+                        # Ignore stats collection exceptions. 
+                        # Quite possible since there is no thread synchronization.
+                        pass
+                    return rv
+                except:
+                    stats.errors += 1
+                    raise
+            @wraps(f)
+            def f(*p, **kw):
+                stats.sync_misses += 1
+                return af(*p, **kw)
+        else:
+            of = f
+            @wraps(f)
+            def af(*p, **kw):
+                stats.misses += 1
+                try:
+                    return of(*p, **kw)
+                except:
+                    stats.errors += 1
+                    raise
+            @wraps(f)
+            def f(*p, **kw):
+                stats.sync_misses += 1
+                return af(*p, **kw)
+
         @wraps(f)
         def cached_f(*p, **kw):
             if initialize is not None:
@@ -191,10 +301,12 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
+                stats.errors += 1
                 return f(*p, **kw)
             
             try:
-                return nclient.get(callkey)
+                rv = nclient.get(callkey)
+                stats.hits += 1
             except CacheMissError:
                 rv = f(*p, **kw)
                 nclient.put(callkey, rv, ttl)
@@ -210,6 +322,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
+                stats.errors += 1
                 return f(*p, **kw)
 
             client = aclient[0]
@@ -217,7 +330,9 @@ def cached(client, ttl,
 
             if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
                 # Launch background update
-                _put_deferred(client, f, callkey, ttl, *p, **kw)
+                _put_deferred(client, af, callkey, ttl, *p, **kw)
+            elif rv is not _NONE:
+                stats.hits += 1
 
             if rv is _NONE:
                 # Must wait for it
@@ -226,6 +341,9 @@ def cached(client, ttl,
                 if rv is _NONE or rvttl < async_ttl:
                     # FUUUUU
                     rv = f(*p, **kw)
+                else:
+                    stats.sync_misses += 1
+                    stats.misses += 1
 
             return rv
         if decorate is not None:
@@ -239,9 +357,12 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
+                stats.errors += 1
                 raise CacheMissError
             
-            return nclient.get(callkey)
+            rv = nclient.get(callkey)
+            stats.hits += 1
+            return rv
         if decorate is not None:
             lazy_cached_f = decorate(lazy_cached_f)
         
@@ -252,6 +373,7 @@ def cached(client, ttl,
             try:
                 callkey = key(*p, **kw)
             except:
+                stats.errors += 1
                 return
             nclient.delete(callkey)
         if decorate is not None:
@@ -265,6 +387,7 @@ def cached(client, ttl,
             try:
                 callkey = key(*p, **kw)
             except:
+                stats.errors += 1
                 return
             nclient.put(callkey, value, ttl)
         if decorate is not None:
@@ -278,6 +401,7 @@ def cached(client, ttl,
             try:
                 callkey = key(*p, **kw)
             except:
+                stats.errors += 1
                 return
             aclient[0].put(callkey, value, ttl)
         if decorate is not None:
@@ -291,13 +415,16 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
+                stats.errors += 1
                 raise CacheMissError
 
             client = aclient[0]
             rv, rvttl = client.getTtl(callkey, _NONE)
             
             if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
-                _put_deferred(client, f, callkey, ttl, *p, **kw)
+                _put_deferred(client, af, callkey, ttl, *p, **kw)
+            elif rv is not _NONE:
+                stats.hits += 1
 
             if rv is _NONE:
                 raise CacheMissError, callkey
@@ -314,6 +441,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
+                stats.errors += 1
                 return
 
             rv = f(*p, **kw)
@@ -330,11 +458,12 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
+                stats.errors += 1
                 return
 
             client = aclient[0]
             if not client.contains(callkey, 0):
-                _put_deferred(client, f, callkey, ttl, *p, **kw)
+                _put_deferred(client, af, callkey, ttl, *p, **kw)
         if decorate is not None:
             async_refresh_f = decorate(async_refresh_f)
 
@@ -364,6 +493,7 @@ def cached(client, ttl,
             async_cached_f.invalidate = invalidate_f
             async_cached_f.put = async_put_f
             async_cached_f.ttl = async_ttl
+            async_cached_f.stats = stats
             cached_f.async = async_f
             cached_f.lazy = lazy_cached_f
             cached_f.refresh = refresh_f
@@ -377,11 +507,12 @@ def cached(client, ttl,
             cached_f.refresh = async_refresh_f
             cached_f.peek = lazy_cached_f
             cached_f.invalidate = invalidate_f
-            cached_f.put = put_f
+            cached_f.put = async_put_f
         
         cached_f.clear = nclient.clear
         cached_f.client = nclient
         cached_f.ttl = ttl
+        cached_f.stats = stats
         
         return cached_f
     return decor
