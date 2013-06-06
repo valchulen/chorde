@@ -128,6 +128,7 @@ cdef class LRUCache:
 
     cdef int c__setitem__(LRUCache self, object key, object val) except -1:
         cdef _node node
+        cdef object oldkey, oldval
 
         if key in self.emap:
             node = self.emap[key]
@@ -136,6 +137,8 @@ cdef class LRUCache:
         elif len(self.pqueue) >= self.size:
             node = self.pqueue[0]
             del self.emap[node.key]
+            oldkey = node.key   # delay collection of old key/value, to avoid
+            oldval = node.value # firing python code and thus releasing the GIL
             node.key = key
             node.value = val
             self.emap[key] = node
