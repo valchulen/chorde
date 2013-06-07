@@ -35,12 +35,13 @@ class LRUCache(object):
     its size is guaranteed to never surpass the assigned limit and when
     spillover occurs, the least recently used items get removed first.
     """
-    def __init__(self, size, touch_on_read = True):
+    def __init__(self, size, touch_on_read = True, eviction_callback = None):
         self.size = size
         self.touch_on_read = touch_on_read
         self.pqueue = []
         self.emap = {}
         self.next_prio = 0
+        self.eviction_callback = eviction_callback
 
     def __len__(self):
         return len(self.pqueue)
@@ -115,11 +116,15 @@ class LRUCache(object):
             self.decrease(node)
         elif len(self.pqueue) >= self.size:
             node = self.pqueue[0]
+            oldkey = node.key
+            oldval = node.value
             del self.emap[node.key]
             node.key = key
             node.value = val
             self.emap[key] = node
             self.decrease(node)
+            if self.eviction_callback is not None:
+                self.eviction_callback(oldkey, oldval)
         else:
             node = _node(self.next_prio, len(self.pqueue), key, val)
             self.emap[key] = node

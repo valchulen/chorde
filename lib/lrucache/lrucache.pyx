@@ -39,6 +39,10 @@ cdef class LRUCache:
     Instances of this class behave like a Python mapping type, except that
     its size is guaranteed to never surpass the assigned limit and when
     spillover occurs, the least recently used items get removed first.
+
+    If an eviction callback is provided, it must take two arguments, key and
+    value, and it will only be invoked for automatic (overflow related) evictions,
+    not manual ones invoked with del, pop or clear.
     """
 
     cdef unsigned int next_prio
@@ -46,13 +50,15 @@ cdef class LRUCache:
     cdef readonly unsigned int touch_on_read
     cdef list pqueue
     cdef dict emap
+    cdef object eviction_callback
     
-    def __init__(LRUCache self, unsigned int size, unsigned int touch_on_read = 1):
+    def __init__(LRUCache self, unsigned int size, unsigned int touch_on_read = 1, object eviction_callback = None):
         self.size = size
         self.touch_on_read = touch_on_read
         self.pqueue = []
         self.emap = {}
         self.next_prio = 0
+        self.eviction_callback = eviction_callback
 
     def __len__(LRUCache self not None):
         return len(self.pqueue)
@@ -143,6 +149,10 @@ cdef class LRUCache:
             node.value = val
             self.emap[key] = node
             self.c_decrease(node)
+
+            # Notify eviction
+            if self.eviction_callback is not None:
+                self.eviction_callback(oldkey, oldval)
         else:
             node = _node(self.next_prio, len(self.pqueue), key, val)
             self.emap[key] = node
