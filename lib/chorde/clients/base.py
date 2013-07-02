@@ -223,7 +223,7 @@ class NamespaceWrapper(DecoratedWrapper):
     def clear(self):
         # Cannot clear a shared client, so, instead, switch revisions
         self.revision += 1
-        self.client.put((self.namespace, 'REVMARK'), self.revision)
+        self.client.put((self.namespace, 'REVMARK'), self.revision, 3600)
         return self.client.clear()
 
 class NamespaceMirrorWrapper(NamespaceWrapper):
