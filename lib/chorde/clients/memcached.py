@@ -18,6 +18,11 @@ try:
 except ImportError:
     import pickle as cPickle
 
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from StringIO import StringIO
+
 from chorde import sPickle
 
 try:
@@ -27,6 +32,38 @@ except ImportError:
 JSON_SEPARATORS = (',',':')
 
 FAILFAST_TIME = 0.1
+
+class ZlibFile:
+    def __init__(self, fileobj, level = 9):
+        self.fileobj = fileobj
+        self.compressor = zlib.compressobj(level)
+        self.level = level
+        self.flushed = True
+        self.closed = False
+
+    def write(self, buf):
+        self.fileobj.write(self.compressor.compress(buf))
+        self.flushed = False
+
+    def flush(self):
+        if not self.flushed:
+            self.fileobj.write(self.compressor.flush())
+            self.flushed = True
+        self.fileobj.flush()
+
+    def close(self):
+        if not self.closed:
+            self.flush()
+            self.closed = True
+
+    def __del__(self):
+        self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.close()
 
 class MemcachedClient(BaseCacheClient):
     def __init__(self, 
@@ -149,7 +186,12 @@ class MemcachedClient(BaseCacheClient):
         # Always pickle & compress, since we'll always unpickle.
         # Note: compress with very little effort (level=1), 
         #   otherwise it's too expensive and not worth it
-        value = zlib.compress( self.pickler.dumps((key,value),2), 1 )
+        sio = StringIO()
+        with ZlibFile(sio, 1) as zio:
+            self.pickler.dump((key,value),zio,2)
+        value = sio.getvalue()
+        sio.close()
+        del sio,zio
         
         npages = (len(value) + self.max_backing_value_length - 1) / self.max_backing_value_length
         pagelen = self.max_backing_value_length
