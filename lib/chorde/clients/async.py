@@ -82,7 +82,7 @@ class AsyncCacheWriterPool(ThreadPool):
         deferred = _NONE
 
         try:
-            if value in (_NONE, NONE):
+            if value is _NONE or value is NONE:
                 # Something's hinky
                 return
             elif isinstance(value, Defer):
@@ -93,7 +93,7 @@ class AsyncCacheWriterPool(ThreadPool):
                     self.logger.error("Error in background cache refresh", exc_info=True)
                     value = _NONE
             
-            if value in (_NONE, NONE):
+            if value is _NONE or value is NONE:
                 # undefer probably decided not to compute anything (or an error arose, whatever)
                 return
                 
