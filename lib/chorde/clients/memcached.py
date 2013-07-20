@@ -281,7 +281,7 @@ class MemcachedClient(BaseCacheClient):
         return self._getTtl(key, default)
 
     def get(self, key, default=NONE):
-        rv, ttl = self.getTtl(key, default, ttlcut = 0)
+        rv, ttl = self._getTtl(key, default, ttlcut = 0)
         if ttl < 0 and default is NONE:
             raise CacheMissError, key
         else:
