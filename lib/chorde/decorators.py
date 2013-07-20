@@ -104,6 +104,7 @@ def cached(client, ttl,
         async_writer_queue_size = None, 
         async_writer_workers = None,
         async_ttl = None,
+        async_client = None,
         initialize = None,
         decorate = None,
         timings = True,
@@ -206,6 +207,11 @@ def cached(client, ttl,
 
         async_writer_workers: (optional) Number of async workers for the async() client. 
             Default is multiprocessing.cpu_count
+
+        async_client: (optional) Alternatively to async_writer_queue_size and async_writer_workers, a specific
+            async client may be specified. It is expected this client will be an async wrapper of the 'client'
+            mandatorily specified, that can be shared among decorated functions (to avoid multiplying writer
+            threads).
 
         async_ttl: (optional) The TTL at which an async refresh starts. For example, async_ttl=1 means to start
             a refresh just 1 second before the entry expires. It must be smaller than ttl. Default is half the TTL.
@@ -478,6 +484,8 @@ def cached(client, ttl,
         if client.async:
             cached_f = async_cached_f
             lazy_cached_f = async_lazy_cached_f
+        elif async_client:
+            aclient = [async_client]
         else:
             aclient = []
         
