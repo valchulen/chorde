@@ -3,6 +3,7 @@ from functools import wraps, partial
 import weakref
 import md5
 import time
+import logging
 
 from .clients import base, async, tiered
 
@@ -303,6 +304,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
+                logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return f(*p, **kw)
             
@@ -324,6 +326,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
+                logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return f(*p, **kw)
 
@@ -365,6 +368,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
+                logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 raise CacheMissError
             
@@ -381,6 +385,7 @@ def cached(client, ttl,
             try:
                 callkey = key(*p, **kw)
             except:
+                logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
             nclient.delete(callkey)
@@ -395,6 +400,7 @@ def cached(client, ttl,
             try:
                 callkey = key(*p, **kw)
             except:
+                logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
             nclient.put(callkey, value, ttl)
@@ -409,6 +415,7 @@ def cached(client, ttl,
             try:
                 callkey = key(*p, **kw)
             except:
+                logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
             aclient[0].put(callkey, value, ttl)
@@ -423,6 +430,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
+                logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 raise CacheMissError
 
@@ -449,6 +457,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
+                logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
 
@@ -466,6 +475,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
+                logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
 
