@@ -142,3 +142,21 @@ class SecureUnpickler(object):
         buf.truncate()
         return rv
 
+def dump(key, obj, file, *p, **kw):
+    pickler = SecurePickler(key, file, *p, **kw)
+    pickler.dump(obj)
+
+def dumps(key, obj, *p, **kw):
+    buf = StringIO()
+    pickler = SecurePickler(key, buf, *p, **kw)
+    pickler.dump(obj)
+    return buf.getvalue()
+
+def load(key, obj, file, *p, **kw):
+    unpickler = SecureUnpickler(key, file, *p, **kw)
+    return unpickler.load()
+
+def loads(key, str, *p, **kw):
+    buf = StringIO(str)
+    unpickler = SecureUnpickler(key, buf, *p, **kw)
+    return unpickler.load()
