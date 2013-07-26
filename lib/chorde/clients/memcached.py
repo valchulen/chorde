@@ -31,8 +31,6 @@ except ImportError:
     json = None
 JSON_SEPARATORS = (',',':')
 
-FAILFAST_TIME = 0.1
-
 class ZlibFile:
     def __init__(self, fileobj, level = 9):
         self.fileobj = fileobj
@@ -70,6 +68,8 @@ class MemcachedClient(BaseCacheClient):
             client_addresses, 
             max_backing_key_length = 250,
             max_backing_value_length = 1000*1024,
+            failfast_size = 100,
+            failfast_time = 0.1,
             pickler = None,
             namespace = None,
             checksum_key = None, # CHANGE IT!
@@ -89,6 +89,7 @@ class MemcachedClient(BaseCacheClient):
         self.last_seen_stamp = 0
         self.pickler = pickler or cPickle
         self.namespace = namespace
+        self.failfast_time = failfast_time
         
         if self.namespace:
             self.max_backing_key_length -= len(self.namespace)+1
@@ -111,7 +112,7 @@ class MemcachedClient(BaseCacheClient):
         self._client_addresses = client_addresses
         self._client = None
         
-        self._failfast_cache = Cache(100)
+        self._failfast_cache = Cache(failfast_size)
 
     @property
     def client(self):
@@ -252,7 +253,7 @@ class MemcachedClient(BaseCacheClient):
             return default, -1
         # Check failfast cache, before making a huge effort decoding for not
         # When there's a key collision, this avoids misses being expensive
-        elif self._failfast_cache.get(key) > (now - FAILFAST_TIME):
+        elif self._failfast_cache.get(key) > (now - self.failfast_time):
             return default, -1
         
         if npages > 1:
