@@ -137,8 +137,9 @@ class AsyncCacheWriterPool(ThreadPool):
         return self.queueset.pop(key, _NONE)
 
     def enqueue(self, key, value, ttl=None):
-        while len(self.queueset) >= self.size:
-            self._wait_done(1.0)
+        if key not in self.queueset:
+            while len(self.queueset) >= self.size:
+                self._wait_done(1.0)
         self._enqueue(key, value, ttl)
 
     @serialize
