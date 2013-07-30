@@ -607,6 +607,8 @@ if not no_coherence:
         """
         if async_ttl is None:
             async_ttl = ttl / 2
+        elif async_ttl < 0:
+            async_ttl = ttl + async_ttl
         
         if not private.async:
             if async_writer_queue_size is None:
