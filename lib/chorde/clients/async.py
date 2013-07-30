@@ -4,6 +4,7 @@ import logging
 import time
 import weakref
 import functools
+import thread
 
 # No need for real multiprocessing. In fact, using real
 # multiprocessing would force pickling of values, which would be
@@ -56,6 +57,7 @@ class AsyncCacheWriterPool(ThreadPool):
         # high-load environments
         self.queueset = {}
         self.workset = {}
+        self.threadset = set()
         self.done_event = Event()
         
         ThreadPool.__init__(self, workers)
@@ -80,6 +82,12 @@ class AsyncCacheWriterPool(ThreadPool):
         ev = self.done_event
         value, ttl = self.dequeue(key)
         deferred = _NONE
+
+        thread_id = thread.get_ident()
+        if thread_id not in self.threadset:
+            self.threadset.add(thread.get_ident())
+        else:
+            thread_id = None
 
         try:
             if value is _NONE or value is NONE:
@@ -129,6 +137,11 @@ class AsyncCacheWriterPool(ThreadPool):
                 del self.workset[key]
             except KeyError:
                 pass
+            if thread_id is not None:
+                try:
+                    self.threadset.remove(thread.get_ident())
+                except KeyError:
+                    pass
             ev.set()
         
     @serialize
@@ -137,10 +150,16 @@ class AsyncCacheWriterPool(ThreadPool):
         return self.queueset.pop(key, _NONE)
 
     def enqueue(self, key, value, ttl=None):
-        if key not in self.queueset:
-            while len(self.queueset) >= self.size:
-                self._wait_done(1.0)
-        self._enqueue(key, value, ttl)
+        if thread.get_ident() in self.threadset:
+            # Oops, recursive call, bad idea
+            # Run inline
+            self.queueset[key] = value, ttl
+            self._writer(weakref.ref(self), key)
+        else:
+            if key not in self.queueset:
+                while len(self.queueset) >= self.size:
+                    self._wait_done(1.0)
+            self._enqueue(key, value, ttl)
 
     @serialize
     def clearqueue(self):
