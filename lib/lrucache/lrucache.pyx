@@ -1,5 +1,9 @@
 """Efficient (O(log n) amortized update) Least-Recently-Used cache"""
 
+cdef extern from "Python.h":
+    int PySequence_SetItem(object o, Py_ssize_t i, object v) except -1
+    object PySequence_GetItem(object o, Py_ssize_t i)
+
 class CacheMissError(KeyError):
     """Error raised when a cache miss occurs"""
     pass
@@ -73,7 +77,7 @@ cdef class LRUCache:
 
         bprio = self.pqueue[0].prio
         for i from 0 <= i < len(self.pqueue):
-            node = self.pqueue[i]
+            node = PySequence_GetItem(self.pqueue, i)
             node.prio = node.prio - bprio
         self.next_prio = self.next_prio - bprio
 
@@ -94,20 +98,20 @@ cdef class LRUCache:
             r  = 2 * ix + 2
 
             if r < sz:
-                ln = self.pqueue[l]
-                rn = self.pqueue[r]
+                ln = PySequence_GetItem(self.pqueue,l)
+                rn = PySequence_GetItem(self.pqueue,r)
 
             if r < sz and rn.prio < ln.prio:
                 sw = r
                 swn= rn
             elif l < sz:
                 sw = l
-                swn= self.pqueue[l]
+                swn= PySequence_GetItem(self.pqueue,l)
             else:
                 break
 
-            self.pqueue[sw] = node
-            self.pqueue[ix] = swn
+            PySequence_SetItem(self.pqueue, sw, node)
+            PySequence_SetItem(self.pqueue, ix, swn)
             node.index = sw
             swn.index = ix
 
@@ -141,7 +145,7 @@ cdef class LRUCache:
             node.value = val
             self.c_decrease(node)
         elif len(self.pqueue) >= self.size:
-            node = self.pqueue[0]
+            node = PySequence_GetItem(self.pqueue, 0)
             oldkey = node.key   # delay collection of old key/value, to avoid
             oldval = node.value # firing python code and thus releasing the GIL
             del self.emap[node.key]
