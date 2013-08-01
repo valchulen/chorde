@@ -308,6 +308,9 @@ class AsyncCacheProcessor(ThreadPool):
     It modifies the cache interface to return a Future
     instead of a value, upon which an on_value(callback)
     method will retrieve the result, if any.
+
+    If there is a cache miss, the exception itself will
+    be set as value.
     """
     def __init__(self, workers, client):
         # This patches ThreadPool, which is broken when instanced 
@@ -325,12 +328,19 @@ class AsyncCacheProcessor(ThreadPool):
     def _enqueue(self, action):
         future = Future()
         def wrapped_action():
-            future.set(action())
+            try:
+                rv = action()
+            except CacheMissError,e:
+                rv = e
+            future.set(rv)
         self.apply_async(wrapped_action, ())
         return future
     
     def getTtl(self, key, default = None):
         return self._enqueue(functools.partial(self.client.getTtl, key, default))
+    
+    def get(self, key, default = NONE):
+        return self._enqueue(functools.partial(self.client.get, key, default))
     
     def contains(self, key):
         return self._enqueue(functools.partial(self.client.contains, key))
