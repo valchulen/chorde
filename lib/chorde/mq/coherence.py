@@ -436,40 +436,43 @@ class CoherenceManager(object):
         
         ctx = zmq.Context.instance()
         waiter, waiter_id = _mkwaiter(ctx, zmq.PAIR, "qpw")
-        def signaler(prefix, event, message, req = map(buffer,req)):
-            if map(buffer,message[0][2:]) == req:
-                # This is our message
-                signaler = ctx.socket(zmq.PAIR)
-                signaler.connect(waiter_id)
-                signaler.send(message[1][-1], copy = False)
-                signaler.close()
-                return False
+        try:
+            def signaler(prefix, event, message, req = map(buffer,req)):
+                if map(buffer,message[0][2:]) == req:
+                    # This is our message
+                    signaler = ctx.socket(zmq.PAIR)
+                    signaler.connect(waiter_id)
+                    signaler.send(message[1][-1], copy = False)
+                    signaler.close()
+                    return False
+                else:
+                    return True
+            ipsub_.listen('', ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
+            ipsub_.publish(self.pendqprefix, req)
+            for i in xrange(3):
+                if waiter.poll(timeout/4):
+                    break
+                elif expired():
+                    ipsub_.publish(self.pendqprefix, req)
+                else:
+                    break
             else:
-                return True
-        ipsub_.listen('', ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
-        ipsub_.publish(self.pendqprefix, req)
-        for i in xrange(3):
-            if waiter.poll(timeout/4):
-                break
+                if expired():
+                    waiter.poll(timeout/4)
+            if waiter.poll(1):
+                rv = json.load(cStringIO.StringIO(buffer(waiter.recv(copy=False))))
+                if rv is not None:
+                    rv = rv[-1]
+                elif not expired():
+                    rv = OOB_UPDATE
             elif expired():
-                ipsub_.publish(self.pendqprefix, req)
+                rv = None
             else:
-                break
-        else:
-            if expired():
-                waiter.poll(timeout/4)
-        if waiter.poll(1):
-            rv = json.load(cStringIO.StringIO(buffer(waiter.recv(copy=False))))
-            if rv is not None:
-                rv = rv[-1]
-            elif not expired():
                 rv = OOB_UPDATE
-        elif expired():
-            rv = None
-        else:
-            rv = OOB_UPDATE
-        ipsub_.unlisten('', ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
-        waiter.close()
+            ipsub_.unlisten('', ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
+        finally:
+            waiter.close()
+        
         if optimistic_lock and rv is None:
             # We acquired it
             self.pending[key] = txid
@@ -592,31 +595,33 @@ class CoherenceManager(object):
         
         ctx = zmq.Context.instance()
         waiter, waiter_id = _mkwaiter(ctx, zmq.PAIR, "qpw")
-        contact_cell = []
-        def signaler(prefix, event, payload):
-            txid, keys, contact = payload
-            if key in keys:
-                # This is our message
-                contact_cell[:] = contact
-                signaler = ctx.socket(zmq.PAIR)
-                signaler.connect(waiter_id)
-                signaler.send("")
-                signaler.close()
-                return False
-            else:
-                return True
-        signaler = ipsub_.listen_decode(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
-        success = False
-        while timeout is None or timeout > 0:
-            if waiter.poll(min(poll_interval, timeout or poll_interval)):
-                success = True
-                break
-            elif timeout is not None:
-                timeout -= poll_interval
-            # Request confirmation of pending status
-            if not self.query_pending(key, lambda:1, poll_interval, False):
-                success = True
-                break
-        ipsub_.unlisten(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
-        waiter.close()
+        try:
+            contact_cell = []
+            def signaler(prefix, event, payload):
+                txid, keys, contact = payload
+                if key in keys:
+                    # This is our message
+                    contact_cell[:] = contact
+                    signaler = ctx.socket(zmq.PAIR)
+                    signaler.connect(waiter_id)
+                    signaler.send("")
+                    signaler.close()
+                    return False
+                else:
+                    return True
+            signaler = ipsub_.listen_decode(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
+            success = False
+            while timeout is None or timeout > 0:
+                if waiter.poll(min(poll_interval, timeout or poll_interval)):
+                    success = True
+                    break
+                elif timeout is not None:
+                    timeout -= poll_interval
+                # Request confirmation of pending status
+                if not self.query_pending(key, lambda:1, poll_interval, False):
+                    success = True
+                    break
+            ipsub_.unlisten(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
+        finally:
+            waiter.close()
         return success
