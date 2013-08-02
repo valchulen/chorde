@@ -86,6 +86,20 @@ def _weak_callback(f):
 def _bound_weak_callback(self, f):
     return functools.partial(f, weakref.ref(self))
 
+def _mkwaiter(ctx, socktype, prefix):
+    waiter = ctx.socket(zmq.PAIR)
+    for _ in xrange(5):
+        waiter_id = "inproc://%s%x.%x" % (prefix, id(waiter),random.randint(0,1<<30))
+        try:
+            waiter.bind(waiter_id)
+            break
+        except:
+            pass
+    else:
+        waiter_id = "inproc://%s%x.%x" % (prefix, id(waiter),random.randint(0,1<<30))
+        waiter.bind(waiter_id)
+    return waiter, waiter_id
+
 def _swallow_connrefused(onerror):
     def decor(f):
         @functools.wraps(f)
@@ -417,9 +431,7 @@ class CoherenceManager(object):
             optimistic_lock))
         
         ctx = zmq.Context.instance()
-        waiter = ctx.socket(zmq.PAIR)
-        waiter_id = "inproc://qpw%x" % id(waiter)
-        waiter.bind(waiter_id)
+        waiter, waiter_id = _mkwaiter(ctx, zmq.PAIR, "qpw")
         def signaler(prefix, event, message, req = map(buffer,req)):
             if map(buffer,message[0][2:]) == req:
                 # This is our message
@@ -575,9 +587,7 @@ class CoherenceManager(object):
         doneprefix = self.doneprefix+str(self.stable_hash(key))
         
         ctx = zmq.Context.instance()
-        waiter = ctx.socket(zmq.PAIR)
-        waiter_id = "inproc://qpw%x" % id(waiter)
-        waiter.bind(waiter_id)
+        waiter, waiter_id = _mkwaiter(ctx, zmq.PAIR, "qpw")
         contact_cell = []
         def signaler(prefix, event, payload):
             txid, keys, contact = payload
