@@ -96,8 +96,12 @@ def _mkwaiter(ctx, socktype, prefix):
         except:
             pass
     else:
-        waiter_id = "inproc://%s%x.%x" % (prefix, id(waiter),random.randint(0,1<<30))
-        waiter.bind(waiter_id)
+        try:
+            waiter_id = "inproc://%s%x.%x" % (prefix, id(waiter),random.randint(0,1<<30))
+            waiter.bind(waiter_id)
+        except:
+            waiter.close()
+            raise
     return waiter, waiter_id
 
 def _swallow_connrefused(onerror):
