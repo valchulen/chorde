@@ -5,6 +5,7 @@ import time
 import weakref
 import functools
 import thread
+import sys
 
 # No need for real multiprocessing. In fact, using real
 # multiprocessing would force pickling of values, which would be
@@ -282,6 +283,12 @@ class AsyncWriteCacheClient(BaseCacheClient):
         else:
             return self.client.contains(key, ttl)
 
+class ExceptionWrapper(object):
+    __slots__ = ('value',)
+
+    def __init__(self, value):
+        self.value = value
+
 class Future(object):
     __slots__ = ('_cb', '_value')
     
@@ -293,11 +300,36 @@ class Future(object):
             cb(value)
         self._value = value
 
-    def on_value(self, callback, hasattr=hasattr):
+    def miss(self):
+        self.set(CacheMissError)
+
+    def exc(self, exc_info):
+        self.set(ExceptionWrapper(exc_info))
+
+    def on_value(self, callback):
+        def value_callback(value):
+            if value is not CacheMissError and not isinstance(value, ExceptionWrapper):
+                return callback(value)
+        return self._on_stuff(value_callback)
+
+    def on_miss(self, callback):
+        def value_callback(value):
+            if value is CacheMissError:
+                return callback(value)
+        return self._on_stuff(value_callback)
+
+    def on_exc(self, callback):
+        def value_callback(value):
+            if isinstance(value, ExceptionWrapper):
+                return callback(value)
+        return self._on_stuff(value_callback)
+
+    def _on_stuff(self, callback, hasattr=hasattr):
         cbap = self._cb.append
         if hasattr(self, '_value'):
             callback(self._value)
         cbap(callback)
+        return self
 
 class AsyncCacheProcessor(ThreadPool):
     """
@@ -309,8 +341,8 @@ class AsyncCacheProcessor(ThreadPool):
     instead of a value, upon which an on_value(callback)
     method will retrieve the result, if any.
 
-    If there is a cache miss, the exception itself will
-    be set as value.
+    If there is a cache miss, on_miss callbacks will be invoked 
+    instead, and in case of an exception, on_exc.
     """
     def __init__(self, workers, client):
         # This patches ThreadPool, which is broken when instanced 
@@ -329,10 +361,11 @@ class AsyncCacheProcessor(ThreadPool):
         future = Future()
         def wrapped_action():
             try:
-                rv = action()
-            except CacheMissError,e:
-                rv = e
-            future.set(rv)
+                future.set(action())
+            except CacheMissError:
+                future.miss()
+            except:
+                future.exc(sys.exc_info())
         self.apply_async(wrapped_action, ())
         return future
     
