@@ -10,6 +10,7 @@ class NONE_: pass
 class TieredInclusiveClient(BaseCacheClient):
     def __init__(self, *clients, **opts):
         self.clients = clients
+        self.l1_misses = 0
         self.ttl_fractions = opts.get('ttl_fractions', (1,)*len(clients))
         
     @property
@@ -108,6 +109,8 @@ class TieredInclusiveClient(BaseCacheClient):
                     # Move the entry up the ladder
                     self.clients[i-1].put(key, rv, ttl)
                 return rv, ttl
+            elif not i:
+                self.l1_misses += 1
             
             # Ok, gotta inspect other tiers
         else:
