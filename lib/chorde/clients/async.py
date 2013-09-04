@@ -343,6 +343,10 @@ class AsyncCacheProcessor(ThreadPool):
 
     If there is a cache miss, on_miss callbacks will be invoked 
     instead, and in case of an exception, on_exc.
+
+    It also provides a do_async, that lets you dump arbitrary
+    tasks on this processor's async processing pool (in case
+    you need to do it for synchronization)
     """
     def __init__(self, workers, client):
         # This patches ThreadPool, which is broken when instanced 
@@ -369,6 +373,9 @@ class AsyncCacheProcessor(ThreadPool):
                 future.exc(sys.exc_info()[:-1] + (None,))
         self.apply_async(wrapped_action, ())
         return future
+
+    def do_async(self, func, *args, **kwargs):
+        return self._enqueue(functools.partial(func, *args, **kwargs))
     
     def getTtl(self, key, default = None):
         return self._enqueue(functools.partial(self.client.getTtl, key, default))
