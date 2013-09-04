@@ -29,6 +29,21 @@ class BaseCacheClient(object):
     def put(self, key, value, ttl):
         raise NotImplementedError
 
+    def add(self, key, value, ttl):
+        """
+        Like put, sets a value, but add only does so if there wasn't a valid
+        value before, and does so as atomically as possible (ie: it tries to
+        be atomic, but doesn't guarantee it - see specific client docs).
+
+        Returns True when it effectively stores the item, False when it
+        doesn't (there was one before)
+        """
+        if not self.contains(key):
+            self.put(key, value, ttl)
+            return True
+        else:
+            return False
+
     @abstractmethod
     def delete(self, key):
         raise NotImplementedError
@@ -97,6 +112,10 @@ class ReadWriteSyncAdapter(BaseCacheClient):
         return self.client.put(key, value, ttl)
 
     @serialize_write
+    def add(self, key, value, ttl):
+        return self.client.add(key, value, ttl)
+
+    @serialize_write
     def delete(self, key):
         return self.client.delete(key)
 
@@ -128,6 +147,10 @@ class SyncAdapter(BaseCacheClient):
     @serialize
     def put(self, key, value, ttl):
         return self.client.put(key, value, ttl)
+
+    @serialize
+    def add(self, key, value, ttl):
+        return self.client.add(key, value, ttl)
 
     @serialize
     def delete(self, key):
@@ -176,6 +199,13 @@ class DecoratedWrapper(BaseCacheClient):
         if self.value_decorator:
             value = self.value_decorator(value)
         return self.client.put(key, value, ttl)
+
+    def add(self, key, value, ttl):
+        if self.key_decorator:
+            key = self.key_decorator(key)
+        if self.value_decorator:
+            value = self.value_decorator(value)
+        return self.client.add(key, value, ttl)
 
     def delete(self, key):
         if self.key_decorator:

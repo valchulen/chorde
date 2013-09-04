@@ -58,6 +58,31 @@ class TieredInclusiveClient(BaseCacheClient):
             for ttl_fraction, client in izip(fractions, clients):
                 client.put(key, value, ttl * ttl_fraction)
     
+    def add(self, key, value, ttl):
+        clients = self.clients
+        fractions = self.ttl_fractions
+        if isinstance(value, async.Defer):
+            # Cannot just pass it, it would execute the result many times
+            if clients and clients[0].async:
+                # First call is async, meaning it will get queued up somwhere
+                # We can do the rest at that point
+                deferred = async.Defer(
+                    self.__putnext, 
+                    clients, fractions, 
+                    key, value, ttl)
+                return clients[0].add(key, deferred, ttl * fractions[0])
+            else:
+                # Cannot undefer here, it might create deadlocks.
+                # Raise error.
+                raise ValueError, "Sync first tier, cannot undefer"
+        else:
+            # Simple case
+            for ttl_fraction, client in izip(fractions, clients):
+                if not client.add(key, value, ttl * ttl_fraction):
+                    return False
+            else:
+                return True
+    
     def delete(self, key):
         for client in self.clients:
             client.delete(key)

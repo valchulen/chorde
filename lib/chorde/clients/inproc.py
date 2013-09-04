@@ -130,6 +130,11 @@ class InprocCacheClient(base.BaseCacheClient):
     def put(self, key, value, ttl):
         self.store[key] = (value, time.time() + ttl)
 
+    def add(self, key, value, ttl):
+        new_entry = (value, time.time() + ttl)
+        cur_entry = self.store.setdefault(key, new_entry)
+        return cur_entry is new_entry
+
     def delete(self, key):
         try:
             del self.store[key]

@@ -552,6 +552,16 @@ class FastMemcachedClient(BaseCacheClient):
         value = self.encode(key, ttl+time.time(), value)
         self._enqueue_put(key, value, ttl)
     
+    def add(self, key, value, ttl):
+        # set_multi all pages in one roundtrip
+        key = self.encode_key(key)
+
+        if self.queueset.get(key, NONE) is not NONE:
+            return False
+            
+        value = self.encode(key, ttl+time.time(), value)
+        return bool(self.client.add(key, value, ttl))
+    
     def delete(self, key):
         key = self.encode_key(key)
         self._enqueue_put(key, NONE, 0)

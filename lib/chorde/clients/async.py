@@ -381,6 +381,9 @@ class AsyncCacheProcessor(ThreadPool):
     def put(self, key, value, ttl):
         return self._enqueue(functools.partial(self.client.put, key, value, ttl))
 
+    def add(self, key, value, ttl):
+        return self._enqueue(functools.partial(self.client.add, key, value, ttl))
+
     def delete(self, key):
         return self._enqueue(functools.partial(self.client.delete, key))
 
