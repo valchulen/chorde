@@ -365,7 +365,8 @@ class AsyncCacheProcessor(ThreadPool):
             except CacheMissError:
                 future.miss()
             except:
-                future.exc(sys.exc_info())
+                # Clear up traceback to avoid leaks
+                future.exc(sys.exc_info()[:-1] + (None,))
         self.apply_async(wrapped_action, ())
         return future
     
