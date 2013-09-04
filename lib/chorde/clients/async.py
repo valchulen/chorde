@@ -315,7 +315,7 @@ class Future(object):
     def on_miss(self, callback):
         def value_callback(value):
             if value is CacheMissError:
-                return callback(value)
+                return callback()
         return self._on_stuff(value_callback)
 
     def on_exc(self, callback):
