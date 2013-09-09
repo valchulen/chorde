@@ -131,9 +131,18 @@ class InprocCacheClient(base.BaseCacheClient):
         self.store[key] = (value, time.time() + ttl)
 
     def add(self, key, value, ttl):
-        new_entry = (value, time.time() + ttl)
+        now = time.time()
+        new_entry = (value, now + ttl)
         cur_entry = self.store.setdefault(key, new_entry)
-        return cur_entry is new_entry
+        if cur_entry is new_entry:
+            return True
+        else:
+            # Check TTL
+            if cur_entry[1] < now:
+                self.store[key] = new_entry
+                return True
+            else:
+                return False
 
     def delete(self, key):
         try:
