@@ -560,7 +560,14 @@ class FastMemcachedClient(BaseCacheClient):
             return False
             
         value = self.encode(key, ttl+time.time(), value)
-        return bool(self.client.add(key, value, ttl))
+        rv = self.client.add(key, value, ttl)
+
+        if rv is True:
+            return True
+        elif rv is False:
+            return False
+        else:
+            raise RuntimeError, "Memcache add returned %r" % (rv,)
     
     def delete(self, key):
         key = self.encode_key(key)
