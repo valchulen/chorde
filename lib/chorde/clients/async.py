@@ -290,14 +290,22 @@ class ExceptionWrapper(object):
         self.value = value
 
 class Future(object):
-    __slots__ = ('_cb', '_value')
+    __slots__ = ('_cb', '_value', '_logger')
     
-    def __init__(self):
+    def __init__(self, logger = None):
         self._cb = []
+        self._logger = logger
     
     def set(self, value):
         for cb in self._cb:
-            cb(value)
+            try:
+                cb(value)
+            except:
+                if self._logger is not None:
+                    error = self._logger
+                else:
+                    error = logging.error
+                error("Error in async callback", exc_info = True)
         self._value = value
 
     def miss(self):
@@ -313,16 +321,16 @@ class Future(object):
         return self._on_stuff(value_callback)
 
     def on_miss(self, callback):
-        def value_callback(value):
+        def miss_callback(value):
             if value is CacheMissError:
                 return callback()
-        return self._on_stuff(value_callback)
+        return self._on_stuff(miss_callback)
 
     def on_exc(self, callback):
-        def value_callback(value):
+        def exc_callback(value):
             if isinstance(value, ExceptionWrapper):
-                return callback(value)
-        return self._on_stuff(value_callback)
+                return callback(value.value)
+        return self._on_stuff(exc_callback)
 
     def _on_stuff(self, callback, hasattr=hasattr):
         cbap = self._cb.append
@@ -362,7 +370,7 @@ class AsyncCacheProcessor(ThreadPool):
         ThreadPool.__init__(self, workers)
 
     def _enqueue(self, action):
-        future = Future()
+        future = Future(logger=self.logger)
         def wrapped_action():
             try:
                 future.set(action())
