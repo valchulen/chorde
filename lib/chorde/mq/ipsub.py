@@ -5,6 +5,7 @@ import zmq
 import logging
 import Queue
 import threading
+import thread
 import json
 import os
 import random
@@ -260,6 +261,8 @@ class IPSub(object):
                                     recv_update_reply(listener_req)
                             elif socket is listener_sub and what & POLLIN:
                                 recv_update(listener_sub)
+                except Queue.Full:
+                    logging.error("While handling IPSub FSM pipe: Queue full, update lost")
                 except BootstrapNow:
                     self.transition(IPSub.FSM.Bootstrap)
                 except:
@@ -343,6 +346,8 @@ class IPSub(object):
                                     send_update(broker_pub, noreply = T)
                                 else:
                                     poller_unregister(broker_pub)
+                except Queue.Full:
+                    logging.error("While handling IPSub FSM pipe: Queue full, update lost")
                 except BootstrapNow:
                     self.transition(IPSub.FSM.Bootstrap)
                 except:
@@ -382,6 +387,7 @@ class IPSub(object):
 
         self.heartbeat_avg_period = 500
         self.heartbeat_push_timeout = 4000
+        self.fsm_thread_id = None
 
         self.reset()
 
@@ -393,10 +399,14 @@ class IPSub(object):
         assert not self.is_running
         
         self.stop = False
-        self.fsm.enter()
-        while not self.stop:
-            self.fsm.stay()
-        self.fsm.leave()
+        try:
+            self.fsm_thread_id = thread.get_ident()
+            self.fsm.enter()
+            while not self.stop:
+                self.fsm.stay()
+            self.fsm.leave()
+        finally:
+            self.fsm_thread_id = None
 
     def terminate(self):
         self.stop = True
@@ -702,10 +712,15 @@ class IPSub(object):
         payload = cStringIO.StringIO(buffer(payload))
         return STREAMDECODINGS[encoding](payload)
 
-    def publish(self, prefix, payload, copy = False):
-        self._pushsocket().send_multipart(
-            [ prefix, self.identity ] + payload,
-            copy = copy )
+    def publish(self, prefix, payload, copy = False, _ident = thread.get_ident):
+        parts = [ prefix, self.identity ] + payload
+        if _ident() == self.fsm_thread_id:
+            try:
+                self.updates.put_nowait(parts)
+            except Queue.Full:
+                logging.error("While handling re-entrant IPSub publication: Queue full, update lost")
+        else:
+            self._pushsocket().send_multipart(parts, copy = copy)
 
     def wake(self):
         try:
