@@ -47,12 +47,12 @@ def cacheStats():
             
         return rv
 
-def cachePurge():
+def cachePurge(timeout = 0):
     with _caches_mutex:
         caches = _caches.keys()
     
     for cache in caches:
-        cache.purge()
+        cache.purge(timeout)
 
 def cacheClear():
     """
@@ -98,9 +98,11 @@ def cacheClear():
 
 class CacheJanitorThread(threading.Thread):
 
-    def __init__(self, sleep_interval):
+    def __init__(self, sleep_interval, purge_timeout = 0):
         threading.Thread.__init__(self)
         self.sleep_interval = sleep_interval
+        self.purge_timeout = purge_timeout
+        self.logger = None
         self.setDaemon(True)
         
     def run(self):
@@ -109,12 +111,15 @@ class CacheJanitorThread(threading.Thread):
         while True:
             time.sleep(self.sleep_interval)
             try:
-                cachePurge()
+                cachePurge(self.purge_timeout)
             except:
-                pass
+                if self.logger is None:
+                    pass
+                else:
+                    self.logger.error("Exception during cache purge", exc_info = True)
 
-def startCacheJanitorThread(sleep_interval=3600):
-    thread = CacheJanitorThread(sleep_interval)
+def startCacheJanitorThread(sleep_interval=3600, purge_timeout=0):
+    thread = CacheJanitorThread(sleep_interval, purge_timeout)
     thread.start()
     return thread
 
