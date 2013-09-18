@@ -12,7 +12,7 @@ import sys
 # undesirable, pushing pickling cost into foreground threads.
 import multiprocessing.dummy
 from multiprocessing.pool import ThreadPool
-from threading import Event, Thread
+import threading
 
 from .base import BaseCacheClient, CacheMissError, NONE
 
@@ -59,7 +59,7 @@ class AsyncCacheWriterPool(ThreadPool):
         self.queueset = {}
         self.workset = {}
         self.threadset = set()
-        self.done_event = Event()
+        self.done_event = threading.Event()
         
         ThreadPool.__init__(self, workers)
 
@@ -143,11 +143,12 @@ class AsyncCacheWriterPool(ThreadPool):
                     self.threadset.remove(thread.get_ident())
                 except KeyError:
                     pass
+            
             ev.set()
         
     @serialize
     def dequeue(self, key):
-        self.workset[key] = None
+        self.workset[key] = thread.get_ident()
         return self.queueset.pop(key, _NONE)
 
     def enqueue(self, key, value, ttl=None):
@@ -189,7 +190,13 @@ class AsyncCacheWriterPool(ThreadPool):
     
     def contains(self, key):
         # Not atomic, but it doesn't really matter much, very unlikely and benignly to fail
-        return key in self.queueset or key in self.workset
+        if key in self.queueset:
+            return True
+        else:
+            # Exclude keys being computed by this thread, such calls 
+            # want the async wrapper out of their way
+            tid = thread.get_ident()
+            return self.workset.get(key, tid) != tid
 
     def put(self, key, value, ttl):
         self.enqueue(key, value, ttl)
@@ -258,7 +265,13 @@ class AsyncWriteCacheClient(BaseCacheClient):
             value = self.writer.getTtl(key, _NONE)
             if value is not _NONE:
                 value, ttl = value
-                if not isinstance(value, Defer):
+                if value is _DELETE:
+                    # Deletion means a miss... right?
+                    if default is NONE:
+                        raise CacheMissError, key
+                    else:
+                        return default, -1
+                elif not isinstance(value, Defer):
                     return value, ttl
             # Yep, _NONE when querying the writer, because we don't want
             # to return a default if the writer doesn't have it, we must
@@ -274,14 +287,14 @@ class AsyncWriteCacheClient(BaseCacheClient):
     def wait(self, key, timeout = None):
         self.writer.waitkey(key, timeout)
     
-    def contains(self, key, ttl = None):
+    def contains(self, key, ttl = None, **kw):
         if self.is_started():
             if self.writer.contains(key):
                 return True
             else:
-                return self.client.contains(key, ttl)
+                return self.client.contains(key, ttl, **kw)
         else:
-            return self.client.contains(key, ttl)
+            return self.client.contains(key, ttl, **kw)
 
 class ExceptionWrapper(object):
     __slots__ = ('value',)
@@ -391,8 +404,8 @@ class AsyncCacheProcessor(ThreadPool):
     def get(self, key, default = NONE):
         return self._enqueue(functools.partial(self.client.get, key, default))
     
-    def contains(self, key):
-        return self._enqueue(functools.partial(self.client.contains, key))
+    def contains(self, key, *p, **kw):
+        return self._enqueue(functools.partial(self.client.contains, key, *p, **kw))
 
     def put(self, key, value, ttl):
         return self._enqueue(functools.partial(self.client.put, key, value, ttl))
