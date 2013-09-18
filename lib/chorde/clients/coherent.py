@@ -59,8 +59,10 @@ class CoherentDefer(Defer):
                 computer = self.manager.query_pending(self.key, self.expired, self.timeout, True)
                 if computer is None:
                     # My turn
-                    self.computed = True
-                    return self.callable_(*self.args, **self.kwargs)
+                    rv = self.callable_(*self.args, **self.kwargs)
+                    if rv is not NONE:
+                        self.computed = True
+                    return rv
                 elif computer is coherence.OOB_UPDATE and not self.expired():
                     # Skip, tiered caches will read it from the shared cache and push it downstream
                     return NONE
