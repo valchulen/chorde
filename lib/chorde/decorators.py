@@ -597,6 +597,9 @@ if not no_coherence:
             async_writer_queue_size = None, 
             async_writer_workers = None,
             async_ttl = None,
+            lazy_kwargs = {},
+            async_lazy_recheck = False,
+            async_lazy_recheck_kwargs = {},
             initialize = None,
             decorate = None,
             tiered_opts = None,
@@ -702,6 +705,9 @@ if not no_coherence:
                 async_ttl = async_ttl,
                 initialize = initialize,
                 decorate = decorate,
+                lazy_kwargs = lazy_kwargs,
+                async_lazy_recheck = async_lazy_recheck,
+                async_lazy_recheck_kwargs = async_lazy_recheck_kwargs,
                 _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl) )(f)
             rv.coherence = coherence_manager
             rv.ipsub = ipsub
