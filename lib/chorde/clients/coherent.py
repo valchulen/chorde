@@ -133,6 +133,7 @@ class CoherentWrapperClient(BaseCacheClient):
                     rv = callable_(*p, **kw)
                     if rv is not NONE:
                         manager.fire_done([key])
+                    return rv
                 value.callable_ = done_after
                 self.client.put(key, value, ttl)
             else:
