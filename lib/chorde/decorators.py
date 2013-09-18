@@ -56,14 +56,6 @@ def _make_namespace(f):
     except:
         return repr(f)
 
-def _touch_key(client, key, **kw):
-    try:
-        client.getTtl(key, **kw)
-    except:
-        # Don't care
-        pass
-    return base.NONE
-
 def _simple_put_deferred(client, f, key, ttl, *p, **kw):
     return client.put(key, async.Defer(f, *p, **kw), ttl)
 
@@ -120,7 +112,8 @@ def cached(client, ttl,
         initialize = None,
         decorate = None,
         timings = True,
-        _put_deferred = _simple_put_deferred ):
+        _put_deferred = None,
+        _lazy_recheck_put_deferred = None ):
     """
     This decorator provides cacheability to suitable functions.
 
@@ -269,6 +262,8 @@ def cached(client, ttl,
 
     if _put_deferred is None:
         _put_deferred = _simple_put_deferred
+    if _lazy_recheck_put_deferred is None:
+        _lazy_recheck_put_deferred = _simple_put_deferred
 
     def decor(f):
         if namespace is None:
@@ -463,28 +458,27 @@ def cached(client, ttl,
 
             client = aclient[0]
 
-            if async_lazy_recheck:
-                try:
-                    rv, rvttl = client.getTtl(callkey, _NONE, **lazy_kwargs)
-                except CacheMissError:
+            rv, rvttl = client.getTtl(callkey, _NONE, **lazy_kwargs)
+
+            if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl, **lazy_kwargs):
+                if async_lazy_recheck:
                     stats.misses += 1
                     
                     # send a Defer that touches the client with recheck kwargs
-                    # before doing the refresh
+                    # before doing the refresh. Needs not be coherent.
                     def touch_key(*p, **kw):
-                        rv, rvttl = client.getTtl(callkey, _NONE, **async_lazy_recheck_kwargs)
-                        if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
-                            stats.misses -= 1 # af will re-increment
-                            return af(*p, **kw)
-                        else:
-                            return base.NONE
-                    _put_deferred(client, _touch_key, callkey, ttl, *p, **kw)
-                    raise
-            else:
-                rv, rvttl = client.getTtl(callkey, _NONE, **lazy_kwargs)
-            
-            if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
-                _put_deferred(client, af, callkey, ttl, *p, **kw)
+                        rv, rvttl = nclient.getTtl(callkey, _NONE, **async_lazy_recheck_kwargs)
+                        if (rv is _NONE or rvttl < async_ttl) and not nclient.contains(callkey, async_ttl, 
+                                **async_lazy_recheck_kwargs):
+                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                        return base.NONE
+
+                    # This will make contains return True for this key, until touch_key returns
+                    # This is actually good, since it'll result in immediate misses from now on,
+                    # avoiding trying to queue up touch after touch
+                    _lazy_recheck_put_deferred(client, touch_key, callkey, ttl, *p, **kw)
+                else:
+                    _put_deferred(client, af, callkey, ttl, *p, **kw)
             elif rv is not _NONE:
                 stats.hits += 1
 

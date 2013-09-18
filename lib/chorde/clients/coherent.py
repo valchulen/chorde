@@ -203,5 +203,5 @@ class CoherentWrapperClient(BaseCacheClient):
     def getTtl(self, key, default = NONE, **kw):
         return self.client.getTtl(key, default, **kw)
     
-    def contains(self, key, ttl = None):
-        return self.client.contains(key, ttl)
+    def contains(self, key, ttl = None, **kw):
+        return self.client.contains(key, ttl, **kw)

@@ -132,8 +132,8 @@ class ReadWriteSyncAdapter(BaseCacheClient):
         return self.client.purge(timeout)
 
     @serialize_read
-    def contains(self, key, ttl = None):
-        return self.client.contains(key, ttl)
+    def contains(self, key, ttl = None, **kw):
+        return self.client.contains(key, ttl, **kw)
 
 
 class SyncAdapter(BaseCacheClient):
@@ -169,8 +169,8 @@ class SyncAdapter(BaseCacheClient):
         return self.client.purge(timeout)
 
     @serialize
-    def contains(self, key, ttl = None):
-        return self.client.contains(key, ttl)
+    def contains(self, key, ttl = None, **kw):
+        return self.client.contains(key, ttl, **kw)
 
 
 class DecoratedWrapper(BaseCacheClient):
@@ -227,11 +227,11 @@ class DecoratedWrapper(BaseCacheClient):
     def purge(self, timeout = 0):
         return self.client.purge(timeout)
 
-    def contains(self, key, ttl = None):
+    def contains(self, key, ttl = None, **kw):
         key_decorator = self.key_decorator
         if key_decorator is not None:
             key = key_decorator(key)
-        return self.client.contains(key, ttl)
+        return self.client.contains(key, ttl, **kw)
 
 class NamespaceWrapper(DecoratedWrapper):
     """
