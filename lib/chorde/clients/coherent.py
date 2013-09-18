@@ -197,8 +197,8 @@ class CoherentWrapperClient(BaseCacheClient):
     def purge(self):
         self.client.purge()
     
-    def getTtl(self, key, default = NONE):
-        return self.client.getTtl(key, default)
+    def getTtl(self, key, default = NONE, **kw):
+        return self.client.getTtl(key, default, **kw)
     
     def contains(self, key, ttl = None):
         return self.client.contains(key, ttl)

@@ -252,7 +252,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
         if self.is_started():
             self.writer.purge()
     
-    def getTtl(self, key, default = NONE):
+    def getTtl(self, key, default = NONE, **kw):
         if self.is_started():
             # Try to read pending writes as if they were on the cache
             value = self.writer.getTtl(key, _NONE)
@@ -265,7 +265,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
             # still check the client.
         
         # Ok, read the cache then
-        value, ttl = self.client.getTtl(key, default)
+        value, ttl = self.client.getTtl(key, default, **kw)
         if value is NONE:
             raise CacheMissError, key
         else:
@@ -385,8 +385,8 @@ class AsyncCacheProcessor(ThreadPool):
     def do_async(self, func, *args, **kwargs):
         return self._enqueue(functools.partial(func, *args, **kwargs))
     
-    def getTtl(self, key, default = None):
-        return self._enqueue(functools.partial(self.client.getTtl, key, default))
+    def getTtl(self, key, default = None, **kw):
+        return self._enqueue(functools.partial(self.client.getTtl, key, default, **kw))
     
     def get(self, key, default = NONE):
         return self._enqueue(functools.partial(self.client.get, key, default))

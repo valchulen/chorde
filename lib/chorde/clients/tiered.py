@@ -96,10 +96,13 @@ class TieredInclusiveClient(BaseCacheClient):
         for client in self.clients:
             client.purge()
     
-    def getTtl(self, key, default = NONE):
+    def getTtl(self, key, default = NONE, _max_tiers = None):
         ttl = -1
         NONE__ = NONE_
-        for i,client in enumerate(self.clients):
+        clients = self.clients
+        if _max_tiers is not None:
+            clients = islice(clients, _max_tiers)
+        for i,client in enumerate(clients):
             # Yeap, separate NONE_, we must avoid CacheMissError s
             rv, ttl = client.getTtl(key, NONE__)
             if rv is not NONE__ and ttl >= 0:

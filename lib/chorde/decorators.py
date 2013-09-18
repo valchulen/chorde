@@ -56,6 +56,14 @@ def _make_namespace(f):
     except:
         return repr(f)
 
+def _touch_key(client, key, **kw):
+    try:
+        client.getTtl(key, **kw)
+    except:
+        # Don't care
+        pass
+    return base.NONE
+
 def _simple_put_deferred(client, f, key, ttl, *p, **kw):
     return client.put(key, async.Defer(f, *p, **kw), ttl)
 
@@ -106,6 +114,9 @@ def cached(client, ttl,
         async_writer_workers = None,
         async_ttl = None,
         async_client = None,
+        lazy_kwargs = {},
+        async_lazy_recheck = False,
+        async_lazy_recheck_kwargs = {},
         initialize = None,
         decorate = None,
         timings = True,
@@ -218,6 +229,16 @@ def cached(client, ttl,
             a refresh just 1 second before the entry expires. It must be smaller than ttl. Default is half the TTL.
             If negative, it means ttl - async_ttl, which reverses the logic to mean "async_ttl" seconds after
             creation of the cache entry.
+
+        lazy_kwargs: (optional) kwargs to send to the client's getTtl when doing lazy requests. Useful for
+            tiered clients, that can accept access modifiers through kwargs
+
+        async_lazy_recheck: (optional) when sending lazy_kwargs that may result in spurious CacheMissError,
+            specifying this on True will trigger an async re-check of the cache (to verify the need for an
+            async refresh).
+
+        async_lazy_recheck_kwargs: (optional) when setting async_lazy_recheck, recheck kwargs can be specified
+            here (default empty).
 
         initialize: (optional) A callable hook to be called right before all accesses. It should initialize whatever
             is needed initialized (like daemon threads), and only once (it should be a no-op after it's called once)
@@ -378,7 +399,7 @@ def cached(client, ttl,
                 stats.errors += 1
                 raise CacheMissError
             
-            rv = nclient.get(callkey)
+            rv = nclient.get(callkey, **lazy_kwargs)
             stats.hits += 1
             return rv
         if decorate is not None:
@@ -441,7 +462,26 @@ def cached(client, ttl,
                 raise CacheMissError
 
             client = aclient[0]
-            rv, rvttl = client.getTtl(callkey, _NONE)
+
+            if async_lazy_recheck:
+                try:
+                    rv, rvttl = client.getTtl(callkey, _NONE, **lazy_kwargs)
+                except CacheMissError:
+                    stats.misses += 1
+                    
+                    # send a Defer that touches the client with recheck kwargs
+                    # before doing the refresh
+                    def touch_key(*p, **kw):
+                        rv, rvttl = client.getTtl(callkey, _NONE, **async_lazy_recheck_kwargs)
+                        if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
+                            stats.misses -= 1 # af will re-increment
+                            return af(*p, **kw)
+                        else:
+                            return base.NONE
+                    _put_deferred(client, _touch_key, callkey, ttl, *p, **kw)
+                    raise
+            else:
+                rv, rvttl = client.getTtl(callkey, _NONE, **lazy_kwargs)
             
             if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
                 _put_deferred(client, af, callkey, ttl, *p, **kw)

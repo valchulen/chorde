@@ -62,8 +62,8 @@ class BaseCacheClient(object):
         else:
             return (default, -1)
     
-    def get(self, key, default = NONE):
-        rv, ttl = self.getTtl(key, default)
+    def get(self, key, default = NONE, **kw):
+        rv, ttl = self.getTtl(key, default, **kw)
         if ttl < 0 and default is NONE:
             raise CacheMissError, key
         else:
@@ -120,8 +120,8 @@ class ReadWriteSyncAdapter(BaseCacheClient):
         return self.client.delete(key)
 
     @serialize_read
-    def getTtl(self, key, default = NONE):
-        return self.client.getTtl(key, default)
+    def getTtl(self, key, default = NONE, **kw):
+        return self.client.getTtl(key, default, **kw)
 
     @serialize_write
     def clear(self):
@@ -157,8 +157,8 @@ class SyncAdapter(BaseCacheClient):
         return self.client.delete(key)
 
     @serialize
-    def getTtl(self, key, default = NONE):
-        return self.client.getTtl(key, default)
+    def getTtl(self, key, default = NONE, **kw):
+        return self.client.getTtl(key, default, **kw)
 
     @serialize
     def clear(self):
@@ -212,11 +212,11 @@ class DecoratedWrapper(BaseCacheClient):
             key = self.key_decorator(key)
         return self.client.delete(key)
 
-    def getTtl(self, key, default = NONE):
+    def getTtl(self, key, default = NONE, **kw):
         key_decorator = self.key_decorator
         if key_decorator is not None:
             key = key_decorator(key)
-        rv = self.client.getTtl(key, default)
+        rv = self.client.getTtl(key, default, **kw)
         if rv is not default and self.value_undecorator is not None:
             rv = self.value_undecorator(rv)
         return rv
