@@ -19,6 +19,7 @@ from .base import BaseCacheClient, CacheMissError, NONE
 
 class _NONE:pass
 class _DELETE:pass
+class _EXPIRE:pass
 class _PURGE:pass
 class _CLEAR:pass
 
@@ -112,6 +113,12 @@ class AsyncCacheWriterPool(ThreadPool):
                 except:
                     self.logger.error("Error deleting key", exc_info=True)
             
+            elif value is _EXPIRE:
+                try:
+                    self.client.expire(key)
+                except:
+                    self.logger.error("Error expiring key", exc_info=True)
+            
             elif value is _CLEAR:
                 try:
                     self.client.clear()
@@ -204,6 +211,9 @@ class AsyncCacheWriterPool(ThreadPool):
     def delete(self, key):
         self.enqueue(key, _DELETE)
 
+    def expire(self, key):
+        self.enqueue(key, _EXPIRE)
+
     def clear(self):
         self.clearqueue()
         self.enqueue(_CLEAR, _CLEAR)
@@ -251,6 +261,10 @@ class AsyncWriteCacheClient(BaseCacheClient):
         self.assert_started()
         self.writer.delete(key)
 
+    def expire(self, key):
+        self.assert_started()
+        self.writer.expire(key)
+
     def clear(self):
         if self.is_started():
             self.writer.clear()
@@ -260,6 +274,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
             self.writer.purge()
     
     def getTtl(self, key, default = NONE, **kw):
+        ettl = None
         if self.is_started():
             # Try to read pending writes as if they were on the cache
             value = self.writer.getTtl(key, _NONE)
@@ -271,6 +286,9 @@ class AsyncWriteCacheClient(BaseCacheClient):
                         raise CacheMissError, key
                     else:
                         return default, -1
+                elif value is _EXPIRE:
+                    # Expiration just sets the TTL
+                    ettl = -1
                 elif not isinstance(value, Defer):
                     return value, ttl
             # Yep, _NONE when querying the writer, because we don't want
@@ -279,6 +297,8 @@ class AsyncWriteCacheClient(BaseCacheClient):
         
         # Ok, read the cache then
         value, ttl = self.client.getTtl(key, default, **kw)
+        if ettl is not None:
+            ttl = ettl
         if value is NONE:
             raise CacheMissError, key
         else:
