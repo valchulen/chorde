@@ -48,6 +48,13 @@ class BaseCacheClient(object):
     def delete(self, key):
         raise NotImplementedError
 
+    def expire(self, key):
+        """
+        If they given key is in the cache, it will set its TTL to 0, so
+        getTtl will subsequently return either a miss, or an expired item.
+        """
+        return self.delete(key)
+
     @abstractmethod
     def getTtl(self, key, default = NONE):
         """
@@ -119,6 +126,10 @@ class ReadWriteSyncAdapter(BaseCacheClient):
     def delete(self, key):
         return self.client.delete(key)
 
+    @serialize_write
+    def expire(self, key):
+        return self.client.expire(key)
+
     @serialize_read
     def getTtl(self, key, default = NONE, **kw):
         return self.client.getTtl(key, default, **kw)
@@ -155,6 +166,10 @@ class SyncAdapter(BaseCacheClient):
     @serialize
     def delete(self, key):
         return self.client.delete(key)
+
+    @serialize
+    def expire(self, key):
+        return self.client.expire(key)
 
     @serialize
     def getTtl(self, key, default = NONE, **kw):
@@ -211,6 +226,11 @@ class DecoratedWrapper(BaseCacheClient):
         if self.key_decorator:
             key = self.key_decorator(key)
         return self.client.delete(key)
+
+    def expire(self, key):
+        if self.key_decorator:
+            key = self.key_decorator(key)
+        return self.client.expire(key)
 
     def getTtl(self, key, default = NONE, **kw):
         key_decorator = self.key_decorator

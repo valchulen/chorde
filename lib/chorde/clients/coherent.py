@@ -191,6 +191,9 @@ class CoherentWrapperClient(BaseCacheClient):
         # Warn others
         self.manager.fire_deletion(key)
 
+    def expire(self, key):
+        self.client.expire(key)
+
     def clear(self):
         self.client.clear()
 

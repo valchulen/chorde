@@ -540,7 +540,7 @@ class CoherenceManager(object):
                         pass
                     if private.contains(key):
                         try:
-                            self.private.delete(key)
+                            self.private.expire(key)
                         except CacheMissError:
                             pass
         else:
@@ -550,7 +550,7 @@ class CoherenceManager(object):
             for key in keys:
                 if private.contains(key):
                     try:
-                        self.private.delete(key)
+                        self.private.expire(key)
                     except CacheMissError:
                         pass
         return True

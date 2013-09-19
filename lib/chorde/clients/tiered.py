@@ -88,6 +88,10 @@ class TieredInclusiveClient(BaseCacheClient):
         for client in self.clients:
             client.delete(key)
 
+    def expire(self, key):
+        for client in self.clients:
+            client.expire(key)
+
     def clear(self):
         for client in self.clients:
             client.clear()
@@ -96,7 +100,7 @@ class TieredInclusiveClient(BaseCacheClient):
         for client in self.clients:
             client.purge()
     
-    def getTtl(self, key, default = NONE, _max_tiers = None):
+    def getTtl(self, key, default = NONE, _max_tiers = None, _ttl_skip = 0, **kw):
         ttl = -1
         NONE__ = NONE_
         clients = self.clients
@@ -105,7 +109,7 @@ class TieredInclusiveClient(BaseCacheClient):
         for i,client in enumerate(clients):
             # Yeap, separate NONE_, we must avoid CacheMissError s
             rv, ttl = client.getTtl(key, NONE__)
-            if rv is not NONE__ and ttl >= 0:
+            if rv is not NONE__ and ttl >= _ttl_skip:
                 # Cool
                 if i > 0 and ttl > 0:
                     # Um... not first-tier
@@ -126,7 +130,7 @@ class TieredInclusiveClient(BaseCacheClient):
                 else:
                     return default, -1
     
-    def contains(self, key, ttl = None, _max_tiers = None):
+    def contains(self, key, ttl = None, _max_tiers = None, **kw):
         clients = self.clients
         if _max_tiers is not None:
             clients = islice(clients, _max_tiers)

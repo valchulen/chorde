@@ -106,6 +106,7 @@ def cached(client, ttl,
         async_writer_workers = None,
         async_ttl = None,
         async_client = None,
+        async_expire = None,
         lazy_kwargs = {},
         async_lazy_recheck = False,
         async_lazy_recheck_kwargs = {},
@@ -222,6 +223,9 @@ def cached(client, ttl,
             a refresh just 1 second before the entry expires. It must be smaller than ttl. Default is half the TTL.
             If negative, it means ttl - async_ttl, which reverses the logic to mean "async_ttl" seconds after
             creation of the cache entry.
+
+        async_expire: (optional) A callable that will get an expired key, when TTL falls below async_ttl.
+            Common use case is to pass a first-tier's expire bound method, thus initiating a refresh.
 
         lazy_kwargs: (optional) kwargs to send to the client's getTtl when doing lazy requests. Useful for
             tiered clients, that can accept access modifiers through kwargs
@@ -480,6 +484,8 @@ def cached(client, ttl,
                 else:
                     _put_deferred(client, af, callkey, ttl, *p, **kw)
             elif rv is not _NONE:
+                if rvttl < async_ttl and async_expire:
+                    async_expire(callkey)
                 stats.hits += 1
 
             if rv is _NONE:
@@ -591,6 +597,7 @@ if not no_coherence:
             async_writer_queue_size = None, 
             async_writer_workers = None,
             async_ttl = None,
+            async_expire = None,
             lazy_kwargs = {},
             async_lazy_recheck = False,
             async_lazy_recheck_kwargs = {},
@@ -697,6 +704,7 @@ if not no_coherence:
                 async_writer_queue_size = async_writer_queue_size, 
                 async_writer_workers = async_writer_workers,
                 async_ttl = async_ttl,
+                async_expire = async_expire,
                 initialize = initialize,
                 decorate = decorate,
                 lazy_kwargs = lazy_kwargs,

@@ -152,7 +152,16 @@ class InprocCacheClient(base.BaseCacheClient):
     def delete(self, key):
         try:
             del self.store[key]
-        except KeyError:
+        except CacheMissError:
+            pass
+
+    def expire(self, key):
+        now = time.time()
+        store = self.store
+        try:
+            value, ttl = store.pop(key)
+            store.setdefault(key, (value, now))
+        except CacheMissError:
             pass
 
     def getTtl(self, key, default = base.NONE, baseNONE = base.NONE, time=time.time):
