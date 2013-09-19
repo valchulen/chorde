@@ -111,7 +111,7 @@ class TieredInclusiveClient(BaseCacheClient):
             rv, ttl = client.getTtl(key, NONE__)
             if rv is not NONE__ and ttl >= _ttl_skip:
                 # Cool
-                if i > 0 and ttl > 0:
+                if i > 0 and ttl > _ttl_skip:
                     # Um... not first-tier
                     # Move the entry up the ladder
                     self.clients[i-1].put(key, rv, ttl)
