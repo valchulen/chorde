@@ -124,6 +124,31 @@ class MemcachedClient(BaseCacheClient):
     def async(self):
         return False
     
+    @property
+    def stats(self):
+        stats = getattr(self, '_stats', None)
+        if stats is None or stats[1] < time.time():
+            stats = collections.defaultdict(int)
+            for srv,s in self.client.get_stats():
+                for k,v in s.iteritems():
+                    try:
+                        v = int(v)
+                        stats[k] += v
+                    except:
+                        pass
+            self._stats = (stats, time.time() + 1)
+        else:
+            stats = stats[0]
+        return stats
+    
+    @property
+    def capacity(self):
+        return self.stats.get('limit_maxbytes', 0)
+
+    @property
+    def usage(self):
+        return self.stats.get('bytes', 0)
+
     def shorten_key(self, key):
         # keys cannot be anything other than strings
         if not isinstance(key, basestring):
@@ -435,6 +460,22 @@ class FastMemcachedClient(BaseCacheClient):
     def async(self):
         return False
     
+    @property
+    def stats(self):
+        stats = getattr(self, '_stats', None)
+        if stats is None or stats[0] < time.time():
+            stats = self.client.get_stats() or {}
+            self._stats = (stats, time.time() + 1)
+        return stats
+    
+    @property
+    def capacity(self):
+        return self.stats.get('limit_maxbytes', 0)
+
+    @property
+    def usage(self):
+        return self.stats.get('bytes', 0)
+
     def _enqueue_put(self, key, value, ttl):
         # Atomic insert
         value = value, ttl

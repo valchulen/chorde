@@ -34,6 +34,7 @@ class Defer(object):
         self.callable_ = callable_
         self.args = args
         self.kwargs = kwargs
+        self.lazy = False
 
     def undefer(self):
         return self.callable_(*self.args, **self.kwargs)
@@ -153,6 +154,14 @@ class AsyncCacheWriterPool(ThreadPool):
             
             ev.set()
         
+    @property
+    def capacity(self):
+        return self.size
+
+    @property
+    def usage(self):
+        return len(self.queueset)
+
     @serialize
     def dequeue(self, key):
         self.workset[key] = thread.get_ident()
@@ -253,6 +262,14 @@ class AsyncWriteCacheClient(BaseCacheClient):
     def async(self):
         return True
     
+    @property
+    def capacity(self):
+        return (self.client.capacity, self.writer.capacity if self.writer is not None else 0)
+
+    @property
+    def usage(self):
+        return (self.client.usage, self.writer.usage if self.writer is not None else 0)
+
     def put(self, key, value, ttl):
         self.assert_started()
         self.writer.put(key, value, ttl)
@@ -415,6 +432,14 @@ class AsyncCacheProcessor(ThreadPool):
         self.apply_async(wrapped_action, ())
         return future
 
+    @property
+    def capacity(self):
+        return self.client.capacity
+
+    @property
+    def usage(self):
+        return self.client.usage
+
     def do_async(self, func, *args, **kwargs):
         return self._enqueue(functools.partial(func, *args, **kwargs))
     
@@ -435,6 +460,9 @@ class AsyncCacheProcessor(ThreadPool):
 
     def delete(self, key):
         return self._enqueue(functools.partial(self.client.delete, key))
+
+    def expire(self, key):
+        return self._enqueue(functools.partial(self.client.expire, key))
 
     def clear(self):
         return self._enqueue(self.client.clear)

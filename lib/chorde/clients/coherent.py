@@ -107,6 +107,14 @@ class CoherentWrapperClient(BaseCacheClient):
     def async(self):
         return self.client.async
 
+    @property
+    def capacity(self):
+        return self.client.capacity
+
+    @property
+    def usage(self):
+        return self.client.usage
+
     def wait(self, key, timeout = None):
         # Hey, look at that. Since locally it it all happens on a Defer, 
         # we can just wait on the wrapped client first to wait for ourselves

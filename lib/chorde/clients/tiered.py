@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from itertools import izip, islice
+import operator
 import logging
 
 from . import async
@@ -20,6 +21,14 @@ class TieredInclusiveClient(BaseCacheClient):
                 return True
         else:
             return False
+
+    @property
+    def capacity(self):
+        return map(operator.attrgetter('capacity'), self.clients)
+
+    @property
+    def usage(self):
+        return map(operator.attrgetter('usage'), self.clients)
 
     def wait(self, key, timeout = None):
         for client in self.clients:

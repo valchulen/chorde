@@ -132,6 +132,14 @@ class InprocCacheClient(base.BaseCacheClient):
     def async(self):
         return False
 
+    @property
+    def capacity(self):
+        return self.store.size
+
+    @property
+    def usage(self):
+        return len(self.store)
+
     def put(self, key, value, ttl):
         self.store[key] = (value, time.time() + ttl)
 

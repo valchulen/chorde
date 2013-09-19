@@ -18,6 +18,14 @@ class BaseCacheClient(object):
     def async(self):
         return False
 
+    @abstractproperty
+    def capacity(self):
+        raise NotImplementedError
+
+    @abstractproperty
+    def usage(self):
+        raise NotImplementedError
+
     def wait(self, key, timeout = None):
         """
         Only valid for async clients, if there is a write pending, this
@@ -114,6 +122,14 @@ class ReadWriteSyncAdapter(BaseCacheClient):
     def async(self):
         return self.client.async
 
+    @property
+    def capacity(self):
+        return self.client.capacity
+
+    @property
+    def usage(self):
+        return self.client.usage
+
     @serialize_write
     def put(self, key, value, ttl):
         return self.client.put(key, value, ttl)
@@ -154,6 +170,14 @@ class SyncAdapter(BaseCacheClient):
     @property
     def async(self):
         return self.client.async
+
+    @property
+    def capacity(self):
+        return self.client.capacity
+
+    @property
+    def usage(self):
+        return self.client.usage
 
     @serialize
     def put(self, key, value, ttl):
@@ -202,6 +226,14 @@ class DecoratedWrapper(BaseCacheClient):
     @property
     def async(self):
         return self.client.async
+
+    @property
+    def capacity(self):
+        return self.client.capacity
+
+    @property
+    def usage(self):
+        return self.client.usage
 
     def wait(self, key, timeout = None):
         if self.key_decorator:
