@@ -806,7 +806,7 @@ class IPSub(object):
             if identity is None and event != EVENT_UPDATE_SENT:
                 prefix = None
             elif len(update[0]) < MAX_PREFIX:
-                prefix = update[0].bytes
+                prefix = getattr(update[0], 'bytes', update[0])
             else:
                 prefix = bytes(buffer(update[0], 0, MAX_PREFIX))
             if identity is None or identity == self.identity:
