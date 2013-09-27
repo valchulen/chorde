@@ -49,7 +49,7 @@ class CoherentDefer(Defer):
             self.timeout = self.manager.ipsub.heartbeat_push_timeout
         self.wait_time = kwargs.pop('wait_time', 0)
         self.computed = False
-        self.aborted = True
+        self.aborted = False
         super(CoherentDefer, self).__init__(callable_, *args, **kwargs)
 
     def undefer(self):

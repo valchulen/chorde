@@ -106,6 +106,8 @@ class AsyncCacheWriterPool(ThreadPool):
             
             if value is _NONE or value is NONE:
                 # undefer probably decided not to compute anything (or an error arose, whatever)
+                if deferred is not _NONE:
+                    deferred.done()
                 return
                 
             elif value is _DELETE:
