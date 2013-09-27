@@ -699,6 +699,7 @@ if not no_coherence:
     
             rv = cached(nclient, ttl,
                 namespace = NO_NAMESPACE, # Already covered
+                key = key,
                 value_serialization_function = value_serialization_function,
                 value_deserialization_function = value_deserialization_function,
                 async_writer_queue_size = async_writer_queue_size, 
