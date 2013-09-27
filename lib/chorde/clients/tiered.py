@@ -36,15 +36,17 @@ class TieredInclusiveClient(BaseCacheClient):
     
     def __putnext(self, clients, fractions, key, value, ttl):
         deferred = value
-        value = value.undefer()
-        if value is not NONE and value is not async._NONE:
-            for fraction, client in islice(izip(fractions,clients), 1, None):
-                try:
-                    client.put(key, value, ttl * fraction)
-                except:
-                    logging.error("Error propagating deferred value through tier %r", client)
-        deferred.done()
-        return value
+        try:
+            value = value.undefer()
+            if value is not NONE and value is not async._NONE:
+                for fraction, client in islice(izip(fractions,clients), 1, None):
+                    try:
+                        client.put(key, value, ttl * fraction)
+                    except:
+                        logging.error("Error propagating deferred value through tier %r", client)
+            return value
+        finally:
+            deferred.done()
     
     def put(self, key, value, ttl):
         clients = self.clients
