@@ -49,6 +49,7 @@ class CoherentDefer(Defer):
             self.timeout = self.manager.ipsub.heartbeat_push_timeout
         self.wait_time = kwargs.pop('wait_time', 0)
         self.computed = False
+        self.aborted = True
         super(CoherentDefer, self).__init__(callable_, *args, **kwargs)
 
     def undefer(self):
@@ -59,9 +60,13 @@ class CoherentDefer(Defer):
                 computer = self.manager.query_pending(self.key, self.expired, self.timeout, True)
                 if computer is None:
                     # My turn
-                    rv = self.callable_(*self.args, **self.kwargs)
-                    if rv is not NONE:
-                        self.computed = True
+                    try:
+                        rv = self.callable_(*self.args, **self.kwargs)
+                        if rv is not NONE:
+                            self.computed = True
+                    except:
+                        self.aborted = True
+                        raise
                     return rv
                 elif computer is coherence.OOB_UPDATE and not self.expired():
                     # Skip, tiered caches will read it from the shared cache and push it downstream
@@ -78,6 +83,8 @@ class CoherentDefer(Defer):
     def done(self):
         if self.computed:
             self.manager.mark_done(self.key)
+        elif self.aborted:
+            self.manager.mark_aborted(self.key)
 
 class CoherentWrapperClient(BaseCacheClient):
     """

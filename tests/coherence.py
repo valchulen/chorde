@@ -186,6 +186,37 @@ class CoherenceProtocolTest(unittest.TestCase):
 
         self.assertLess(t2-t1, 2*coherence.PENDING_TIMEOUT) # No excessive timeout
 
+    def test_wait_on_aborted(self):
+        t1 = time.time()
+        pending = self.coherence2.query_pending(1, lambda:1, optimistic_lock = True)
+        t2 = time.time()
+        
+        self.assertEqual(pending, None) # No pending
+        self.assertLess(t2-t1, 1.0) # No timeout
+        self.assertTrue(1 in self.coherence2.pending) # Locally pending now
+        
+        t1 = time.time()
+        pending = self.coherence.query_pending(1, lambda:1, optimistic_lock = True)
+        t2 = time.time()
+        
+        self.assertNotEqual(pending, None) # pending on coherence2
+        self.assertLess(t2-t1, 1.0) # No timeout
+        self.assertTrue(1 not in self.coherence.pending) # Not locally pending
+
+        t1 = time.time()
+        waiter = threading.Thread(target=self.coherence.wait_done, args=(1,))
+        waiter.daemon = True
+        waiter.start()
+
+        # Coherence2 aborts... coherence must pick up
+        time.sleep(0.1)
+        self.coherence.mark_aborted(1)
+        
+        waiter.join(3*coherence.PENDING_TIMEOUT)
+        t2 = time.time()
+
+        self.assertLess(t2-t1, 2*coherence.PENDING_TIMEOUT) # No excessive timeout
+
     def test_wait_on_undead(self):
         t1 = time.time()
         pending = self.coherence2.query_pending(1, lambda:1, optimistic_lock = True)

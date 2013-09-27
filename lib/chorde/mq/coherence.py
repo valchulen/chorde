@@ -210,6 +210,7 @@ class CoherenceManager(object):
         self.pendprefix = namespace + '|c|pend|'
         self.pendqprefix = namespace + '|c|pendq|'
         self.doneprefix = namespace + '|c|done|'
+        self.abortprefix = namespace + '|c|abrt|'
 
         # Broker -> Listener requests
         self.listpendqprefix = namespace + '|c|listpendq|'
@@ -560,6 +561,11 @@ class CoherenceManager(object):
         if txid is not None:
             self.fire_done([key], txid)
 
+    def mark_aborted(self, key):
+        txid = self.pending.pop(key, self.group_pending.pop(key, (None,))[0])
+        if txid is not None:
+            self.fire_aborted([key], txid)
+
     @_swallow_connrefused(_noop)
     def fire_done(self, keys, txid = None):
         if keys:
@@ -567,6 +573,16 @@ class CoherenceManager(object):
                 txid = self.txid
             first_key = iter(keys).next()
             self.ipsub.publish_encode(self.doneprefix+str(self.stable_hash(first_key)), self.encoding, 
+                (txid, keys, self.p2p_pub_binds))
+        return NoopWaiter()
+
+    @_swallow_connrefused(_noop)
+    def fire_aborted(self, keys, txid = None):
+        if keys:
+            if txid is None:
+                txid = self.txid
+            first_key = iter(keys).next()
+            self.ipsub.publish_encode(self.abortprefix+str(self.stable_hash(first_key)), self.encoding, 
                 (txid, keys, self.p2p_pub_binds))
         return NoopWaiter()
 
@@ -591,7 +607,9 @@ class CoherenceManager(object):
                 the method's return value must be checked for success.
         """
         ipsub_ = self.ipsub
-        doneprefix = self.doneprefix+str(self.stable_hash(key))
+        keysuffix = str(self.stable_hash(key))
+        doneprefix = self.doneprefix+keysuffix
+        abortprefix = self.abortprefix+keysuffix
         
         ctx = zmq.Context.instance()
         waiter, waiter_id = _mkwaiter(ctx, zmq.PAIR, "qpw")
@@ -609,7 +627,8 @@ class CoherenceManager(object):
                     return False
                 else:
                     return True
-            signaler = ipsub_.listen_decode(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
+            dsignaler = ipsub_.listen_decode(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
+            asignaler = ipsub_.listen_decode(abortprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
             success = False
             while timeout is None or timeout > 0:
                 if waiter.poll(min(poll_interval, timeout or poll_interval)):
@@ -621,7 +640,8 @@ class CoherenceManager(object):
                 if not self.query_pending(key, lambda:1, poll_interval, False):
                     success = True
                     break
-            ipsub_.unlisten(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
+            ipsub_.unlisten(doneprefix, ipsub.EVENT_INCOMING_UPDATE, dsignaler)
+            ipsub_.unlisten(abortprefix, ipsub.EVENT_INCOMING_UPDATE, asignaler)
         finally:
             waiter.close()
         return success
