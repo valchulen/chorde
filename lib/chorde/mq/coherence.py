@@ -217,6 +217,7 @@ class CoherenceManager(object):
 
         self.bound_pending = _bound_weak_callback(self, self._on_pending)
         self.bound_done = _bound_weak_callback(self, self._on_done)
+        self.bound_abort = _bound_weak_callback(self, self._on_abort)
         self.bound_pending_query = _bound_weak_callback(self, self._on_pending_query)
         self.bound_list_pending_query = _bound_weak_callback(self, self._on_list_pending_query)
         self.bound_deletion = _bound_weak_callback(self, self._on_deletion)
@@ -285,6 +286,8 @@ class CoherenceManager(object):
             self.bound_pending )
         self.encoded_done = ipsub_.listen_decode(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.bound_done )
+        self.encoded_abort = ipsub_.listen_decode(self.abortprefix, ipsub.EVENT_INCOMING_UPDATE, 
+            self.bound_abort )
         self.encoded_pending_query = ipsub_.listen_decode(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.bound_pending_query )
         self.encoded_pending_query = ipsub_.listen('', ipsub.EVENT_TIC, 
@@ -299,6 +302,8 @@ class CoherenceManager(object):
             self.encoded_pending )
         ipsub_.unlisten(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.encoded_done )
+        ipsub_.unlisten(self.abortprefix, ipsub.EVENT_INCOMING_UPDATE, 
+            self.encoded_abort )
         ipsub_.unlisten(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.encoded_pending_query )
         ipsub_.unlisten('', ipsub.EVENT_TIC, 
@@ -313,6 +318,8 @@ class CoherenceManager(object):
         if self.quick_refresh:
             self.encoded_done = ipsub_.listen_decode(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE, 
                 self.bound_done )
+            self.encoded_abort = ipsub_.listen_decode(self.abortprefix, ipsub.EVENT_INCOMING_UPDATE, 
+                self.bound_abort )
         return True
 
     @_weak_callback
@@ -323,6 +330,8 @@ class CoherenceManager(object):
         if self.quick_refresh:
             ipsub_.unlisten(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE, 
                 self.encoded_done )
+            ipsub_.unlisten(self.abortprefix, ipsub.EVENT_INCOMING_UPDATE, 
+                self.encoded_abort )
         return True
 
     @_weak_callback
@@ -553,6 +562,22 @@ class CoherenceManager(object):
                     try:
                         self.private.expire(key)
                     except CacheMissError:
+                        pass
+        return True
+
+    @_weak_callback
+    def _on_abort(self, prefix, event, payload):
+        if self.ipsub.is_broker:
+            txid, keys, contact = payload
+            group_pending = self.group_pending
+            ctxid = (txid, contact)
+            proj = operator.itemgetter(0,-1)
+            pnone = (None, None)
+            for key in keys:
+                if proj(group_pending.get(key, pnone)) == ctxid:
+                    try:
+                        del group_pending[key]
+                    except KeyError:
                         pass
         return True
 

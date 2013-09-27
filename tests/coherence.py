@@ -210,7 +210,7 @@ class CoherenceProtocolTest(unittest.TestCase):
 
         # Coherence2 aborts... coherence must pick up
         time.sleep(0.1)
-        self.coherence.mark_aborted(1)
+        self.coherence2.mark_aborted(1)
         
         waiter.join(3*coherence.PENDING_TIMEOUT)
         t2 = time.time()
