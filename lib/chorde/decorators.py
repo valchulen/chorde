@@ -131,6 +131,8 @@ def cached(client, ttl,
 
         ttl: The configured TTL
 
+        async_ttl: The configured async TTL
+
         clear(): forget all cached values. Since the client might be shared, it will only increase an internal
             revision mark used to decorate keys, so the cache will not be immediately purged. For that, use
             client.clear() (but beware that it will also clear other caches sharing the same client).
@@ -558,7 +560,8 @@ def cached(client, ttl,
             async_cached_f.peek = lazy_cached_f
             async_cached_f.invalidate = invalidate_f
             async_cached_f.put = async_put_f
-            async_cached_f.ttl = async_ttl
+            async_cached_f.ttl = ttl
+            async_cached_f.async_ttl = async_ttl
             async_cached_f.stats = stats
             cached_f.async = async_f
             cached_f.lazy = lazy_cached_f
@@ -578,6 +581,7 @@ def cached(client, ttl,
         cached_f.clear = nclient.clear
         cached_f.client = nclient
         cached_f.ttl = ttl
+        cached_f.async_ttl = async_ttl or ttl
         cached_f.stats = stats
         
         return cached_f
