@@ -5,6 +5,7 @@ import time
 import weakref
 import functools
 import thread
+import threading
 import sys
 
 # No need for real multiprocessing. In fact, using real
@@ -12,10 +13,16 @@ import sys
 # undesirable, pushing pickling cost into foreground threads.
 import multiprocessing.dummy
 from multiprocessing.pool import ThreadPool
-import threading
 
 from .base import BaseCacheClient, CacheMissError, NONE
 
+try:
+    from concurrent.futures import TimeoutError, CancelledError
+except ImportError:
+    class TimeoutError(Exception):
+        pass
+    class CancelledError(Exception):
+        pass
 
 class _NONE:pass
 class _DELETE:pass
@@ -342,7 +349,7 @@ class ExceptionWrapper(object):
         self.value = value
 
 class Future(object):
-    __slots__ = ('_cb', '_value', '_logger')
+    __slots__ = ('_cb', '_value', '_logger', '_running', '_cancel_pending', '_cancelled', '_done_event', '__weakref__')
     
     def __init__(self, logger = None):
         self._cb = []
@@ -359,12 +366,18 @@ class Future(object):
                     error = logging.error
                 error("Error in async callback", exc_info = True)
         self._value = value
+        self._running = False
+
+    set_result = set
 
     def miss(self):
         self.set(CacheMissError)
 
     def exc(self, exc_info):
         self.set(ExceptionWrapper(exc_info))
+
+    def set_exception(self, exception):
+        self.exc((type(exception),exception,None))
 
     def on_value(self, callback):
         def value_callback(value):
@@ -384,12 +397,101 @@ class Future(object):
                 return callback(value.value)
         return self._on_stuff(exc_callback)
 
+    def on_done(self, callback):
+        def done_callback(value):
+            return callback()
+        return self._on_stuff(done_callback)
+
     def _on_stuff(self, callback, hasattr=hasattr):
         cbap = self._cb.append
         if hasattr(self, '_value'):
             callback(self._value)
         cbap(callback)
         return self
+
+    def add_done_callback(self, callback):
+        me = weakref.ref(self)
+        def weak_callback(value):
+            self = me()
+            if self is not None:
+                return callback(self)
+        return self._on_stuff(weak_callback)
+
+    def done(self, hasattr=hasattr):
+        return hasattr(self, '_value')
+
+    def running(self, getattr=getattr):
+        return getattr(self, '_running', False)
+
+    def cancelled(self, getattr=getattr):
+        return getattr(self, '_cancelled', False)
+
+    def cancel_pending(self, getattr=getattr):
+        return getattr(self, '_cancel_pending', False)
+
+    def cancel(self, getattr=getattr):
+        if getattr(self, '_cancelled', False):
+            return False
+        else:
+            self._cancel_pending = True
+            return True
+
+    def set_running_or_notify_cancelled(self, getattr=getattr):
+        if getattr(self, '_cancel_pending', False):
+            self._cancelled = True
+            self._running = False
+            event = getattr(self, '_done_event', None)
+            if event is not None:
+                event.set()
+            return False
+        else:
+            self._running = True
+            return True
+
+    def result(self, timeout=None, hasattr=hasattr, getattr=getattr, norecurse=False):
+        if hasattr(self, '_value'):
+            value = self._value
+            if isinstance(value, ExceptionWrapper):
+                raise value.value[0], value.value[1], value.value[2]
+            else:
+                return self._value
+        elif self.cancelled():
+            raise CancelledError()
+        else:
+            if timeout == 0:
+                raise TimeoutError()
+            else:
+                # Wait for it
+                event = getattr(self, '_done_event', None)
+                if event is None:
+                    self._done_event = event = threading.Event()
+                    self.on_done(event.set)
+                if not event.wait(timeout) or norecurse:
+                    if self.cancelled():
+                        raise CancelledError()
+                    else:
+                        raise TimeoutError()
+                else:
+                    return self.result(0, norecurse=True)
+
+    def exception(self, timeout=None):
+        if hasattr(self, '_value'):
+            value = self._value
+            if isinstance(value, ExceptionWrapper):
+                return value.value[1] or value.value[0]
+            else:
+                return None
+        elif self.cancelled():
+            raise CancelledError()
+        else:
+            try:
+                self.result()
+                return None
+            except CancelledError:
+                raise
+            except Exception,e:
+                return e
+        
 
 class AsyncCacheProcessor(ThreadPool):
     """
@@ -424,13 +526,14 @@ class AsyncCacheProcessor(ThreadPool):
     def _enqueue(self, action):
         future = Future(logger=self.logger)
         def wrapped_action():
-            try:
-                future.set(action())
-            except CacheMissError:
-                future.miss()
-            except:
-                # Clear up traceback to avoid leaks
-                future.exc(sys.exc_info()[:-1] + (None,))
+            if future.set_running_or_notify_cancelled():
+                try:
+                    future.set(action())
+                except CacheMissError:
+                    future.miss()
+                except:
+                    # Clear up traceback to avoid leaks
+                    future.exc(sys.exc_info()[:-1] + (None,))
         self.apply_async(wrapped_action, ())
         return future
 
