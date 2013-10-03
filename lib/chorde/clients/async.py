@@ -515,6 +515,8 @@ class Future(object):
             value = self._value
             if isinstance(value, ExceptionWrapper):
                 raise value.value[0], value.value[1], value.value[2]
+            elif value is CacheMissError:
+                raise CacheMissError
             else:
                 return self._value
         elif self.cancelled():
@@ -547,6 +549,8 @@ class Future(object):
             value = self._value
             if isinstance(value, ExceptionWrapper):
                 return value.value[1] or value.value[0]
+            elif value is CacheMissError:
+                return CacheMissError
             else:
                 return None
         elif self.cancelled():
@@ -560,6 +564,28 @@ class Future(object):
             except Exception,e:
                 return e
         
+
+def makeFutureWrapper(base):
+    """
+    Nice utility function to create Future wrappers. If using a library
+    with concurrent-compatible futures, but not quite the same, and the library
+    checks for inheritance instead of relying on duck typing, then you'll
+    need to make such a class and wrap chorde's futures with it.
+    """
+    class WrapperFuture(base):
+        def __init__(self, wrapped):
+            self.__wrapped = wrapped
+
+        for name, fn in vars(base).iteritems():
+            if not name.startswith('__') and callable(fn):
+                def mkf(name, fn):
+                    @functools.wraps(fn)
+                    def f(self, *p, **kw):
+                        return getattr(self.__wrapped, name)(*p, **kw)
+                    return f
+                locals()[name] = mkf(name, fn)
+        del name, fn
+    return WrapperFuture
 
 class AsyncCacheProcessor(ThreadPool):
     """
