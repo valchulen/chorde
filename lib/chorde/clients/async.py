@@ -35,6 +35,13 @@ class Defer(object):
     Wrap a callable in this, and pass it as a value to an AsyncWriteCacheClient,
     and the evaluation of the given callable will happen asynchronously. The cache
     will return stale entries until the callable is finished computing a new value.
+
+    If a future attribute is attached, this defer will act as executioner of that
+    future, and both set_running_or_notify_cancelled and set_result or set_exception
+    will be called on it.
+
+    If a future is attached during execution, set_running_or_notify_cancelled will
+    not be invoked, but set_result will.
     """
     
     def __init__(self, callable_, *args, **kwargs):
@@ -43,11 +50,24 @@ class Defer(object):
         self.kwargs = kwargs
         self.lazy = False
 
-    def undefer(self):
-        return self.callable_(*self.args, **self.kwargs)
+    def undefer(self, getattr=getattr):
+        future = getattr(self, 'future', None)
+        if future is None or future.set_running_or_notify_cancelled():
+            try:
+                self.rv = rv = self.callable_(*self.args, **self.kwargs)
+            except:
+                future = getattr(self, 'future', None)
+                if future is not None:
+                    future.exc(sys.exc_info())
+                raise
+            return rv
+        else:
+            return _NONE
 
-    def done(self):
-        pass
+    def done(self, getattr=getattr):
+        future = getattr(self, 'future', None)
+        if future is not None:
+            future.set(getattr(self, 'rv', None))
 
 class AsyncCacheWriterPool(ThreadPool):
     def __init__(self, size, workers, client):
@@ -89,15 +109,15 @@ class AsyncCacheWriterPool(ThreadPool):
         if self is None:
             return
 
-        ev = self.done_event
-        value, ttl = self.dequeue(key)
-        deferred = _NONE
-
         thread_id = thread.get_ident()
         if thread_id not in self.threadset:
             self.threadset.add(thread.get_ident())
         else:
             thread_id = None
+
+        ev = self.done_event
+        deferred = _NONE
+        value, ttl = self.dequeue(key)
 
         try:
             if value is _NONE or value is NONE:
@@ -173,8 +193,9 @@ class AsyncCacheWriterPool(ThreadPool):
 
     @serialize
     def dequeue(self, key):
-        self.workset[key] = thread.get_ident()
-        return self.queueset.pop(key, _NONE)
+        rv = self.queueset.pop(key, _NONE)
+        self.workset[key] = thread.get_ident(), rv
+        return rv
 
     def enqueue(self, key, value, ttl=None):
         if thread.get_ident() in self.threadset:
@@ -186,19 +207,67 @@ class AsyncCacheWriterPool(ThreadPool):
             if key not in self.queueset:
                 while len(self.queueset) >= self.size:
                     self._wait_done(1.0)
-            self._enqueue(key, value, ttl)
+            delayed = self._enqueue(key, value, ttl)
+            if delayed is not None:
+                # delayed callback, invoke now that we're outside the critical section
+                delayed()
 
     @serialize
     def clearqueue(self):
         self.queueset.clear()
     
     @serialize
-    def _enqueue(self, key, value, ttl):
-        if key not in self.queueset:
-            self.queueset[key] = value, ttl
-            self.apply_async(self._writer, (weakref.ref(self), key))
+    def _enqueue(self, key, value, ttl, isinstance=isinstance, getattr=getattr):
+        delayed = None
+        queueset = self.queueset
+        workset = self.workset
+        if key not in queueset:
+            if not isinstance(value, Defer) or key not in workset:
+                queueset[key] = value, ttl
+                self.apply_async(self._writer, (weakref.ref(self), key))
+            else:
+                # else, bad luck, we assume defers compute, so if two
+                # defers go in concurrently, only the first will be invoked,
+                # instead of the last - the first cannot be canceled after all,
+                # and we want to only invoke one. So no choice.
+                
+                # ...if the defer has a future attached
+                future = getattr(value, 'future', None)
+                if future is not None:
+                    # we do have to hook into the future though... 
+                    working = workset.get(key)
+                    if working is not None:
+                        working = working[1]
+                        if working is not _NONE:
+                            working = working[0]
+                        if isinstance(working, Defer):
+                            working_future = getattr(working, 'future', None)
+                            if working_future is not None:
+                                delayed = functools.partial(working_future.chain, future)
+                            else:
+                                working.future = future
+                        else:
+                            # Delay the callback, we're in a critical section here
+                            delayed = functools.partial(future.set, working)
         else:
-            self.queueset[key] = value, ttl
+            if isinstance(value, Defer):
+                future = getattr(value, 'future', None)
+                if future is not None:
+                    queue_value = queueset.get(key)
+                    if queue_value is not None:
+                        # Ok, they'll wanna get the value when it's done
+                        queue_value = queue_value[0]
+                        if isinstance(queue_value, Defer):
+                            queue_future = getattr(queue_value, 'future', None)
+                            if queue_future is not None:
+                                delayed = functools.partial(queue_future.chain, future)
+                            else:
+                                queue_value.future = future
+                        else:
+                            # Why not
+                            delayed = functools.partial(future.set, queue_value)
+            queueset[key] = value, ttl
+        return delayed
     
     def waitkey(self, key, timeout=None):
         if timeout is None:
@@ -221,7 +290,7 @@ class AsyncCacheWriterPool(ThreadPool):
             # Exclude keys being computed by this thread, such calls 
             # want the async wrapper out of their way
             tid = thread.get_ident()
-            return self.workset.get(key, tid) != tid
+            return self.workset.get(key, (tid,))[0] != tid
 
     def put(self, key, value, ttl):
         self.enqueue(key, value, ttl)
@@ -431,6 +500,21 @@ class Future(object):
         def done_callback(value):
             return callback()
         return self._on_stuff(done_callback)
+
+    def chain(self, defer):
+        """
+        Invoke all the callbacks of the other defer
+        """
+        self._on_stuff(defer.set)
+
+    def chain_std(self, defer):
+        """
+        Invoke all the callbacks of the other defer, without assuming the other
+        defer follows our non-standard interface.
+        """
+        return self.on_value(defer.set_result) \
+            .on_miss(functools.partial(defer.set_exception, CacheMissError())) \
+            .on_exc(lambda value : defer.set_exception(value[1] or value[0]))
 
     def _on_stuff(self, callback, hasattr=hasattr):
         cbap = self._cb.append
@@ -644,8 +728,14 @@ class AsyncCacheProcessor(ThreadPool):
 
     def do_async(self, func, *args, **kwargs):
         return self._enqueue(functools.partial(func, *args, **kwargs))
+
+    def bound(self, client):
+        """
+        Returns a proxy of this processor bound to the specified client instead.
+        """
+        return WrappedCacheProcessor(self, client)
     
-    def getTtl(self, key, default = None, **kw):
+    def getTtl(self, key, default = NONE, **kw):
         return self._enqueue(functools.partial(self.client.getTtl, key, default, **kw))
     
     def get(self, key, default = NONE):
@@ -671,4 +761,58 @@ class AsyncCacheProcessor(ThreadPool):
 
     def purge(self):
         return self._enqueue(self.client.purge)
+    
+
+class WrappedCacheProcessor(object):
+    """
+    Wraps an AsyncCacheProcessor, binding its interface to a
+    different client.
+    """
+    def __init__(self, processor, client):
+        self.processor = processor
+        self.client = client
+
+    @property
+    def capacity(self):
+        return self.client.capacity
+
+    @property
+    def usage(self):
+        return self.client.usage
+
+    def do_async(self, func, *args, **kwargs):
+        return self.processor.do_async(func, *args, **kwargs)
+
+    def bound(self, client):
+        if client is self.client:
+            return self
+        else:
+            return WrappedCacheProcessor(self.processor, client)
+    
+    def getTtl(self, key, default = None, **kw):
+        return self.processor.do_async(self.client.getTtl, key, default, **kw)
+    
+    def get(self, key, default = NONE):
+        return self.processor.do_async(self.client.get, key, default)
+    
+    def contains(self, key, *p, **kw):
+        return self.processor.do_async(self.client.contains, key, *p, **kw)
+
+    def put(self, key, value, ttl):
+        return self.processor.do_async(self.client.put, key, value, ttl)
+
+    def add(self, key, value, ttl):
+        return self.processor.do_async(self.client.add, key, value, ttl)
+
+    def delete(self, key):
+        return self.processor.do_async(self.client.delete, key)
+
+    def expire(self, key):
+        return self.processor.do_async(self.client.expire, key)
+
+    def clear(self):
+        return self.processor.do_async(self.client.clear)
+
+    def purge(self):
+        return self.processor.do_async(self.client.purge)
     

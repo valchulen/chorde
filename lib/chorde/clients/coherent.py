@@ -85,6 +85,7 @@ class CoherentDefer(Defer):
             self.manager.mark_done(self.key)
         elif self.aborted:
             self.manager.mark_aborted(self.key)
+        super(CoherentDefer, self).done()
 
 class CoherentWrapperClient(BaseCacheClient):
     """

@@ -56,10 +56,13 @@ def _make_namespace(f):
     except:
         return repr(f)
 
-def _simple_put_deferred(client, f, key, ttl, *p, **kw):
-    return client.put(key, async.Defer(f, *p, **kw), ttl)
+def _simple_put_deferred(future, client, f, key, ttl, *p, **kw):
+    defer = async.Defer(f, *p, **kw)
+    if future is not None:
+        defer.future = future
+    return client.put(key, defer, ttl)
 
-def _coherent_put_deferred(shared, async_ttl, client, f, key, ttl, *p, **kw):
+def _coherent_put_deferred(shared, async_ttl, future, client, f, key, ttl, *p, **kw):
     return client.put_coherently(key, ttl, 
         lambda : not shared.contains(key, async_ttl), 
         f, *p, **kw)
@@ -110,6 +113,9 @@ def cached(client, ttl,
         lazy_kwargs = {},
         async_lazy_recheck = False,
         async_lazy_recheck_kwargs = {},
+        async_processor = None,
+        async_processor_workers = None,
+        future_sync_check = None,
         initialize = None,
         decorate = None,
         timings = True,
@@ -156,6 +162,14 @@ def cached(client, ttl,
             except that if there is no value, instead of waiting for one to be computed, it will just raise
             a CacheMissError. If the access is async, it will start a background computation. Otherwise, it will
             behave just as peek.
+
+        future(...): probably the preferred way of accessing the cache on an asynchronous app, it will return
+            a decorated function that will return futures that will receive the value when done. 
+            For straight calls, if lazy would not raise a CacheMissError, the future will already contain the value, 
+            resulting in no delays. If the client is tiered and has remote tiers, it's recommendable to add proper 
+            lazy_kwargs to avoid this synchronous call blocking. Other forms of access perform similarly, always
+            returning a future immediately without blocking. Alternatively, setting future_sync_check to False
+            will disable this check and always do it through the processor.
 
         async(): if the underlying client is async, it will return the decorated function (self). Otherwise, it will
             be another decorated function, created on demand, backed by the same client wrapped in an async adapter.
@@ -226,6 +240,17 @@ def cached(client, ttl,
             If negative, it means ttl - async_ttl, which reverses the logic to mean "async_ttl" seconds after
             creation of the cache entry.
 
+        async_processor_workers: (optional) Number of threads used for async cache operations (only applies to
+            future() calls, other async operations are configured with async_writer args). Only matters if the
+            clients perform expensive serialization (there's no computation involved otherwise). Default is
+            multiprocessing.cpu_count
+
+        async_processor: (optional) Shared processor to utilize in future() calls.
+
+        future_sync_check: (optional) Whether to perform a quick synchronous check of the cache with lazy_kwargs
+            in order to avoid stalling on the processor for cached access. Set to False if there's no non-blocking
+            tier in the given cache client.
+
         async_expire: (optional) A callable that will get an expired key, when TTL falls below async_ttl.
             Common use case is to pass a first-tier's expire bound method, thus initiating a refresh.
 
@@ -267,9 +292,14 @@ def cached(client, ttl,
         async_ttl = ttl + async_ttl
 
     if _put_deferred is None:
-        _put_deferred = _simple_put_deferred
+        _fput_deferred = _simple_put_deferred
+        _put_deferred = partial(_fput_deferred, None)
     if _lazy_recheck_put_deferred is None:
-        _lazy_recheck_put_deferred = _simple_put_deferred
+        _flazy_recheck_put_deferred = _simple_put_deferred
+        _lazy_recheck_put_deferred = partial(_flazy_recheck_put_deferred, None)
+
+    if async_processor is not None and async_processor_workers is None:
+        async_processor_workers = multiprocessing.cpu_count()
 
     def decor(f):
         if namespace is None:
@@ -389,6 +419,71 @@ def cached(client, ttl,
             async_cached_f = decorate(async_cached_f)
         
         @wraps(f)
+        def future_cached_f(*p, **kw):
+            if initialize is not None:
+                initialize()
+            try:
+                callkey = key(*p, **kw)
+            except:
+                # Bummer
+                logging.error("Error evaluating callkey", exc_info = True)
+                stats.errors += 1
+                raise CacheMissError
+
+            client = aclient[0]
+            clientf = fclient[0]
+            frv = async.Future()
+
+            if future_sync_check:
+                # Quick sync call with lazy_kwargs
+                rv, rvttl = client.getTtl(callkey, _NONE, **lazy_kwargs)
+            else:
+                rv = _NONE
+                rvttl = -1
+
+            if (rv is _NONE or rvttl < async_ttl):
+                # The hard way
+                if rv is _NONE:
+                    # It was a miss, so wait for setting the value
+                    def on_value(value):
+                        stats.hits += 1
+                        frv.set(value[0])
+                        # If it's stale, though, start an async refresh
+                        if value[0] < async_ttl and not nclient.contains(callkey, async_ttl, 
+                                **async_lazy_recheck_kwargs):
+                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                    def on_miss():
+                        _fput_deferred(frv, client, af, callkey, ttl, *p, **kw)
+                    def on_exc(exc_info):
+                        stats.errors += 1
+                        return frv.exc(exc_info)
+                else:
+                    # It was a stale hit, so set the value now, but start a touch-refresh
+                    stats.hits += 1
+                    frv.set(rv)
+                    def on_value(value):
+                        if value[0] < async_ttl and not nclient.contains(callkey, async_ttl, 
+                                **async_lazy_recheck_kwargs):
+                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                    def on_miss():
+                        if not nclient.contains(callkey, async_ttl, **async_lazy_recheck_kwargs):
+                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                    def on_exc(exc_info):
+                        stats.errors += 1
+                clientf.getTtl(callkey).on_value(on_value).on_miss(on_miss).on_exc(on_exc)
+            elif rv is not _NONE:
+                if rvttl < async_ttl and async_expire:
+                    async_expire(callkey)
+                stats.hits += 1
+                frv.set(rv)
+            else:
+                # Start the computation
+                _fput_deferred(frv, client, af, callkey, ttl, *p, **kw)
+            return frv
+        if decorate is not None:
+            future_cached_f = decorate(future_cached_f)
+
+        @wraps(f)
         def lazy_cached_f(*p, **kw):
             if initialize is not None:
                 initialize()
@@ -407,6 +502,127 @@ def cached(client, ttl,
             lazy_cached_f = decorate(lazy_cached_f)
         
         @wraps(f)
+        def future_lazy_cached_f(*p, **kw):
+            if initialize is not None:
+                initialize()
+            try:
+                callkey = key(*p, **kw)
+            except:
+                # Bummer
+                logging.error("Error evaluating callkey", exc_info = True)
+                stats.errors += 1
+                raise CacheMissError
+
+            client = aclient[0]
+            clientf = fclient[0]
+            frv = async.Future()
+
+            if future_sync_check:
+                # Quick sync call with lazy_kwargs
+                rv, rvttl = client.getTtl(callkey, _NONE, **lazy_kwargs)
+            else:
+                rv = _NONE
+                rvttl = -1
+
+            if (rv is _NONE or rvttl < async_ttl):
+                # The hard way
+                if rv is _NONE:
+                    # It was a miss, so wait for setting the value
+                    def on_value(value):
+                        stats.hits += 1
+                        frv.set(value[0])
+                        # If it's stale, though, start an async refresh
+                        if value[0] < async_ttl and not nclient.contains(callkey, async_ttl, 
+                                **async_lazy_recheck_kwargs):
+                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                    def on_miss():
+                        # Ok, real miss, report it and start the computation
+                        _put_deferred(client, af, callkey, ttl, *p, **kw)
+                        frv.miss()
+                    def on_exc(exc_info):
+                        stats.errors += 1
+                        return frv.exc(exc_info)
+                else:
+                    # It was a stale hit, so set the value now, but start a touch-refresh
+                    stats.hits += 1
+                    frv.set(rv)
+                    def on_value(value):
+                        if value[0] < async_ttl and not nclient.contains(callkey, async_ttl, 
+                                **async_lazy_recheck_kwargs):
+                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                    def on_miss():
+                        if not nclient.contains(callkey, async_ttl, **async_lazy_recheck_kwargs):
+                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                    def on_exc(exc_info):
+                        stats.errors += 1
+                clientf.getTtl(callkey).on_value(on_value).on_miss(on_miss).on_exc(on_exc)
+            elif rv is not _NONE:
+                if rvttl < async_ttl and async_expire:
+                    async_expire(callkey)
+                stats.hits += 1
+                frv.set(rv)
+            else:
+                # Start the computation, but report a miss rightaway
+                _put_deferred(client, af, callkey, ttl, *p, **kw)
+                frv.miss()
+            return frv
+        if decorate is not None:
+            future_lazy_cached_f = decorate(future_lazy_cached_f)
+
+        @wraps(f)
+        def future_peek_cached_f(*p, **kw):
+            if initialize is not None:
+                initialize()
+            try:
+                callkey = key(*p, **kw)
+            except:
+                # Bummer
+                logging.error("Error evaluating callkey", exc_info = True)
+                stats.errors += 1
+                raise CacheMissError
+
+            client = aclient[0]
+            clientf = fclient[0]
+            frv = async.Future()
+
+            if future_sync_check:
+                # Quick sync call with lazy_kwargs
+                rv, rvttl = client.getTtl(callkey, _NONE, **lazy_kwargs)
+            else:
+                rv = _NONE
+                rvttl = -1
+
+            if (rv is _NONE or rvttl < async_ttl):
+                # The hard way
+                if rv is _NONE:
+                    # It was a miss, so wait for setting the value
+                    def on_value(value):
+                        stats.hits += 1
+                        frv.set(value[0])
+                    def on_miss():
+                        # Ok, real miss, report it
+                        frv.miss()
+                    def on_exc(exc_info):
+                        stats.errors += 1
+                        return frv.exc(exc_info)
+                    clientf.getTtl(callkey).on_value(on_value).on_miss(on_miss).on_exc(on_exc)
+                else:
+                    # It was a stale hit, so set the value now
+                    stats.hits += 1
+                    frv.set(rv)
+            elif rv is not _NONE:
+                if rvttl < async_ttl and async_expire:
+                    async_expire(callkey)
+                stats.hits += 1
+                frv.set(rv)
+            else:
+                # report a miss rightaway, no computation, we're peeking
+                frv.miss()
+            return frv
+        if decorate is not None:
+            future_peek_cached_f = decorate(future_peek_cached_f)
+
+        @wraps(f)
         def invalidate_f(*p, **kw):
             if initialize is not None:
                 initialize()
@@ -419,6 +635,20 @@ def cached(client, ttl,
             nclient.delete(callkey)
         if decorate is not None:
             invalidate_f = decorate(invalidate_f)
+        
+        @wraps(f)
+        def future_invalidate_f(*p, **kw):
+            if initialize is not None:
+                initialize()
+            try:
+                callkey = key(*p, **kw)
+            except:
+                logging.error("Error evaluating callkey", exc_info = True)
+                stats.errors += 1
+                return
+            return fclient[0].delete(callkey)
+        if decorate is not None:
+            future_invalidate_f = decorate(future_invalidate_f)
         
         @wraps(f)
         def put_f(*p, **kw):
@@ -449,6 +679,21 @@ def cached(client, ttl,
             aclient[0].put(callkey, value, ttl)
         if decorate is not None:
             async_put_f = decorate(async_put_f)
+        
+        @wraps(f)
+        def future_put_f(*p, **kw):
+            value = kw.pop('_cache_put')
+            if initialize is not None:
+                initialize()
+            try:
+                callkey = key(*p, **kw)
+            except:
+                logging.error("Error evaluating callkey", exc_info = True)
+                stats.errors += 1
+                return
+            return fclient[0].put(callkey, value, ttl)
+        if decorate is not None:
+            future_put_f = decorate(future_put_f)
         
         @wraps(f)
         def async_lazy_cached_f(*p, **kw):
@@ -533,6 +778,29 @@ def cached(client, ttl,
         if decorate is not None:
             async_refresh_f = decorate(async_refresh_f)
 
+        @wraps(f)
+        def future_refresh_f(*p, **kw):
+            if initialize is not None:
+                initialize()
+            try:
+                callkey = key(*p, **kw)
+            except:
+                # Bummer
+                logging.error("Error evaluating callkey", exc_info = True)
+                stats.errors += 1
+                return
+
+            frv = async.Future()
+            def do_put(value):
+                if not value:
+                    _fput_deferred(frv, aclient[0], af, callkey, ttl, *p, **kw)
+                else:
+                    fclient[0].get(callkey)._on_stuff(frv.set)
+            fclient[0].contains(callkey, 0).on_value(do_put)
+            return frv
+        if decorate is not None:
+            future_refresh_f = decorate(future_refresh_f)
+
         if client.async:
             cached_f = async_cached_f
             lazy_cached_f = async_lazy_cached_f
@@ -540,7 +808,29 @@ def cached(client, ttl,
             aclient = [async_client]
         else:
             aclient = []
-        
+
+        fclient = []
+        def future_f():
+            if initialize is not None:
+                initialize()
+            if not fclient:
+                if client.async:
+                    _client = nclient
+                elif aclient:
+                    _client = aclient[0]
+                else:
+                    async_f() # initializes aclient
+                    _client = aclient[0]
+
+                if async_processor:
+                    _client = async_processor.bound(_client)
+                else:
+                    _client = async.AsyncCacheProcessor(async_processor_workers, _client)
+                # atomic
+                fclient[:] = [_client]
+                future_cached_f.client = fclient[0]
+            return future_cached_f
+
         if not client.async:
             def async_f():
                 if initialize is not None:
@@ -577,12 +867,25 @@ def cached(client, ttl,
             cached_f.peek = lazy_cached_f
             cached_f.invalidate = invalidate_f
             cached_f.put = async_put_f
-        
+
+        cached_f.future = future_f
         cached_f.clear = nclient.clear
         cached_f.client = nclient
         cached_f.ttl = ttl
         cached_f.async_ttl = async_ttl or ttl
         cached_f.stats = stats
+        
+        future_cached_f.clear = lambda : fclient[0].clear()
+        future_cached_f.client = None
+        future_cached_f.async = async_f
+        future_cached_f.lazy = future_lazy_cached_f
+        future_cached_f.refresh = future_refresh_f
+        future_cached_f.peek = future_peek_cached_f
+        future_cached_f.invalidate = future_invalidate_f
+        future_cached_f.put = future_put_f
+        future_cached_f.ttl = ttl
+        future_cached_f.async_ttl = async_ttl
+        future_cached_f.stats = stats
         
         return cached_f
     return decor
@@ -605,6 +908,9 @@ if not no_coherence:
             lazy_kwargs = {},
             async_lazy_recheck = False,
             async_lazy_recheck_kwargs = {},
+            async_processor = None,
+            async_processor_workers = None,
+            future_sync_check = None,
             initialize = None,
             decorate = None,
             tiered_opts = None,
@@ -715,6 +1021,9 @@ if not no_coherence:
                 lazy_kwargs = lazy_kwargs,
                 async_lazy_recheck = async_lazy_recheck,
                 async_lazy_recheck_kwargs = async_lazy_recheck_kwargs,
+                async_processor = None,
+                async_processor_workers = None,
+                future_sync_check = None,
                 _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl) )(f)
             rv.coherence = coherence_manager
             rv.ipsub = ipsub
