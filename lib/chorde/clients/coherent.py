@@ -158,7 +158,7 @@ class CoherentWrapperClient(BaseCacheClient):
         else:
             self.client.put(key, value, ttl)
 
-    def put_coherently(self, key, ttl, expired, callable_, *args, **kwargs):
+    def put_coherently(self, key, ttl, expired, future, callable_, *args, **kwargs):
         """
         Another method of putting, that will additionally ensure that only one node 
         is working on computing the result. As such, it takes  a callable rather 
@@ -174,6 +174,8 @@ class CoherentWrapperClient(BaseCacheClient):
                 the coherence protocol, the protocol and the computation will be
                 aborted (assuming the underlying client will now instead fetch
                 values from the shared cache).
+            future: (optional) A future to be associated with the deferred
+                computation.
             callable_, args, kwargs: See Defer. In contrast to normal puts, the
                 callable may not be invoked if some other node has the computation
                 lock.
@@ -187,6 +189,8 @@ class CoherentWrapperClient(BaseCacheClient):
             timeout = self.timeout,
             wait_time = wait_time,
             *args, **kwargs )
+        if future is not None:
+            value.future = future
         deferred = None
         try:
             if not self.async:

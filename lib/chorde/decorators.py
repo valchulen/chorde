@@ -62,9 +62,10 @@ def _simple_put_deferred(future, client, f, key, ttl, *p, **kw):
         defer.future = future
     return client.put(key, defer, ttl)
 
-def _coherent_put_deferred(shared, async_ttl, future, client, f, key, ttl, *p, **kw):
+def _coherent_put_deferred(future, shared, async_ttl, future, client, f, key, ttl, *p, **kw):
     return client.put_coherently(key, ttl, 
         lambda : not shared.contains(key, async_ttl), 
+        future, 
         f, *p, **kw)
 
 class CacheStats(object):
@@ -1021,9 +1022,9 @@ if not no_coherence:
                 lazy_kwargs = lazy_kwargs,
                 async_lazy_recheck = async_lazy_recheck,
                 async_lazy_recheck_kwargs = async_lazy_recheck_kwargs,
-                async_processor = None,
-                async_processor_workers = None,
-                future_sync_check = None,
+                async_processor = async_processor,
+                async_processor_workers = async_processor_workers,
+                future_sync_check = future_sync_check,
                 _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl) )(f)
             rv.coherence = coherence_manager
             rv.ipsub = ipsub
