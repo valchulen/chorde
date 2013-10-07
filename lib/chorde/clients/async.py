@@ -66,7 +66,7 @@ class Defer(object):
 
     def done(self, getattr=getattr):
         future = getattr(self, 'future', None)
-        if future is not None:
+        if future is not None and not future.done():
             future.set(getattr(self, 'rv', None))
 
 class AsyncCacheWriterPool(ThreadPool):

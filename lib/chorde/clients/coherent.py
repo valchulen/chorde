@@ -61,7 +61,7 @@ class CoherentDefer(Defer):
                 if computer is None:
                     # My turn
                     try:
-                        rv = self.callable_(*self.args, **self.kwargs)
+                        rv = super(CoherentDefer, self).undefer()
                         if rv is not NONE:
                             self.computed = True
                     except:
