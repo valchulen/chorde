@@ -62,7 +62,7 @@ def _simple_put_deferred(future, client, f, key, ttl, *p, **kw):
         defer.future = future
     return client.put(key, defer, ttl)
 
-def _coherent_put_deferred(future, shared, async_ttl, future, client, f, key, ttl, *p, **kw):
+def _coherent_put_deferred(shared, async_ttl, future, client, f, key, ttl, *p, **kw):
     return client.put_coherently(key, ttl, 
         lambda : not shared.contains(key, async_ttl), 
         future, 
