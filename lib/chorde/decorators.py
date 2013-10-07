@@ -1025,7 +1025,8 @@ if not no_coherence:
                 async_processor = async_processor,
                 async_processor_workers = async_processor_workers,
                 future_sync_check = future_sync_check,
-                _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl) )(f)
+                _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl, None),
+                _fput_deferred = partial(_coherent_put_deferred, nshared, async_ttl) )(f)
             rv.coherence = coherence_manager
             rv.ipsub = ipsub
             return rv
