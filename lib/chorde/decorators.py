@@ -877,7 +877,7 @@ def cached(client, ttl,
         
         future_cached_f.clear = lambda : fclient[0].clear()
         future_cached_f.client = None
-        future_cached_f.async = async_f
+        future_cached_f.async = cached_f.async
         future_cached_f.lazy = future_lazy_cached_f
         future_cached_f.refresh = future_refresh_f
         future_cached_f.peek = future_peek_cached_f
