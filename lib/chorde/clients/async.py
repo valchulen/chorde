@@ -622,8 +622,8 @@ class Future(object):
                 # Second loop grabs the instance event (which could have been
                 # clobbered by another thread). This is lockless yet safe,
                 # and quick on the most common condition (no contention)
-                for i in xrange(2):
-                    if event.wait(timeout * i) and not norecurse:
+                for timeout in (0, timeout):
+                    if event.wait(timeout) and not norecurse:
                         return self.result(0, norecurse=True)
                     elif self.cancelled():
                         raise CancelledError
