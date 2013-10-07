@@ -121,7 +121,9 @@ def cached(client, ttl,
         decorate = None,
         timings = True,
         _put_deferred = None,
-        _lazy_recheck_put_deferred = None ):
+        _fput_deferred = None,
+        _lazy_recheck_put_deferred = None,
+        _flazy_recheck_put_deferred = None ):
     """
     This decorator provides cacheability to suitable functions.
 
