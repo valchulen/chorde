@@ -440,6 +440,11 @@ class Future(object):
                 error("Error in async callback", exc_info = True)
         self._value = value
         self._running = False
+        
+        event = getattr(self, '_done_event', None)
+        if event is not None:
+            # wake up waiting threads
+            event.set()
 
     set_result = set
 
@@ -612,15 +617,21 @@ class Future(object):
                 # Wait for it
                 event = getattr(self, '_done_event', None)
                 if event is None:
-                    self._done_event = event = threading.Event()
-                    self.on_done(event.set)
-                if not event.wait(timeout) or norecurse:
-                    if self.cancelled():
+                    event = self._done_event = threading.Event()
+                # First loop eagerly waits on the recently-created event
+                # Second loop grabs the instance event (which could have been
+                # clobbered by another thread). This is lockless yet safe,
+                # and quick on the most common condition (no contention)
+                for i in xrange(2):
+                    if event.wait(timeout * i) and not norecurse:
+                        return self.result(0, norecurse=True)
+                    elif self.cancelled():
                         raise CancelledError
                     else:
-                        raise TimeoutError
+                        time.sleep(0) # < give other threads a chance
+                        event = self._done_event
                 else:
-                    return self.result(0, norecurse=True)
+                    raise TimeoutError
 
     def exception(self, timeout=None):
         """
