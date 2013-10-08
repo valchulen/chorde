@@ -452,7 +452,7 @@ def cached(client, ttl,
                         stats.hits += 1
                         frv.set(value[0])
                         # If it's stale, though, start an async refresh
-                        if value[0] < async_ttl and not nclient.contains(callkey, async_ttl, 
+                        if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_miss():
@@ -465,7 +465,7 @@ def cached(client, ttl,
                     stats.hits += 1
                     frv.set(rv)
                     def on_value(value):
-                        if value[0] < async_ttl and not nclient.contains(callkey, async_ttl, 
+                        if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_miss():
@@ -535,7 +535,7 @@ def cached(client, ttl,
                         stats.hits += 1
                         frv.set(value[0])
                         # If it's stale, though, start an async refresh
-                        if value[0] < async_ttl and not nclient.contains(callkey, async_ttl, 
+                        if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_miss():
@@ -550,7 +550,7 @@ def cached(client, ttl,
                     stats.hits += 1
                     frv.set(rv)
                     def on_value(value):
-                        if value[0] < async_ttl and not nclient.contains(callkey, async_ttl, 
+                        if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_miss():
