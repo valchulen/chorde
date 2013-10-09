@@ -70,7 +70,7 @@ class Defer(object):
             future.set(getattr(self, 'rv', None))
 
 class AsyncCacheWriterPool(ThreadPool):
-    def __init__(self, size, workers, client, overflow = True):
+    def __init__(self, size, workers, client, overflow = False):
         # This patches ThreadPool, which is broken when instanced 
         # from inside a DummyThread (happens after forking)
         current = multiprocessing.dummy.current_process()
@@ -325,7 +325,7 @@ class AsyncCacheWriterPool(ThreadPool):
         self.enqueue(_PURGE, _PURGE)
     
 class AsyncWriteCacheClient(BaseCacheClient):
-    def __init__(self, client, writer_queue_size, writer_workers, overflow = True):
+    def __init__(self, client, writer_queue_size, writer_workers, overflow = False):
         self.client = client
         self.writer_queue_size = writer_queue_size
         self.writer_workers = writer_workers
