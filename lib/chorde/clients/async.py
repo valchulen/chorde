@@ -217,8 +217,13 @@ class AsyncCacheWriterPool(ThreadPool):
             if key not in self.queueset:
                 if self.overflow:
                     # use overflow semantics: remove old entries to make room for new ones
-                    while len(self.queueset) >= self.size:
-                        self.drop_one()
+                    if len(self.queueset) >= self.size:
+                        # just two, tit-for-tat, one in, two out. Avoids large latencies,
+                        # and guarantees stable sizes, around, while not strictly below "size"
+                        for _ in xrange(2):
+                            self.drop_one()
+                            if len(self.queueset) < self.size:
+                                break
                 else:
                     # blocking semantics, wait
                     while len(self.queueset) >= self.size:
