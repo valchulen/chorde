@@ -70,7 +70,7 @@ class Defer(object):
             future.set(getattr(self, 'rv', None))
 
 class AsyncCacheWriterPool(ThreadPool):
-    def __init__(self, size, workers, client):
+    def __init__(self, size, workers, client, overflow = True):
         # This patches ThreadPool, which is broken when instanced 
         # from inside a DummyThread (happens after forking)
         current = multiprocessing.dummy.current_process()
@@ -89,6 +89,7 @@ class AsyncCacheWriterPool(ThreadPool):
         self.workset = {}
         self.threadset = set()
         self.done_event = threading.Event()
+        self.overflow = overflow
         
         ThreadPool.__init__(self, workers)
 
@@ -197,6 +198,15 @@ class AsyncCacheWriterPool(ThreadPool):
         self.workset[key] = thread.get_ident(), rv
         return rv
 
+    @serialize
+    def drop_one(self):
+        for key in self.queueset:
+            break
+        else:
+            return
+        rv = self.queueset.pop(key, _NONE)
+        return rv
+
     def enqueue(self, key, value, ttl=None):
         if thread.get_ident() in self.threadset:
             # Oops, recursive call, bad idea
@@ -205,8 +215,14 @@ class AsyncCacheWriterPool(ThreadPool):
             self._writer(weakref.ref(self), key)
         else:
             if key not in self.queueset:
-                while len(self.queueset) >= self.size:
-                    self._wait_done(1.0)
+                if self.overflow:
+                    # use overflow semantics: remove old entries to make room for new ones
+                    while len(self.queueset) >= self.size:
+                        self.drop_one()
+                else:
+                    # blocking semantics, wait
+                    while len(self.queueset) >= self.size:
+                        self._wait_done(1.0)
             delayed = self._enqueue(key, value, ttl)
             if delayed is not None:
                 # delayed callback, invoke now that we're outside the critical section
@@ -309,18 +325,20 @@ class AsyncCacheWriterPool(ThreadPool):
         self.enqueue(_PURGE, _PURGE)
     
 class AsyncWriteCacheClient(BaseCacheClient):
-    def __init__(self, client, writer_queue_size, writer_workers):
+    def __init__(self, client, writer_queue_size, writer_workers, overflow = True):
         self.client = client
         self.writer_queue_size = writer_queue_size
         self.writer_workers = writer_workers
         self.writer = None
+        self.overflow = overflow
         
     def assert_started(self):
         if self.writer is None:
             self.writer = AsyncCacheWriterPool(
                 self.writer_queue_size, 
                 self.writer_workers,
-                self.client)
+                self.client,
+                self.overflow)
     
     def is_started(self):
         return self.writer is not None
