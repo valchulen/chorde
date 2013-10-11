@@ -189,6 +189,8 @@ class CoherenceManager(object):
         # Key -> hash
         self.pending = dict()
         self.group_pending = inproc.Cache(max_pending, False)
+        self.recent_done = inproc.Cache(max_pending, False)
+        self.selfdone_subs = set()
 
         if synchronous:
             self.waiter = SyncWaiter
@@ -336,6 +338,9 @@ class CoherenceManager(object):
 
     @_weak_callback
     def _on_tic(self, prefix, event, payload):
+        # Bye recents, no longer recent
+        self.recent_done.clear()
+        
         if not self.ipsub.is_broker:
             return False
         
@@ -408,6 +413,7 @@ class CoherenceManager(object):
             elif expired():
                 if optimistic_lock:
                     txid = self.txid
+                    self.recent_done.pop(key,None)
                     self.group_pending[key] = (txid, time.time(), self.p2p_pub_binds)
                     self.pending[key] = txid
                 return None
@@ -485,6 +491,7 @@ class CoherenceManager(object):
         
         if optimistic_lock and rv is None:
             # We acquired it
+            self.recent_done.pop(key,None)
             self.pending[key] = txid
         return rv
 
@@ -581,15 +588,36 @@ class CoherenceManager(object):
                         pass
         return True
 
+    def _fire_selfdone(self, key):
+        rem = set()
+        for sub in set(self.selfdone_subs):
+            if not sub(key):
+                rem.add(sub)
+        if rem:
+            self.selfdone_subs -= rem
+
+    def _sub_selfdone(self, sub):
+        self.selfdone_subs.add(sub)
+
+    def _unsub_selfdone(self, sub):
+        try:
+            self.selfdone_subs.remove(sub)
+        except KeyError:
+            pass
+
     def mark_done(self, key):
         txid = self.pending.pop(key, self.group_pending.pop(key, (None,))[0])
+        self.recent_done[key] = time.time()
         if txid is not None:
             self.fire_done([key], txid)
+        self._fire_selfdone(key)
 
     def mark_aborted(self, key):
         txid = self.pending.pop(key, self.group_pending.pop(key, (None,))[0])
+        self.recent_done[key] = time.time()
         if txid is not None:
             self.fire_aborted([key], txid)
+        self._fire_selfdone(key)
 
     @_swallow_connrefused(_noop)
     def fire_done(self, keys, txid = None):
@@ -631,6 +659,13 @@ class CoherenceManager(object):
             timeout: maximum time to wait (in ms). If not None, 
                 the method's return value must be checked for success.
         """
+
+        # Check for recent notifications
+        recent = self.recent_done.get(key)
+        if recent is not None and (time.time() - recent) < (poll_interval * 0.001):
+            # don't wait then
+            return True
+        
         ipsub_ = self.ipsub
         keysuffix = str(self.stable_hash(key))
         doneprefix = self.doneprefix+keysuffix
@@ -638,6 +673,7 @@ class CoherenceManager(object):
         
         ctx = zmq.Context.instance()
         waiter, waiter_id = _mkwaiter(ctx, zmq.PAIR, "qpw")
+        dsignaler = asignaler = ssignaler = None
         try:
             contact_cell = []
             def signaler(prefix, event, payload):
@@ -654,6 +690,8 @@ class CoherenceManager(object):
                     return True
             dsignaler = ipsub_.listen_decode(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
             asignaler = ipsub_.listen_decode(abortprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
+            ssignaler = lambda key, contact = self.p2p_pub_binds : signaler(None, None, (None, [key], contact))
+            self._sub_selfdone(ssignaler)
             success = False
             while timeout is None or timeout > 0:
                 if waiter.poll(min(poll_interval, timeout or poll_interval)):
@@ -665,8 +703,12 @@ class CoherenceManager(object):
                 if not self.query_pending(key, lambda:1, poll_interval, False):
                     success = True
                     break
-            ipsub_.unlisten(doneprefix, ipsub.EVENT_INCOMING_UPDATE, dsignaler)
-            ipsub_.unlisten(abortprefix, ipsub.EVENT_INCOMING_UPDATE, asignaler)
         finally:
+            if ssignaler is not None:
+                self._unsub_selfdone(ssignaler)
+            if dsignaler is not None:
+                ipsub_.unlisten(doneprefix, ipsub.EVENT_INCOMING_UPDATE, dsignaler)
+            if asignaler is not None:
+                ipsub_.unlisten(abortprefix, ipsub.EVENT_INCOMING_UPDATE, asignaler)
             waiter.close()
         return success

@@ -6,6 +6,7 @@ import weakref
 import functools
 import thread
 import threading
+import operator
 import sys
 
 # No need for real multiprocessing. In fact, using real
@@ -93,16 +94,6 @@ class AsyncCacheWriterPool(ThreadPool):
         
         ThreadPool.__init__(self, workers)
 
-    def _wait_done(self, timeout=None):
-        ev = self.done_event
-        if timeout is not None:
-            ev.wait(timeout)
-            if ev.isSet():
-                ev.clear()
-        else:
-            ev.wait()
-            ev.clear()
-
     @staticmethod
     def _writer(self, key):
         # self is weakref
@@ -112,7 +103,7 @@ class AsyncCacheWriterPool(ThreadPool):
 
         thread_id = thread.get_ident()
         if thread_id not in self.threadset:
-            self.threadset.add(thread.get_ident())
+            self.threadset.add(thread_id)
         else:
             thread_id = None
 
@@ -172,17 +163,22 @@ class AsyncCacheWriterPool(ThreadPool):
                 deferred.done()
         finally:
             # Signal waiting threads
-            try:
-                del self.workset[key]
-            except KeyError:
-                pass
-            if thread_id is not None:
+            w = self.workset.pop(key, None)
+            if w is not None:
+                kev = w[2]
+            else:
+                kev = None
+            del w
+            
+            if thread_id is not None and thread_id not in map(operator.itemgetter(0), self.workset.values()):
                 try:
-                    self.threadset.remove(thread.get_ident())
+                    self.threadset.remove(thread_id)
                 except KeyError:
                     pass
             
             ev.set()
+            if kev is not None:
+                kev.set()
         
     @property
     def capacity(self):
@@ -195,7 +191,7 @@ class AsyncCacheWriterPool(ThreadPool):
     @serialize
     def dequeue(self, key):
         rv = self.queueset.pop(key, _NONE)
-        self.workset[key] = thread.get_ident(), rv
+        self.workset[key] = thread.get_ident(), rv, threading.Event()
         return rv
 
     @serialize
@@ -226,8 +222,11 @@ class AsyncCacheWriterPool(ThreadPool):
                                 break
                 else:
                     # blocking semantics, wait
+                    ev = self.done_event
                     while len(self.queueset) >= self.size:
-                        self._wait_done(1.0)
+                        ev.wait(1.0)
+                        if ev.isSet():
+                            ev.clear()
             delayed = self._enqueue(key, value, ttl)
             if delayed is not None:
                 # delayed callback, invoke now that we're outside the critical section
@@ -291,13 +290,28 @@ class AsyncCacheWriterPool(ThreadPool):
         return delayed
     
     def waitkey(self, key, timeout=None):
-        if timeout is None:
+        if thread.get_ident() in self.threadset:
+            # Oops, recursive call, bad idea
+            return
+        elif timeout is None:
             while self.contains(key):
-                self._wait_done(1.0)
+                ev = self.workset.get(key)
+                if ev is not None:
+                    ev = ev[2]
+                if ev is not None:
+                    ev.wait(1.0)
+                else:
+                    break
         else:
             tfin = time.time() + timeout
             while self.contains(key) and tfin >= time.time():
-                self._wait_done(max(1.0, timeout))
+                ev = self.workset.get(key)
+                if ev is not None:
+                    ev = ev[2]
+                if ev is not None:
+                    ev.wait(min(1.0, timeout))
+                else:
+                    break
                 timeout = tfin - time.time()
     
     def getTtl(self, key, default = None):
@@ -423,7 +437,8 @@ class AsyncWriteCacheClient(BaseCacheClient):
             return value, ttl
     
     def wait(self, key, timeout = None):
-        self.writer.waitkey(key, timeout)
+        if self.writer.contains(key):
+            self.writer.waitkey(key, timeout)
     
     def contains(self, key, ttl = None, **kw):
         if self.is_started():
