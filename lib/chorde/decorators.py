@@ -794,12 +794,7 @@ def cached(client, ttl,
                 return
 
             frv = async.Future()
-            def do_put(value):
-                if not value:
-                    _fput_deferred(frv, aclient[0], af, callkey, ttl, *p, **kw)
-                else:
-                    fclient[0].get(callkey)._on_stuff(frv.set)
-            fclient[0].contains(callkey, 0).on_value(do_put)
+            _fput_deferred(frv, aclient[0], af, callkey, ttl, *p, **kw)
             return frv
         if decorate is not None:
             future_refresh_f = decorate(future_refresh_f)
