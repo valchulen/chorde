@@ -557,6 +557,7 @@ class Future(object):
             else:
                 if on_value is not None:
                     return on_value(value)
+        return self._on_stuff(callback)
 
     def on_done(self, callback):
         """
