@@ -473,7 +473,7 @@ def cached(client, ttl,
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_exc(exc_info):
                         stats.errors += 1
-                clientf.getTtl(callkey).on_value(on_value).on_miss(on_miss).on_exc(on_exc)
+                clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
             elif rv is not _NONE:
                 if rvttl < async_ttl and async_expire:
                     async_expire(callkey)
@@ -558,7 +558,7 @@ def cached(client, ttl,
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_exc(exc_info):
                         stats.errors += 1
-                clientf.getTtl(callkey).on_value(on_value).on_miss(on_miss).on_exc(on_exc)
+                clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
             elif rv is not _NONE:
                 if rvttl < async_ttl and async_expire:
                     async_expire(callkey)
@@ -608,7 +608,7 @@ def cached(client, ttl,
                     def on_exc(exc_info):
                         stats.errors += 1
                         return frv.exc(exc_info)
-                    clientf.getTtl(callkey).on_value(on_value).on_miss(on_miss).on_exc(on_exc)
+                    clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
                 else:
                     # It was a stale hit, so set the value now
                     stats.hits += 1

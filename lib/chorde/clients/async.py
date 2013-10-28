@@ -542,18 +542,21 @@ class Future(object):
                 return callback(value.value)
         return self._on_stuff(exc_callback)
 
-    def on_any(self, on_value, on_miss, on_exc):
+    def on_any(self, on_value = None, on_miss = None, on_exc = None):
         """
         Handy method to set callbacks for all kinds of results, and it's actually
-        faster than calling on_X repeatedly.
+        faster than calling on_X repeatedly. None callbacks will be ignored.
         """
         def callback(value):
             if value is CacheMissError:
-                return on_miss()
+                if on_miss is not None:
+                    return on_miss()
             elif isinstance(value, ExceptionWrapper):
-                return on_exc(value.value)
+                if on_exc is not None:
+                    return on_exc(value.value)
             else:
-                return on_value(value)
+                if on_value is not None:
+                    return on_value(value)
 
     def on_done(self, callback):
         """
