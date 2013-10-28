@@ -456,18 +456,26 @@ class ExceptionWrapper(object):
         self.value = value
 
 class Future(object):
-    __slots__ = ('_cb', '_value', '_logger', '_running', '_cancel_pending', '_cancelled', '_done_event', '__weakref__')
+    __slots__ = (
+        '_cb', '_value', '_logger', '_running', '_cancel_pending', '_cancelled', '_done_event', 
+        '_lock', '__weakref__'
+    )
     
     def __init__(self, logger = None):
         self._cb = []
         self._logger = logger
+        self._lock = threading.Lock()
     
     def set(self, value):
         """
         Set the future's result as either a value, an exception wrappedn in ExceptionWrapper, or
         a cache miss if given CacheMissError (the class itself)
         """
-        for cb in self._cb:
+        with self._lock:
+            cbs = list(self._cb)
+            self._value = value
+        
+        for cb in cbs:
             try:
                 cb(value)
             except:
@@ -476,7 +484,6 @@ class Future(object):
                 else:
                     error = logging.error
                 error("Error in async callback", exc_info = True)
-        self._value = value
         self._running = False
         
         event = getattr(self, '_done_event', None)
@@ -535,6 +542,19 @@ class Future(object):
                 return callback(value.value)
         return self._on_stuff(exc_callback)
 
+    def on_any(self, on_value, on_miss, on_exc):
+        """
+        Handy method to set callbacks for all kinds of results, and it's actually
+        faster than calling on_X repeatedly.
+        """
+        def callback(value):
+            if value is CacheMissError:
+                return on_miss()
+            elif isinstance(value, ExceptionWrapper):
+                return on_exc(value.value)
+            else:
+                return on_value(value)
+
     def on_done(self, callback):
         """
         When the operation is done, the callback will be invoked without arguments,
@@ -555,15 +575,19 @@ class Future(object):
         Invoke all the callbacks of the other defer, without assuming the other
         defer follows our non-standard interface.
         """
-        return self.on_value(defer.set_result) \
-            .on_miss(functools.partial(defer.set_exception, CacheMissError())) \
-            .on_exc(lambda value : defer.set_exception(value[1] or value[0]))
+        return self.on_any(
+            defer.set_result,
+            functools.partial(defer.set_exception, CacheMissError()),
+            lambda value : defer.set_exception(value[1] or value[0])
+        )
 
     def _on_stuff(self, callback, hasattr=hasattr):
         cbap = self._cb.append
-        if hasattr(self, '_value'):
+        with self._lock:
+            docall = hasattr(self, '_value')
+            cbap(callback)
+        if docall:
             callback(self._value)
-        cbap(callback)
         return self
 
     def add_done_callback(self, callback):
