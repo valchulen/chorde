@@ -386,6 +386,17 @@ class MemcachedClient(BaseCacheClient):
         else:
             return False
 
+_memcache_writer_sequence = 1
+class MemcacheWriterThread(Thread):
+    def __init__(self, target, *args):
+        global _memcache_writer_sequence
+        # no need to make atomic huh? just a name...
+        threadno = _memcache_writer_sequence
+        _memcache_writer_sequence += 1
+
+        name = 'memcached-writer-thread-%d' % (threadno,)
+        
+        Thread.__init__(self, target=target, args=args, name=name)
 
 class FastMemcachedClient(BaseCacheClient):
     """
@@ -447,7 +458,7 @@ class FastMemcachedClient(BaseCacheClient):
         self.workset = {}
         self.workev = Event()
 
-        self._bgwriter_thread = Thread(target=self._bgwriter, args=(weakref.ref(self),))
+        self._bgwriter_thread = MemcacheWriterThread(self._bgwriter, weakref.ref(self))
         self._bgwriter_thread.setDaemon(True)
 
     @property

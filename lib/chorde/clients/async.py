@@ -71,6 +71,10 @@ class Defer(object):
             future.set(getattr(self, 'rv', None))
 
 class AsyncCacheWriterPool(ThreadPool):
+    class AsyncCacheWriterThread(ThreadPool.Process):
+        pass
+    Process = AsyncCacheWriterThread
+    
     def __init__(self, size, workers, client, overflow = False):
         # This patches ThreadPool, which is broken when instanced 
         # from inside a DummyThread (happens after forking)
@@ -753,6 +757,11 @@ def makeFutureWrapper(base):
         del name, fn
     return WrapperFuture
 
+class AsyncCacheProcessorThreadPool(ThreadPool):
+    class AsyncCacheProcessorThread(ThreadPool.Process):
+        pass
+    Process = AsyncCacheProcessorThread
+
 class AsyncCacheProcessor(object):
     """
     An async cache processor will allow asynchronous reads
@@ -773,6 +782,7 @@ class AsyncCacheProcessor(object):
     tasks on this processor's async processing pool (in case
     you need to do it for synchronization)
     """
+    
     def __init__(self, workers, client):
         # This patches ThreadPool, which is broken when instanced 
         # from inside a DummyThread (happens after forking)
@@ -791,7 +801,7 @@ class AsyncCacheProcessor(object):
         if self._threadpool is None:
             with self._spawnlock:
                 if self._threadpool is None:
-                    self._threadpool = ThreadPool(self.workers)
+                    self._threadpool = AsyncCacheProcessorThreadPool(self.workers)
         return self._threadpool
 
     def _enqueue(self, action):
