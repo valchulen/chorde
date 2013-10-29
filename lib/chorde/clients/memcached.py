@@ -487,6 +487,10 @@ class FastMemcachedClient(BaseCacheClient):
     def usage(self):
         return self.stats.get('bytes', 0)
 
+    @property
+    def queuelen(self):
+        return len(self.queueset)
+
     def _enqueue_put(self, key, value, ttl):
         # Atomic insert
         value = value, ttl

@@ -826,6 +826,10 @@ class AsyncCacheProcessor(object):
     def usage(self):
         return self.client.usage
 
+    @property
+    def queuelen(self):
+        return self._threadpool._taskqueue.qsize() if self._threadpool is not None else 0
+
     def do_async(self, func, *args, **kwargs):
         return self._enqueue(functools.partial(func, *args, **kwargs))
 
@@ -879,6 +883,10 @@ class WrappedCacheProcessor(object):
     @property
     def usage(self):
         return self.client.usage
+
+    @property
+    def queuelen(self):
+        return self.processor.queuelen
 
     def do_async(self, func, *args, **kwargs):
         return self.processor.do_async(func, *args, **kwargs)
