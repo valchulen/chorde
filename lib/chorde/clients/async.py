@@ -753,7 +753,7 @@ def makeFutureWrapper(base):
         del name, fn
     return WrapperFuture
 
-class AsyncCacheProcessor(ThreadPool):
+class AsyncCacheProcessor(object):
     """
     An async cache processor will allow asynchronous reads
     and writes to a cache, Efficiently fitting into an async
@@ -783,8 +783,16 @@ class AsyncCacheProcessor(ThreadPool):
         self.client = client
         self.logger = logging.getLogger("AsyncCache")
         self.workers = workers
+        self._threadpool = None
+        self._spawnlock = threading.Lock()
 
-        ThreadPool.__init__(self, workers)
+    @property
+    def threadpool(self):
+        if self._threadpool is None:
+            with self._spawnlock:
+                if self._threadpool is None:
+                    self._threadpool = ThreadPool(self.workers)
+        return self._threadpool
 
     def _enqueue(self, action):
         future = Future(logger=self.logger)
@@ -797,7 +805,7 @@ class AsyncCacheProcessor(ThreadPool):
                 except:
                     # Clear up traceback to avoid leaks
                     future.exc(sys.exc_info()[:-1] + (None,))
-        self.apply_async(wrapped_action, ())
+        self.threadpool.apply_async(wrapped_action, ())
         return future
 
     @property
