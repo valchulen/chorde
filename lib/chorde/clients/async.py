@@ -587,9 +587,11 @@ class Future(object):
 
     def _on_stuff(self, callback, hasattr=hasattr):
         cbap = self._cb.append
-        with self._lock:
-            docall = hasattr(self, '_value')
-            cbap(callback)
+        docall = hasattr(self, '_value')
+        if not docall:
+            with self._lock:
+                docall = hasattr(self, '_value')
+                cbap(callback)
         if docall:
             callback(self._value)
         return self
