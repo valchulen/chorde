@@ -16,6 +16,7 @@ import multiprocessing.dummy
 from multiprocessing.pool import ThreadPool
 
 from .base import BaseCacheClient, CacheMissError, NONE
+from .inproc import Cache
 
 try:
     from concurrent.futures import TimeoutError, CancelledError
@@ -465,7 +466,7 @@ class ExceptionWrapper(object):
 class Future(object):
     __slots__ = (
         '_cb', '_value', '_logger', '_running', '_cancel_pending', '_cancelled', '_done_event', 
-        '_lock', '__weakref__'
+        '_lock', '__weakref__',
     )
     
     def __init__(self, logger = None):
@@ -598,7 +599,8 @@ class Future(object):
         if not docall:
             with self._lock:
                 docall = hasattr(self, '_value')
-                cbap(callback)
+                if not docall:
+                    cbap(callback)
         if docall:
             callback(self._value)
         return self
@@ -783,7 +785,7 @@ class AsyncCacheProcessor(object):
     you need to do it for synchronization)
     """
     
-    def __init__(self, workers, client):
+    def __init__(self, workers, client, coalescence_buffer_size = 500):
         # This patches ThreadPool, which is broken when instanced 
         # from inside a DummyThread (happens after forking)
         current = multiprocessing.dummy.current_process()
@@ -796,6 +798,10 @@ class AsyncCacheProcessor(object):
         self._threadpool = None
         self._spawnlock = threading.Lock()
 
+        self.coalesce_get = Cache(coalescence_buffer_size)
+        self.coalesce_getTtl = Cache(coalescence_buffer_size)
+        self.coalesce_contains = Cache(coalescence_buffer_size)
+
     @property
     def threadpool(self):
         if self._threadpool is None:
@@ -804,18 +810,36 @@ class AsyncCacheProcessor(object):
                     self._threadpool = AsyncCacheProcessorThreadPool(self.workers)
         return self._threadpool
 
-    def _enqueue(self, action):
-        future = Future(logger=self.logger)
-        def wrapped_action():
-            if future.set_running_or_notify_cancelled():
-                try:
-                    future.set(action())
-                except CacheMissError:
-                    future.miss()
-                except:
-                    # Clear up traceback to avoid leaks
-                    future.exc(sys.exc_info()[:-1] + (None,))
-        self.threadpool.apply_async(wrapped_action, ())
+    def _enqueue(self, action, coalesce = None, coalesce_key = NONE):
+        cfuture = future = Future(logger=self.logger)
+        
+        if coalesce is not None and coalesce_key is not NONE:
+            cfuture = coalesce.setdefault(coalesce_key, future)
+
+        if cfuture is future:
+            # I'm the one queueing
+            def wrapped_action():
+                def clean():
+                    if coalesce is not None and coalesce_key is not NONE:
+                        try:
+                            del coalesce[coalesce_key]
+                        except:
+                            pass
+                if future.set_running_or_notify_cancelled():
+                    try:
+                        rv = action()
+                        clean()
+                        future.set(rv)
+                    except CacheMissError:
+                        clean()
+                        future.miss()
+                    except:
+                        clean()
+                        # Clear up traceback to avoid leaks
+                        future.exc(sys.exc_info()[:-1] + (None,))
+                else:
+                    clean()
+            self.threadpool.apply_async(wrapped_action, ())
         return future
 
     @property
@@ -840,13 +864,31 @@ class AsyncCacheProcessor(object):
         return WrappedCacheProcessor(self, client)
     
     def getTtl(self, key, default = NONE, **kw):
-        return self._enqueue(functools.partial(self.client.getTtl, key, default, **kw))
+        if not kw:
+            if default is NONE:
+                ckey = key
+            else:
+                ckey = (key, default)
+        else:
+            ckey = NONE
+        return self._enqueue(functools.partial(self.client.getTtl, key, default, **kw),
+            self.coalesce_getTtl, ckey)
     
     def get(self, key, default = NONE):
-        return self._enqueue(functools.partial(self.client.get, key, default))
+        if default is NONE:
+            ckey = key
+        else:
+            ckey = (key, default)
+        return self._enqueue(functools.partial(self.client.get, key, default),
+            self.coalesce_get, ckey)
     
     def contains(self, key, *p, **kw):
-        return self._enqueue(functools.partial(self.client.contains, key, *p, **kw))
+        if not p and not kw:
+            ckey = key
+        else:
+            ckey = NONE
+        return self._enqueue(functools.partial(self.client.contains, key, *p, **kw),
+            self.coalesce_contains, ckey)
 
     def put(self, key, value, ttl):
         return self._enqueue(functools.partial(self.client.put, key, value, ttl))
