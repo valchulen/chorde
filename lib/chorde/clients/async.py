@@ -785,7 +785,7 @@ class AsyncCacheProcessor(object):
     you need to do it for synchronization)
     """
     
-    def __init__(self, workers, client, coalescence_buffer_size = 500):
+    def __init__(self, workers, client, coalescence_buffer_size = 500, maxqueue = None):
         # This patches ThreadPool, which is broken when instanced 
         # from inside a DummyThread (happens after forking)
         current = multiprocessing.dummy.current_process()
@@ -795,6 +795,7 @@ class AsyncCacheProcessor(object):
         self.client = client
         self.logger = logging.getLogger("AsyncCache")
         self.workers = workers
+        self.maxqueue = maxqueue
         self._threadpool = None
         self._spawnlock = threading.Lock()
 
@@ -818,6 +819,7 @@ class AsyncCacheProcessor(object):
 
         if cfuture is future:
             # I'm the one queueing
+            wself = weakref.ref(self)
             def wrapped_action():
                 def clean():
                     if coalesce is not None and coalesce_key is not NONE:
@@ -825,6 +827,14 @@ class AsyncCacheProcessor(object):
                             del coalesce[coalesce_key]
                         except:
                             pass
+                
+                # discard queue head quickly when we're overloaded
+                # head is always less relevant
+                self = wself()
+                if self is not None and self.maxqueue is not None:
+                    if self.queuelen > self.maxqueue:
+                        future.cancel()
+                
                 if future.set_running_or_notify_cancelled():
                     try:
                         rv = action()
