@@ -897,7 +897,7 @@ class WrappedCacheProcessor(object):
         else:
             return WrappedCacheProcessor(self.processor, client)
     
-    def getTtl(self, key, default = None, **kw):
+    def getTtl(self, key, default = NONE, **kw):
         return self.processor.do_async(self.client.getTtl, key, default, **kw)
     
     def get(self, key, default = NONE):
