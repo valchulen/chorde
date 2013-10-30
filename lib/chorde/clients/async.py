@@ -867,6 +867,19 @@ class AsyncCacheProcessor(object):
     def do_async(self, func, *args, **kwargs):
         return self._enqueue(functools.partial(func, *args, **kwargs))
 
+    def do_async_coalescent(self, coalesce, coalesce_key, func, *args, **kwargs):
+        """
+        Returns an already-queued future if there is one, or a new one if not.
+        
+        Params:
+            coalesce: A coalescence map (dict, Cache, or simialr)
+            coalesce_key: A coalesence key
+
+            See do_async for the rest
+        """
+        return self._enqueue(functools.partial(func, *args, **kwargs),
+            coalesce, coalesce_key)
+
     def bound(self, client):
         """
         Returns a proxy of this processor bound to the specified client instead.
@@ -924,9 +937,12 @@ class WrappedCacheProcessor(object):
     Wraps an AsyncCacheProcessor, binding its interface to a
     different client.
     """
-    def __init__(self, processor, client):
+    def __init__(self, processor, client, coalescence_buffer_size = 500):
         self.processor = processor
         self.client = client
+        self.coalesce_get = Cache(coalescence_buffer_size)
+        self.coalesce_getTtl = Cache(coalescence_buffer_size)
+        self.coalesce_contains = Cache(coalescence_buffer_size)
 
     @property
     def capacity(self):
@@ -950,13 +966,31 @@ class WrappedCacheProcessor(object):
             return WrappedCacheProcessor(self.processor, client)
     
     def getTtl(self, key, default = NONE, **kw):
-        return self.processor.do_async(self.client.getTtl, key, default, **kw)
+        if not kw:
+            if default is NONE:
+                ckey = key
+            else:
+                ckey = (key, default)
+        else:
+            ckey = NONE
+        return self.processor.do_async_coalescent(self.coalesce_getTtl, ckey, 
+            self.client.getTtl, key, default, **kw)
     
     def get(self, key, default = NONE):
-        return self.processor.do_async(self.client.get, key, default)
+        if default is NONE:
+            ckey = key
+        else:
+            ckey = (key, default)
+        return self.processor.do_async_coalescent(self.coalesce_get, ckey,
+            self.client.get, key, default)
     
     def contains(self, key, *p, **kw):
-        return self.processor.do_async(self.client.contains, key, *p, **kw)
+        if not p and not kw:
+            ckey = key
+        else:
+            ckey = NONE
+        return self.processor.do_async(self.coalesce_contains, ckey,
+            self.client.contains, key, *p, **kw)
 
     def put(self, key, value, ttl):
         return self.processor.do_async(self.client.put, key, value, ttl)
