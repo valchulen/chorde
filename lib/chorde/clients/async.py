@@ -162,7 +162,7 @@ class AsyncCacheWriterPool(ThreadPool):
                 try:
                     self.client.put(key, value, ttl)
                 except:
-                    self.logger.error("Error saving data in cache", exc_info=True)
+                    self.logger.error("Error saving data in cache %r, key %r", self.client, key, exc_info=True)
 
             if deferred is not _NONE:
                 deferred.done()
