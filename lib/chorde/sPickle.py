@@ -6,6 +6,7 @@ __all__ = [
     "SecureUnpickler",
 ]
 
+#lint:disable
 try:
     from hashlib import sha256 as checksum_algo
 except ImportError:
@@ -19,6 +20,7 @@ except ImportError:
                 from sha import sha as checksum_algo
             except ImportError:
                 from md5 import md5 as checksum_algo
+#lint:enable
 checksum_algo_name = checksum_algo.__name__.replace('openssl_','')
 
 import hmac
@@ -28,12 +30,12 @@ import threading
 try:
     import cPickle
 except ImportError:
-    import pickle as cPickle
+    import pickle as cPickle  # lint:ok
 
 try:
     from cStringIO import StringIO
 except ImportError:
-    from StringIO import StringIO
+    from StringIO import StringIO  # lint:ok
 
 class SecurePickler(object):
     def __init__(self, checksum_key, file, *p, **kw):
@@ -52,6 +54,10 @@ class SecurePickler(object):
             self.local.buf = buf = StringIO()
             return buf
 
+    @buf.deleter
+    def buf(self):  # lint:ok
+        del self.local.buf
+
     @property
     def pickler(self):
         try:
@@ -60,13 +66,17 @@ class SecurePickler(object):
             p, kw = self.backing_args
             self.local.pickler = pickler = self.backing_class(self.buf, *p, **kw)
             return pickler
+
+    @pickler.deleter
+    def pickler(self):  # lint:ok
+        del self.local.pickler
         
     @property
     def persistent_id(self):
         return self.pickler.persistent_id
     
     @persistent_id.setter
-    def persistent_id(self, value):
+    def persistent_id(self, value):  # lint:ok
         self.pickler.persistent_id = value
 
     def dump(self,val):
@@ -99,6 +109,10 @@ class SecureUnpickler(object):
             self.local.buf = buf = StringIO()
             return buf
 
+    @buf.deleter
+    def buf(self):  # lint:ok
+        del self.local.buf
+
     @property
     def unpickler(self):
         try:
@@ -108,12 +122,16 @@ class SecureUnpickler(object):
             self.local.unpickler = unpickler = self.backing_class(self.buf, *p, **kw)
             return unpickler
 
+    @unpickler.deleter
+    def unpickler(self):  # lint:ok
+        del self.local.unpickler
+        
     @property
     def persistent_load(self):
         return self.unpickler.persistent_load
     
     @persistent_load.setter
-    def persistent_load(self, value):
+    def persistent_load(self, value):  # lint:ok
         self.unpickler.persistent_load = value
 
     def load(self, headlen = len(struct.pack('<L',0).encode("hex"))):
