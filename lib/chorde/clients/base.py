@@ -162,6 +162,12 @@ class ReadWriteSyncAdapter(BaseCacheClient):
     def contains(self, key, ttl = None, **kw):
         return self.client.contains(key, ttl, **kw)
 
+    def __str__(self):
+        return "<%s of %r>" % (self.__class__.__name__, self.client)
+
+    def __repr__(self):
+        return str(self)
+
 
 class SyncAdapter(BaseCacheClient):
     def __init__(self, client):
@@ -210,6 +216,12 @@ class SyncAdapter(BaseCacheClient):
     @serialize
     def contains(self, key, ttl = None, **kw):
         return self.client.contains(key, ttl, **kw)
+
+    def __str__(self):
+        return "<%s of %r>" % (self.__class__.__name__, self.client)
+
+    def __repr__(self):
+        return str(self)
 
 
 class DecoratedWrapper(BaseCacheClient):
@@ -308,6 +320,12 @@ class NamespaceWrapper(DecoratedWrapper):
         self.client.put((self.namespace, 'REVMARK'), self.revision, 3600)
         return self.client.clear()
 
+    def __str__(self):
+        return "<%s namespace %r/%r on %r>" % (self.__class__.__name__, self.namespace, self.revision, self.client)
+
+    def __repr__(self):
+        return str(self)
+
 class NamespaceMirrorWrapper(NamespaceWrapper):
     """
     A namespace wrapper that takes its namespace info from the provided reference (mirrors it).
@@ -322,7 +340,7 @@ class NamespaceMirrorWrapper(NamespaceWrapper):
         return self.reference.revision
 
     @revision.setter
-    def revision(self, value):
+    def revision(self, value):  # lint:ok
         pass
 
     @property
@@ -330,5 +348,5 @@ class NamespaceMirrorWrapper(NamespaceWrapper):
         return self.reference.namespace
 
     @namespace.setter
-    def namespace(self):
+    def namespace(self):  # lint:ok
         pass

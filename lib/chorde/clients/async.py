@@ -457,6 +457,12 @@ class AsyncWriteCacheClient(BaseCacheClient):
         else:
             return self.client.contains(key, ttl, **kw)
 
+    def __str__(self):
+        return "<%s of %r>" % (self.__class__.__name__, self.client)
+
+    def __repr__(self):
+        return str(self)
+
 class ExceptionWrapper(object):
     __slots__ = ('value',)
 
@@ -474,11 +480,15 @@ class Future(object):
         self._logger = logger
         self._lock = threading.Lock()
     
-    def set(self, value):
+    def set(self, value, hasattr = hasattr, list = list, getattr = getattr):
         """
         Set the future's result as either a value, an exception wrappedn in ExceptionWrapper, or
         a cache miss if given CacheMissError (the class itself)
         """
+        if hasattr(self, '_value'):
+            # No setting twice
+            return
+        
         with self._lock:
             cbs = list(self._cb)
             self._value = value
