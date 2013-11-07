@@ -22,6 +22,8 @@ try:
 except ImportError:
     import StringIO as cStringIO
 
+from .compat import fbuffer, bbytes
+
 FRAME_HEARTBEAT = "__HeyDude__"
 FRAME_UPDATE_OK = "OK"
 FRAME_UPDATE_DROPPED = "DROP"
@@ -206,6 +208,7 @@ class IPSub(object):
                 random_ = random.random
                 tic_count = 100
                 buffer_ = buffer
+                fbuffer_ = fbuffer
                 hb_period_base = owner.heartbeat_avg_period * 2
                 hb_period_spread = hb_period_base * 2
                 hb_timeout = owner.heartbeat_push_timeout
@@ -248,7 +251,7 @@ class IPSub(object):
                                 if len_(pack) > 1:
                                     # ^ else Wakeup call, ignore
                                     put_nowait(pack)
-                                elif buffer_(pack[0]) == buffer_("tic"):
+                                elif fbuffer_(pack[0]) == buffer_("tic"):
                                     tic_count = 0
                                 del pack
                             elif socket is listener_req:
@@ -313,6 +316,7 @@ class IPSub(object):
                 random_ = random.random
                 tic_count = 100
                 buffer_ = buffer
+                fbuffer_ = fbuffer
                 hb_period_base = owner.heartbeat_avg_period / 2
                 hb_period_spread = hb_period_base * 2
 
@@ -336,7 +340,7 @@ class IPSub(object):
                                 if len_(pack) > 1:
                                     # ^ else Wakeup call, ignore
                                     put_nowait(pack)
-                                elif buffer_(pack[0]) == buffer_("tic"):
+                                elif fbuffer_(pack[0]) == buffer_("tic"):
                                     tic_count = 0
                                 del pack
                             elif socket is broker_rep and what & POLLIN:
@@ -709,7 +713,7 @@ class IPSub(object):
     def decode_payload(payload):
         encoding = payload[-2].bytes
         payload = payload[-1]
-        payload = cStringIO.StringIO(buffer(payload))
+        payload = cStringIO.StringIO(fbuffer(payload))
         return STREAMDECODINGS[encoding](payload)
 
     def publish(self, prefix, payload, copy = False, _ident = thread.get_ident):
@@ -808,7 +812,7 @@ class IPSub(object):
             elif len(update[0]) < MAX_PREFIX:
                 prefix = getattr(update[0], 'bytes', update[0])
             else:
-                prefix = bytes(buffer(update[0], 0, MAX_PREFIX))
+                prefix = bbytes(fbuffer(update[0], 0, MAX_PREFIX))
             if identity is None or identity == self.identity:
                 logging.debug("IPSub: (from %r) %s (prefix %r)", self.identity, EVENT_NAMES[event], prefix)
             else:
@@ -824,7 +828,7 @@ class IPSub(object):
             elif len(update[0]) < MAX_PREFIX:
                 prefix = update[0].bytes
             else:
-                prefix = bytes(buffer(update[0], 0, MAX_PREFIX))
+                prefix = bbytes(fbuffer(update[0], 0, MAX_PREFIX))
             called = set()
             rv = None
             for cb_prefix, callbacks in listeners.items():

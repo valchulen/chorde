@@ -19,6 +19,8 @@ except ImportError:
 from chorde.clients import CacheMissError
 from chorde.clients import inproc
 
+from .compat import fbuffer, bbytes
+
 P2P_HWM = 10
 INPROC_HWM = 1 # Just for wakeup signals
 PENDING_TIMEOUT = 10.0
@@ -453,8 +455,8 @@ class CoherenceManager(object):
         ctx = zmq.Context.instance()
         waiter, waiter_id = _mkwaiter(ctx, zmq.PAIR, "qpw")
         try:
-            def signaler(prefix, event, message, req = map(buffer,req)):
-                if map(buffer,message[0][2:]) == req:
+            def signaler(prefix, event, message, req = map(fbuffer,req)):
+                if map(fbuffer,message[0][2:]) == req:
                     # This is our message
                     signaler = ctx.socket(zmq.PAIR)
                     signaler.connect(waiter_id)
@@ -476,7 +478,7 @@ class CoherenceManager(object):
                 if expired():
                     waiter.poll(timeout/4)
             if waiter.poll(1):
-                rv = json.load(cStringIO.StringIO(buffer(waiter.recv(copy=False))))
+                rv = json.load(cStringIO.StringIO(fbuffer(waiter.recv(copy=False))))
                 if rv is not None:
                     rv = rv[-1]
                 elif not expired():
