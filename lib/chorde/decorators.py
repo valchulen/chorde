@@ -930,7 +930,8 @@ if not no_coherence:
     
             private: The private (local) cache client, the one that needs coherence.
     
-            shared: The shared cache client, that reflects changes made by other nodes.
+            shared: The shared cache client, that reflects changes made by other nodes, or a tuple
+                to specify multiple shared tiers.
     
             tiered_: (optional) A client that queries both, private and shared. By default, a TieredInclusiveClient
                 is created with private and shared as first and second tier, which should be the most common case. 
@@ -985,18 +986,28 @@ if not no_coherence:
                     async_writer_workers)
             else:
                 nprivate = private
-    
+
+            if not isinstance(shared, tuple):
+                shareds = (shared,)
+                sharedt = shared
+            elif len(shared) == 1:
+                shareds = shared
+                sharedt = shared[0]
+            else:
+                shareds = shared
+                sharedt = tiered.TieredInclusiveClient(*shareds, **(tiered_opts or {}))
+            
             if tiered_ is None:
-                ntiered = tiered.TieredInclusiveClient(nprivate, shared, **(tiered_opts or {}))
+                ntiered = tiered.TieredInclusiveClient(nprivate, *shareds, **(tiered_opts or {}))
             else:
                 ntiered = tiered_
     
             if _namespace is not NO_NAMESPACE:
                 ntiered = base.NamespaceWrapper(_namespace, ntiered)
                 nprivate = base.NamespaceMirrorWrapper(ntiered, nprivate)
-                nshared = base.NamespaceMirrorWrapper(ntiered, shared)
+                nshared = base.NamespaceMirrorWrapper(ntiered, sharedt)
             else:
-                nshared = shared
+                nshared = sharedt
     
             coherence_manager = coherence.CoherenceManager(
                 _coherence_namespace, nprivate, nshared, ipsub,
