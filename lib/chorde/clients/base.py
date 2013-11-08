@@ -161,6 +161,10 @@ class ReadWriteSyncAdapter(BaseCacheClient):
         return self.client.getTtl(key, default, **kw)
 
     @serialize_write
+    def promote(self, *p, **kw):
+        return self.client.promote(*p, **kw)
+    
+    @serialize_write
     def clear(self):
         return self.client.clear()
 
@@ -215,6 +219,10 @@ class SyncAdapter(BaseCacheClient):
     def getTtl(self, key, default = NONE, **kw):
         return self.client.getTtl(key, default, **kw)
 
+    @serialize_write
+    def promote(self, *p, **kw):
+        return self.client.promote(*p, **kw)
+    
     @serialize
     def clear(self):
         return self.client.clear()
@@ -295,6 +303,12 @@ class DecoratedWrapper(BaseCacheClient):
             rv = self.value_undecorator(rv)
         return rv
 
+    def promote(self, key, *p, **kw):
+        key_decorator = self.key_decorator
+        if key_decorator is not None:
+            key = key_decorator(key)
+        self.client.promote(key, *p, **kw)
+    
     def clear(self):
         return self.client.clear()
 
