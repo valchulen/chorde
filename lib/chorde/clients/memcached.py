@@ -151,6 +151,7 @@ class MemcachedClient(BaseCacheClient):
 
     def shorten_key(self, key):
         # keys cannot be anything other than strings
+        exact = True
         if not isinstance(key, basestring):
             try:
                 # Try JSON
@@ -170,6 +171,7 @@ class MemcachedClient(BaseCacheClient):
         if len(key) > self.max_backing_key_length:
             # keys cannot be too long, accept the possibility of collision,
             # and shorten it by truncating and perhaps appending an MD5 hash.
+            exact = False
             try:
                 key = "H%s#%s" % (hashlib.md5(key).digest().encode("hex"),key[:self.max_backing_key_length-48])
             except ImportError:
@@ -181,7 +183,7 @@ class MemcachedClient(BaseCacheClient):
         if self.namespace:
             key = "%s|%s" % (self.namespace,key)
         
-        return "%s,%s" % (sPickle.checksum_algo_name, key)
+        return "%s,%s" % (sPickle.checksum_algo_name, key), exact
     
     def get_version_stamp(self):
         stamp_key = "#--version-counter--#"
@@ -257,13 +259,14 @@ class MemcachedClient(BaseCacheClient):
         
         return data
     
-    def _getTtl(self, key, default, decode = True, ttlcut = None):
+    def _getTtl(self, key, default, decode = True, ttlcut = None, short_key = None):
         now = time.time()
         
         # get the first page (gambling that most entries will span only a single page)
         # then query for the remaining ones in a single roundtrip, if present,
         # for a combined total of 2 roundtrips.
-        short_key = self.shorten_key(key)
+        if short_key is None:
+            short_key,exact = self.shorten_key(key)
         
         pages = { 0 : self.client.get(short_key+"|0") }
         if pages[0] is None or not isinstance(pages[0],tuple) or len(pages[0]) != 5:
@@ -315,7 +318,7 @@ class MemcachedClient(BaseCacheClient):
     
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
-        short_key = self.shorten_key(key)
+        short_key,exact = self.shorten_key(key)
         pages = dict([(page,data) for page,data in enumerate(self.encode_pages(key, ttl+time.time(), value))])
         self.client.set_multi(pages, ttl, key_prefix=short_key+"|")
         
@@ -328,7 +331,7 @@ class MemcachedClient(BaseCacheClient):
         # delete the first page (gambling that most entries will span only a single page)
         # then query for the second, and if present, delete all the other pages
         # in a single roundtrip, for a combined total of 3 roundtrips.
-        short_key = self.shorten_key(key)
+        short_key,exact = self.shorten_key(key)
         self.client.delete(short_key+"|0")
         
         page = self.client.get(short_key+"|1")
@@ -349,7 +352,7 @@ class MemcachedClient(BaseCacheClient):
     def contains(self, key, ttl = None):
         # Exploit the fact that append returns True on success (the key exists)
         # and False on failure (the key doesn't exist), with minimal bandwidth
-        short_key = self.shorten_key(key)
+        short_key,exact = self.shorten_key(key)
         exists = self.client.append(short_key+"|0","")
         if exists:
             if ttl is None:
@@ -368,12 +371,14 @@ class MemcachedClient(BaseCacheClient):
                 
                 # check TTL quickly, no decoding (or fetching) of pages needed
                 # to check stale TTL
-                _, store_ttl = self._getTtl(key, NONE, False)
+                _, store_ttl = self._getTtl(key, NONE, False, short_key = short_key)
                 if store_ttl <= ttl:
                     return False
+                elif exact:
+                    return True
                 else:
                     # Must validate the key, so we must decode
-                    rv, store_ttl = self._getTtl(key, NONE)
+                    rv, store_ttl = self._getTtl(key, NONE, short_key = short_key)
                     if rv is NONE:
                         # wrong key
                         return False
