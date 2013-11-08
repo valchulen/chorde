@@ -64,18 +64,28 @@ class BaseCacheClient(object):
         return self.delete(key)
 
     @abstractmethod
-    def getTtl(self, key, default = NONE):
+    def getTtl(self, key, default = NONE, ttl_skip = None):
         """
         Returns: a tuple (value, ttl). If a default is given and the value
             is not in cache, return (default, -1). If a default is not given
             and the value is not in cache, raises CacheMissError. If the value
             is in the cache, but stale, ttl will be < 0, and value will be
             other than NONE. Note that ttl=0 is a valid and non-stale result.
+            If ttl_skip is given, and the cache is an aggregate of multiple
+            caches, entries with ttl below ttl_skip will be ignored, and
+            automatic promotion of remaining entries will occur.
         """
         if default is NONE:
             raise CacheMissError, key
         else:
             return (default, -1)
+    
+    def promote(self, key, default = NONE, ttl_skip = None):
+        """
+        Returns: None. If getTtl would find an entry with the given arguments,
+            this entry will be promoted. Otherwise, it's a no-op.
+        """
+        return
     
     def get(self, key, default = NONE, **kw):
         rv, ttl = self.getTtl(key, default, **kw)

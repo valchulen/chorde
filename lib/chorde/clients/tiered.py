@@ -111,7 +111,7 @@ class TieredInclusiveClient(BaseCacheClient):
         for client in self.clients:
             client.purge()
     
-    def getTtl(self, key, default = NONE, _max_tiers = None, _ttl_skip = 0, **kw):
+    def _getTtl(self, key, default = NONE, _max_tiers = None, ttl_skip = 0, **kw):
         ttl = -1
         NONE__ = NONE_
         clients = self.clients
@@ -120,9 +120,9 @@ class TieredInclusiveClient(BaseCacheClient):
         for i,client in enumerate(clients):
             # Yeap, separate NONE_, we must avoid CacheMissError s
             rv, ttl = client.getTtl(key, NONE__)
-            if rv is not NONE__ and ttl >= _ttl_skip:
+            if rv is not NONE__ and ttl >= ttl_skip:
                 # Cool
-                if i > 0 and ttl > _ttl_skip:
+                if i > 0 and ttl > ttl_skip:
                     # Um... not first-tier
                     # Move the entry up the ladder
                     self.clients[i-1].put(key, rv, ttl)
@@ -140,6 +140,25 @@ class TieredInclusiveClient(BaseCacheClient):
                     raise CacheMissError, key
                 else:
                     return default, -1
+
+    def getTtl(self, *p, **kw):
+        return self._getTtl(*p, **kw)
+    
+    def promote(self, key, default = NONE, _max_tiers = None, ttl_skip = 0, **kw):
+        ttl = -1
+        NONE__ = NONE_
+        clients = self.clients
+        ttl_skip = ttl_skip or 0
+        if _max_tiers is not None:
+            clients = islice(clients, _max_tiers)
+        for i,client in enumerate(clients):
+            # Yeap, separate NONE_, we must avoid CacheMissError s
+            if client.contains(key, ttl_skip):
+                rv, ttl = client.getTtl(key, NONE__)
+                if rv is not NONE__ and ttl > ttl_skip and i > 0:
+                    self.clients[i-1].put(key, rv, ttl)
+                    break
+            # Ok, gotta inspect other tiers
     
     def contains(self, key, ttl = None, _max_tiers = None, **kw):
         clients = self.clients

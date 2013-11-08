@@ -259,7 +259,7 @@ class MemcachedClient(BaseCacheClient):
         
         return data
     
-    def _getTtl(self, key, default, decode = True, ttlcut = None, short_key = None):
+    def _getTtl(self, key, default, decode = True, ttl_skip = None, short_key = None):
         now = time.time()
         
         # get the first page (gambling that most entries will span only a single page)
@@ -277,7 +277,7 @@ class MemcachedClient(BaseCacheClient):
 
         if not decode:
             return default, ttl - now
-        elif ttlcut is not None and ttl < ttlcut:
+        elif ttl_skip is not None and ttl < ttl_skip:
             return default, -1
         # Check failfast cache, before making a huge effort decoding for not
         # When there's a key collision, this avoids misses being expensive
@@ -303,14 +303,14 @@ class MemcachedClient(BaseCacheClient):
             logging.warning("Error decoding cached data", exc_info=True)
             return default, -1
 
-    def getTtl(self, key, default=NONE):
+    def getTtl(self, key, default=NONE, ttl_skip = None):
         # This trampoline is necessary to avoid re-entrancy issues when this client
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
-        return self._getTtl(key, default)
+        return self._getTtl(key, default, ttl_skip = ttl_skip)
 
     def get(self, key, default=NONE):
-        rv, ttl = self._getTtl(key, default, ttlcut = 0)
+        rv, ttl = self._getTtl(key, default, ttl_skip = 0)
         if ttl < 0 and default is NONE:
             raise CacheMissError, key
         else:
@@ -576,7 +576,7 @@ class FastMemcachedClient(BaseCacheClient):
         value, ttl = self.pickler.loads(value)
         return value, ttl
     
-    def _getTtl(self, key, default):
+    def _getTtl(self, key, default, ttl_skip = None):
         key = self.encode_key(key)
         
         # Quick check for a concurrent put
@@ -594,18 +594,21 @@ class FastMemcachedClient(BaseCacheClient):
         
         try:
             value, ttl = self.decode(value)
-            return value, ttl - time.time()
+            if ttl_skip is not None and ttl < ttl_skip:
+                return default, -1
+            else:
+                return value, ttl - time.time()
         except ValueError:
             return default, -1
         except:
             logging.warning("Error decoding cached data (%r)", value, exc_info=True)
             return default, -1
 
-    def getTtl(self, key, default=NONE):
+    def getTtl(self, key, default = NONE, ttl_skip = None):
         # This trampoline is necessary to avoid re-entrancy issues when this client
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
-        return self._getTtl(key, default)
+        return self._getTtl(key, default, ttl_skip = ttl_skip)
     
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip

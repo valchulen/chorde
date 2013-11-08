@@ -443,6 +443,12 @@ class AsyncWriteCacheClient(BaseCacheClient):
             raise CacheMissError, key
         else:
             return value, ttl
+
+    def promote(self, key, *p, **kw):
+        if self.is_started() and self.writer.contains(key):
+            return
+        else:
+            return self.client.promote(key, *p, **kw)
     
     def wait(self, key, timeout = None):
         if self.writer.contains(key):
