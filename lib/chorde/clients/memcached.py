@@ -27,8 +27,9 @@ except ImportError:
 try:
     import dns.resolver
     def dnsquery(host, typ):
-        for rdata in dns.resolver.query(host, typ):
-            yield str(rdata)
+        ans = dns.resolver.query(host, typ)
+        for rdata in ans:
+            yield str(rdata), ans.expiration
 except ImportError:
     import warnings
     warnings.warn("dnspython missing, will not support dynamic CNAME server lists")
@@ -36,9 +37,10 @@ except ImportError:
     # basic fallback that serves to dected round-robin dns at least
     def dnsquery(host, typ):  # lint:ok
         if typ == 'A':
+            expiration = time.time() + 60 # token expiration, the OS knows
             for addrinfo in socket.getaddrinfo(host, 0, socket.AF_INET, socket.SOCK_STREAM):
                 ip = addrinfo[-1][0]
-                yield ip
+                yield ip, expiration
         else:
             raise NotImplementedError
 
@@ -154,6 +156,7 @@ class MemcachedClient(BaseCacheClient):
             # Generate dynamic list
             servers = []
             static_addresses = self._static_client_addresses or set()
+            expiration = time.time() + 60
             allstatic = True
             for entry in self._client_addresses:
                 if entry in static_addresses:
@@ -184,7 +187,8 @@ class MemcachedClient(BaseCacheClient):
                         servers.append(entry)
                     else:
                         allstatic = False
-                        for addr in addrs:
+                        for addr,ttl in addrs:
+                            expiration = min(ttl, expiration)
                             servers.append("%s:%d" % (addr,port))
             if allstatic:
                 self._static_client_addresses = True
@@ -192,8 +196,8 @@ class MemcachedClient(BaseCacheClient):
             else:
                 self._static_client_addresses = static_addresses
                 
-                # Schedule a recheck in 1'
-                self._dynamic_client_checktime = time.time() + 60
+                # Schedule a recheck when TTL expires (or 5 seconds, whichever is higher)
+                self._dynamic_client_checktime = max(expiration, time.time() + 5)
                 self._dynamic_client_addresses = servers
                 return servers
 
