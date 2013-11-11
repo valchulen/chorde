@@ -5,6 +5,7 @@ import itertools
 import logging
 import memcache
 import random
+import socket
 import time
 import weakref
 import zlib
@@ -16,19 +17,37 @@ from .inproc import Cache
 try:
     import cPickle
 except ImportError:
-    import pickle as cPickle
+    import pickle as cPickle  # lint:ok
 
 try:
     from cStringIO import StringIO
 except ImportError:
-    from StringIO import StringIO
+    from StringIO import StringIO  # lint:ok
+
+try:
+    import dns.resolver
+    def dnsquery(host, typ):
+        for rdata in dns.resolver.query(host, typ):
+            yield str(rdata)
+except ImportError:
+    import warnings
+    warnings.warn("dnspython missing, will not support dynamic CNAME server lists")
+    
+    # basic fallback that serves to dected round-robin dns at least
+    def dnsquery(host, typ):  # lint:ok
+        if typ == 'A':
+            for addrinfo in socket.getaddrinfo(host, 0, socket.AF_INET, socket.SOCK_STREAM):
+                ip = addrinfo[-1][0]
+                yield ip
+        else:
+            raise NotImplementedError
 
 from chorde import sPickle
 
 try:
     import json
 except ImportError:
-    json = None
+    json = None  # lint:ok
 JSON_SEPARATORS = (',',':')
 
 class ZlibFile:
@@ -110,15 +129,86 @@ class MemcachedClient(BaseCacheClient):
 
         self._client_args = client_args
         self._client_addresses = client_addresses
+        self._static_client_addresses = None
+        self._dynamic_client_checktime = None
+        self._dynamic_client_addresses = None
         self._client = None
+        self._client_servers = None
         
         self._failfast_cache = Cache(failfast_size)
 
     @property
+    def servers(self):
+        """
+        Returns a set of server names derived from client_addresses.
+        When the addresses in client_addresses point to specific hosts, this will
+        just return client_addresses. But when entries in client_addresses are indirect,
+        eg by specifying a dns name that resolves to a CNAME, it will dynamically update
+        the returned list according to whatever the dns query returns.
+        """
+        if self._static_client_addresses is True:
+            return self._client_addresses
+        elif self._dynamic_client_addresses is not None and (self._dynamic_client_checktime or 0) > time.time():
+            return self._dynamic_client_addresses
+        else:
+            # Generate dynamic list
+            servers = []
+            static_addresses = self._static_client_addresses or set()
+            allstatic = True
+            for entry in self._client_addresses:
+                if entry in static_addresses:
+                    servers.append(entry)
+                else:
+                    host,port = entry.split(':',1)
+                    port = int(port)
+
+                    # Check CNAME indirection
+                    try:
+                        addrs = list(dnsquery(host, 'CNAME'))
+                    except:
+                        addrs = []
+                    if not addrs:
+                        # Check dns round-robin
+                        try:
+                            addrs = list(dnsquery(host, 'A'))
+                        except:
+                            addrs = []
+                        if len(addrs) == 1:
+                            # normal A record, forget to mark static
+                            addrs = []
+                    if addrs:
+                        # sort to maintain consistent hashing
+                        addrs = sorted(addrs)
+                    if not addrs:
+                        static_addresses.add(entry)
+                        servers.append(entry)
+                    else:
+                        allstatic = False
+                        for addr in addrs:
+                            servers.append("%s:%d" % (addr,port))
+            if allstatic:
+                self._static_client_addresses = True
+                return self._client_addresses
+            else:
+                self._static_client_addresses = static_addresses
+                
+                # Schedule a recheck in 1'
+                self._dynamic_client_checktime = time.time() + 60
+                self._dynamic_client_addresses = servers
+                return servers
+
+    @property
     def client(self):
-        if self._client is None:
-            self._client = memcache.Client(self._client_addresses, **self._client_args)
+        if self._client is None or self._client_servers != self.servers:
+            self._client_servers = servers = self.servers
+            self._client = memcache.Client(servers, **self._client_args)
         return self._client
+
+    @client.deleter
+    def client(self):  # lint:ok
+        self._client = None
+        self._dynamic_client_addresses = None
+        self._dynamic_client_checktime = None
 
     @property
     def async(self):
