@@ -118,7 +118,7 @@ class DynamicResolvingMemcachedClient(BaseCacheClient):
             servers = []
             static_addresses = self._static_client_addresses or set()
             expiration = time.time() + 60
-            allstatic = True
+            allstatic = True if self._static_client_addresses is None else False
             for entry in self._client_addresses:
                 if entry in static_addresses:
                     servers.append(entry)
