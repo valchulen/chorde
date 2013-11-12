@@ -268,7 +268,9 @@ def cached(client, ttl,
             here (default empty).
 
         initialize: (optional) A callable hook to be called right before all accesses. It should initialize whatever
-            is needed initialized (like daemon threads), and only once (it should be a no-op after it's called once)
+            is needed initialized (like daemon threads), and only once (it should be a no-op after it's called once).
+            It can return True to avoid being called again (any return value that doesn't evaluate to True will
+            be ignored).
 
         decorate: (optional) A decorator to apply to all call-like decorated functions. Since @cached creates many
             variants of the function, this is a convenience over manually decorating all variants.
@@ -311,6 +313,7 @@ def cached(client, ttl,
             nclient = client
 
         stats = CacheStats()
+        stop_initializing = [None]
 
         # Wrap and track misses and timings
         if timings:
@@ -359,8 +362,8 @@ def cached(client, ttl,
 
         @wraps(f)
         def cached_f(*p, **kw):
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -381,8 +384,8 @@ def cached(client, ttl,
         
         @wraps(f)
         def async_cached_f(*p, **kw):
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -425,8 +428,8 @@ def cached(client, ttl,
         
         @wraps(f)
         def future_cached_f(*p, **kw):
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -496,8 +499,8 @@ def cached(client, ttl,
 
         @wraps(f)
         def lazy_cached_f(*p, **kw):
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -518,8 +521,8 @@ def cached(client, ttl,
         
         @wraps(f)
         def future_lazy_cached_f(*p, **kw):
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -592,8 +595,8 @@ def cached(client, ttl,
 
         @wraps(f)
         def future_peek_cached_f(*p, **kw):
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -645,8 +648,8 @@ def cached(client, ttl,
 
         @wraps(f)
         def invalidate_f(*p, **kw):
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -659,8 +662,8 @@ def cached(client, ttl,
         
         @wraps(f)
         def future_invalidate_f(*p, **kw):
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -674,8 +677,8 @@ def cached(client, ttl,
         @wraps(f)
         def put_f(*p, **kw):
             value = kw.pop('_cache_put')
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -689,8 +692,8 @@ def cached(client, ttl,
         @wraps(f)
         def async_put_f(*p, **kw):
             value = kw.pop('_cache_put')
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -704,8 +707,8 @@ def cached(client, ttl,
         @wraps(f)
         def future_put_f(*p, **kw):
             value = kw.pop('_cache_put')
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -718,8 +721,8 @@ def cached(client, ttl,
         
         @wraps(f)
         def async_lazy_cached_f(*p, **kw):
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -767,8 +770,8 @@ def cached(client, ttl,
 
         @wraps(f)
         def refresh_f(*p, **kw):
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -785,8 +788,8 @@ def cached(client, ttl,
 
         @wraps(f)
         def async_refresh_f(*p, **kw):
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -803,8 +806,8 @@ def cached(client, ttl,
 
         @wraps(f)
         def future_refresh_f(*p, **kw):
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -829,8 +832,8 @@ def cached(client, ttl,
 
         fclient = []
         def future_f():
-            if initialize is not None:
-                initialize()
+            if initialize is not None and not stop_initializing[0]:
+                stop_initializing[0] = initialize()
             if not fclient:
                 if client.async:
                     _client = nclient
@@ -851,8 +854,8 @@ def cached(client, ttl,
 
         if not client.async:
             def async_f():
-                if initialize is not None:
-                    initialize()
+                if initialize is not None and not stop_initializing[0]:
+                    stop_initializing[0] = initialize()
                 if not aclient:
                     # atomic
                     aclient[:] = [async.AsyncWriteCacheClient(nclient, 
