@@ -3,6 +3,15 @@
 cdef extern from "Python.h":
     int PySequence_SetItem(object o, Py_ssize_t i, object v) except -1
     object PySequence_GetItem(object o, Py_ssize_t i)
+    int PyList_SET_ITEM(object o, Py_ssize_t i, void* v) except -1
+    void* PyList_GET_ITEM(object o, Py_ssize_t i)
+
+cdef extern from *:
+    # Note: the C name below is extracted from the generated code. As such,
+    #       it can change from time to time. It's a hack. Beware.
+    struct _borrowed_node "__pyx_obj_8lrucache__node":
+        unsigned int prio
+        unsigned int index
 
 class CacheMissError(KeyError):
     """Error raised when a cache miss occurs"""
@@ -71,19 +80,20 @@ cdef class LRUCache:
         return key in self.emap
 
     cdef void c_rehash(LRUCache self):        
-        cdef _node node
-        cdef unsigned int i
+        cdef _borrowed_node *node
+        cdef unsigned int i, sz
         cdef unsigned int bprio
 
         bprio = self.pqueue[0].prio
-        for i from 0 <= i < len(self.pqueue):
-            node = PySequence_GetItem(self.pqueue, i)
+        sz = len(self.pqueue)
+        for i from 0 <= i < n:
+            node = <_borrowed_node*>PyList_GET_ITEM(self.pqueue, i)
             node.prio = node.prio - bprio
         self.next_prio = self.next_prio - bprio
 
     cdef void c_decrease(LRUCache self, _node node):
         cdef unsigned int ix, l, r, sw, sz
-        cdef _node anode, ln, rn, swn
+        cdef _borrowed_node *ln, *rn, *swn, *bnode
 
         node.prio = self.next_prio
         self.next_prio = self.next_prio + 1
@@ -91,28 +101,35 @@ cdef class LRUCache:
         if self.next_prio == 0:
             self.c_rehash()
 
+        # From here on, we work with borrowed references exclusively
+        # This is possible since we're only shuffling items, in 
+        # reference-neutral way, atomically, within a GIL-protected opcode
+        bnode = <_borrowed_node*><void*>node
         sz = len(self.pqueue)
         while 1:
-            ix = node.index
+            ix = bnode.index
             l  = 2 * ix + 1
             r  = 2 * ix + 2
 
             if r < sz:
-                ln = PySequence_GetItem(self.pqueue,l)
-                rn = PySequence_GetItem(self.pqueue,r)
+                ln = <_borrowed_node*>PyList_GET_ITEM(self.pqueue,l)
+                rn = <_borrowed_node*>PyList_GET_ITEM(self.pqueue,r)
+            elif l < sz:
+                ln = <_borrowed_node*>PyList_GET_ITEM(self.pqueue,l)
 
             if r < sz and rn.prio < ln.prio:
                 sw = r
                 swn= rn
             elif l < sz:
                 sw = l
-                swn= PySequence_GetItem(self.pqueue,l)
+                swn= ln
             else:
                 break
 
-            PySequence_SetItem(self.pqueue, sw, node)
-            PySequence_SetItem(self.pqueue, ix, swn)
-            node.index = sw
+            # This is reference-neutral, so we can use the SET_ITEM macro
+            PyList_SET_ITEM(self.pqueue, sw, <void*>bnode)
+            PyList_SET_ITEM(self.pqueue, ix, <void*>swn)
+            bnode.index = sw
             swn.index = ix
 
     def iterkeys(LRUCache self not None):
