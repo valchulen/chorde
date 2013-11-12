@@ -26,8 +26,14 @@ except ImportError:
 
 try:
     import dns.resolver
+    resolver = None
     def dnsquery(host, typ):
-        ans = dns.resolver.query(host, typ)
+        global resolver
+        if resolver is None:
+            # Lower timeout, we want to be fast
+            resolver = dns.resolver.Resolver()
+            resolver.lifetime = min(resolver.lifetime, 1)
+        ans = resolver.query(host, typ)
         for rdata in ans:
             yield str(rdata), ans.expiration
 except ImportError:
@@ -84,51 +90,8 @@ class ZlibFile:
     def __exit__(self, type, value, traceback):
         self.close()
 
-class MemcachedClient(BaseCacheClient):
-    def __init__(self, 
-            client_addresses, 
-            max_backing_key_length = 250,
-            max_backing_value_length = 1000*1024,
-            failfast_size = 100,
-            failfast_time = 0.1,
-            pickler = None,
-            namespace = None,
-            checksum_key = None, # CHANGE IT!
-            **client_args):
-        if checksum_key is None:
-            raise ValueError, "MemcachedClient requires a checksum key for security checks"
-        
-        # make room for the hash prefix
-        max_backing_key_length -= len(sPickle.checksum_algo_name) + 1
-        
-        max_backing_key_length = min(
-            max_backing_key_length,
-            memcache.SERVER_MAX_KEY_LENGTH)
-        
-        self.max_backing_key_length = max_backing_key_length - 16 # 16-bytes for page suffix
-        self.max_backing_value_length = max_backing_value_length - 256 # 256-bytes for page header and other overhead
-        self.last_seen_stamp = 0
-        self.pickler = pickler or cPickle
-        self.namespace = namespace
-        self.failfast_time = failfast_time
-        
-        if self.namespace:
-            self.max_backing_key_length -= len(self.namespace)+1
-        
-        assert self.max_backing_key_length > 48
-        assert self.max_backing_value_length > 128
-        
-        if 'pickleProtocol' not in client_args:
-            # use binary protocol, otherwise binary data gets inflated
-            # unreasonably when pickling
-            client_args['pickleProtocol'] = 2
-        
-        if 'pickler' not in client_args:
-            client_args['pickler'] = lambda *p, **kw: sPickle.SecurePickler(checksum_key, *p, **kw)
-        
-        if 'unpickler' not in client_args:
-            client_args['unpickler'] = lambda *p, **kw: sPickle.SecureUnpickler(checksum_key, *p, **kw)
-
+class DynamicResolvingMemcachedClient(BaseCacheClient):
+    def __init__(self, client_addresses, client_args):
         self._client_args = client_args
         self._client_addresses = client_addresses
         self._static_client_addresses = None
@@ -136,8 +99,6 @@ class MemcachedClient(BaseCacheClient):
         self._dynamic_client_addresses = None
         self._client = None
         self._client_servers = None
-        
-        self._failfast_cache = Cache(failfast_size)
 
     @property
     def servers(self):
@@ -214,6 +175,55 @@ class MemcachedClient(BaseCacheClient):
         self._dynamic_client_addresses = None
         self._dynamic_client_checktime = None
 
+class MemcachedClient(DynamicResolvingMemcachedClient):
+    def __init__(self, 
+            client_addresses, 
+            max_backing_key_length = 250,
+            max_backing_value_length = 1000*1024,
+            failfast_size = 100,
+            failfast_time = 0.1,
+            pickler = None,
+            namespace = None,
+            checksum_key = None, # CHANGE IT!
+            **client_args):
+        if checksum_key is None:
+            raise ValueError, "MemcachedClient requires a checksum key for security checks"
+        
+        # make room for the hash prefix
+        max_backing_key_length -= len(sPickle.checksum_algo_name) + 1
+        
+        max_backing_key_length = min(
+            max_backing_key_length,
+            memcache.SERVER_MAX_KEY_LENGTH)
+        
+        self.max_backing_key_length = max_backing_key_length - 16 # 16-bytes for page suffix
+        self.max_backing_value_length = max_backing_value_length - 256 # 256-bytes for page header and other overhead
+        self.last_seen_stamp = 0
+        self.pickler = pickler or cPickle
+        self.namespace = namespace
+        self.failfast_time = failfast_time
+        
+        if self.namespace:
+            self.max_backing_key_length -= len(self.namespace)+1
+        
+        assert self.max_backing_key_length > 48
+        assert self.max_backing_value_length > 128
+        
+        if 'pickleProtocol' not in client_args:
+            # use binary protocol, otherwise binary data gets inflated
+            # unreasonably when pickling
+            client_args['pickleProtocol'] = 2
+        
+        if 'pickler' not in client_args:
+            client_args['pickler'] = lambda *p, **kw: sPickle.SecurePickler(checksum_key, *p, **kw)
+        
+        if 'unpickler' not in client_args:
+            client_args['unpickler'] = lambda *p, **kw: sPickle.SecureUnpickler(checksum_key, *p, **kw)
+
+        self._failfast_cache = Cache(failfast_size)
+
+        super(MemcachedClient, self).__init__(client_addresses, client_args)
+
     @property
     def async(self):
         return False
@@ -287,7 +297,7 @@ class MemcachedClient(BaseCacheClient):
             # Sometimes shit happens when there's memory pressure, we lost the stamp
             # Some other times, the client gets borked
             logging.warn("MemcachedClient: Error reading version counter, resetting client")
-            self._client = None
+            del self.client
             try:
                 stamp = self.client.incr(stamp_key)
             except ValueError:
@@ -497,7 +507,7 @@ class MemcacheWriterThread(Thread):
         
         Thread.__init__(self, target=target, args=args, name=name)
 
-class FastMemcachedClient(BaseCacheClient):
+class FastMemcachedClient(DynamicResolvingMemcachedClient):
     """
     Like MemcachedClient, but it doesn't support massive keys or values,
     is a lot more lightweight, and is optimized for high numbers of writes
@@ -549,22 +559,14 @@ class FastMemcachedClient(BaseCacheClient):
         assert self.max_backing_key_length > 48
         assert self.max_backing_value_length > 128
         
-        self._client_args = client_args
-        self._client_addresses = client_addresses
-        self._client = None
-        
         self.queueset = {}
         self.workset = {}
         self.workev = Event()
 
+        super(self, FastMemcachedClient).__init__(client_args, client_addresses)
+
         self._bgwriter_thread = MemcacheWriterThread(self._bgwriter, weakref.ref(self))
         self._bgwriter_thread.setDaemon(True)
-
-    @property
-    def client(self):
-        if self._client is None:
-            self._client = memcache.Client(self._client_addresses, **self._client_args)
-        return self._client
 
     @property
     def async(self):
