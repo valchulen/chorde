@@ -486,7 +486,7 @@ class Future(object):
         self._logger = logger
         self._lock = threading.Lock()
     
-    def set(self, value, hasattr = hasattr, list = list, getattr = getattr):
+    def set(self, value, hasattr = hasattr, tuple = tuple, getattr = getattr):
         """
         Set the future's result as either a value, an exception wrappedn in ExceptionWrapper, or
         a cache miss if given CacheMissError (the class itself)
@@ -496,7 +496,7 @@ class Future(object):
             return
         
         with self._lock:
-            cbs = list(self._cb)
+            cbs = tuple(self._cb)
             self._value = value
         
         for cb in cbs:
