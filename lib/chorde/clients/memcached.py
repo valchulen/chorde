@@ -563,7 +563,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         self.workset = {}
         self.workev = Event()
 
-        super(self, FastMemcachedClient).__init__(client_args, client_addresses)
+        super(FastMemcachedClient, self).__init__(client_addresses, client_args)
 
         self._bgwriter_thread = MemcacheWriterThread(self._bgwriter, weakref.ref(self))
         self._bgwriter_thread.setDaemon(True)
