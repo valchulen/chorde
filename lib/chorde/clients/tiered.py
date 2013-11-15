@@ -43,7 +43,7 @@ class TieredInclusiveClient(BaseCacheClient):
                     try:
                         client.put(key, value, ttl * fraction)
                     except:
-                        logging.error("Error propagating deferred value through tier %r", client)
+                        logging.getLogger('chorde').error("Error propagating deferred value through tier %r", client)
             return value
         finally:
             deferred.done()
@@ -127,7 +127,7 @@ class TieredInclusiveClient(BaseCacheClient):
                     # Move the entry up the ladder
                     for i in xrange(i-1, -1, -1):
                         try:
-                            self.clients[i-1].put(key, rv, ttl)
+                            self.clients[i].put(key, rv, ttl)
                             break
                         except:
                             # Ignore, go to the next
@@ -164,7 +164,7 @@ class TieredInclusiveClient(BaseCacheClient):
                 if rv is not NONE__ and ttl > ttl_skip and i > 0:
                     for i in xrange(i-1, -1, -1):
                         try:
-                            self.clients[i-1].put(key, rv, ttl)
+                            self.clients[i].put(key, rv, ttl)
                             break
                         except:
                             # Ignore, go to the next
