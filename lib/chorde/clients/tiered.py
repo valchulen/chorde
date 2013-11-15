@@ -125,7 +125,13 @@ class TieredInclusiveClient(BaseCacheClient):
                 if i > 0 and ttl > ttl_skip:
                     # Um... not first-tier
                     # Move the entry up the ladder
-                    self.clients[i-1].put(key, rv, ttl)
+                    for i in xrange(i-1, -1, -1):
+                        try:
+                            self.clients[i-1].put(key, rv, ttl)
+                            break
+                        except:
+                            # Ignore, go to the next
+                            logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
                 return rv, ttl
             elif not i:
                 self.l1_misses += 1
@@ -156,7 +162,13 @@ class TieredInclusiveClient(BaseCacheClient):
             if client.contains(key, ttl_skip):
                 rv, ttl = client.getTtl(key, NONE__)
                 if rv is not NONE__ and ttl > ttl_skip and i > 0:
-                    self.clients[i-1].put(key, rv, ttl)
+                    for i in xrange(i-1, -1, -1):
+                        try:
+                            self.clients[i-1].put(key, rv, ttl)
+                            break
+                        except:
+                            # Ignore, go to the next
+                            logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
                     break
             # Ok, gotta inspect other tiers
     

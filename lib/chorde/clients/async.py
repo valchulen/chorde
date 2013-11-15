@@ -84,7 +84,7 @@ class AsyncCacheWriterPool(ThreadPool):
             current._children = weakref.WeakKeyDictionary()
         
         self.client = client
-        self.logger = logging.getLogger("AsyncCache")
+        self.logger = logging.getLogger("chorde")
         self.size = size
         self.workers = workers
         
@@ -809,7 +809,7 @@ class AsyncCacheProcessor(object):
             current._children = weakref.WeakKeyDictionary()
         
         self.client = client
-        self.logger = logging.getLogger("AsyncCache")
+        self.logger = logging.getLogger("chorde")
         self.workers = workers
         self.maxqueue = maxqueue
         self._threadpool = None
