@@ -71,12 +71,14 @@ class Defer(object):
         if future is not None and not future.done():
             future.set(getattr(self, 'rv', None))
 
+_global_cleanup_tasks = []
+
 class AsyncCacheWriterPool(ThreadPool):
     class AsyncCacheWriterThread(ThreadPool.Process):
         pass
     Process = AsyncCacheWriterThread
     
-    def __init__(self, size, workers, client, overflow = False):
+    def __init__(self, size, workers, client, overflow = False, cleanup_cycles = 500):
         # This patches ThreadPool, which is broken when instanced 
         # from inside a DummyThread (happens after forking)
         current = multiprocessing.dummy.current_process()
@@ -96,6 +98,10 @@ class AsyncCacheWriterPool(ThreadPool):
         self.threadset = set()
         self.done_event = threading.Event()
         self.overflow = overflow
+
+        self.tl = threading.local()
+        self.cleanup_tasks = []
+        self.cleanup_cycles = cleanup_cycles
         
         ThreadPool.__init__(self, workers)
 
@@ -184,6 +190,20 @@ class AsyncCacheWriterPool(ThreadPool):
             ev.set()
             if kev is not None:
                 kev.set()
+
+        # Cleanup
+        try:
+            if not hasattr(self.tl, 'dirty_rounds'):
+                self.tl.dirty_rounds = 0
+            self.tl.dirty_rounds += 1
+            if self.tl.dirty_rounds > self.cleanup_cycles or not self.queueset:
+                self.tl.dirty_rounds = 0
+                for task in self.cleanup_tasks:
+                    task()
+                for task in _global_cleanup_tasks:
+                    task()
+        except:
+            self.logger.error("Error during cleanup", exc_info = True)
         
     @property
     def capacity(self):
@@ -347,7 +367,25 @@ class AsyncCacheWriterPool(ThreadPool):
 
     def purge(self):
         self.enqueue(_PURGE, _PURGE)
-    
+
+    def register_cleanup(self, task):
+        """
+        Register a callable that will take no arguments, and will
+        be invoked every cleanup_cycles tasks in order to perform
+        thread-local cleanup for this writer.
+        """
+        self.cleanup_tasks.append(task)
+
+    @staticmethod
+    def register_default_cleanup(task):
+        """
+        Register a callable that will take no arguments, and will
+        be invoked every cleanup_cycles tasks in order to perform
+        thread-local cleanup for all async processors (including
+        async writers and async processors both).
+        """
+        _global_cleanup_tasks.append(task)
+
 class AsyncWriteCacheClient(BaseCacheClient):
     def __init__(self, client, writer_queue_size, writer_workers, overflow = False):
         self.client = client
@@ -462,6 +500,15 @@ class AsyncWriteCacheClient(BaseCacheClient):
                 return self.client.contains(key, ttl, **kw)
         else:
             return self.client.contains(key, ttl, **kw)
+
+
+    def register_cleanup(self, task):
+        """
+        Register a callable that will take no arguments, and will
+        be invoked every cleanup_cycles tasks in order to perform
+        thread-local cleanup for this writer.
+        """
+        self.writer.register_cleanup(task)
 
     def __str__(self):
         return "<%s of %r>" % (self.__class__.__name__, self.client)
@@ -801,7 +848,7 @@ class AsyncCacheProcessor(object):
     you need to do it for synchronization)
     """
     
-    def __init__(self, workers, client, coalescence_buffer_size = 500, maxqueue = None):
+    def __init__(self, workers, client, coalescence_buffer_size = 500, maxqueue = None, cleanup_cycles = 500):
         # This patches ThreadPool, which is broken when instanced 
         # from inside a DummyThread (happens after forking)
         current = multiprocessing.dummy.current_process()
@@ -818,6 +865,10 @@ class AsyncCacheProcessor(object):
         self.coalesce_get = Cache(coalescence_buffer_size)
         self.coalesce_getTtl = Cache(coalescence_buffer_size)
         self.coalesce_contains = Cache(coalescence_buffer_size)
+
+        self.tl = threading.local()
+        self.cleanup_tasks = []
+        self.cleanup_cycles = cleanup_cycles
 
     @property
     def threadpool(self):
@@ -843,6 +894,18 @@ class AsyncCacheProcessor(object):
                             del coalesce[coalesce_key]
                         except:
                             pass
+
+                    self = wself()
+                    if self is not None:
+                        if not hasattr(self.tl, 'dirty_rounds'):
+                            self.tl.dirty_rounds = 0
+                        self.tl.dirty_rounds += 1
+                        if self.tl.dirty_rounds > self.cleanup_cycles or not self.queuelen:
+                            self.tl.dirty_rounds = 0
+                            for task in self.cleanup_tasks:
+                                task()
+                            for task in _global_cleanup_tasks:
+                                task()
                 
                 # discard queue head quickly when we're overloaded
                 # head is always less relevant
@@ -947,6 +1010,23 @@ class AsyncCacheProcessor(object):
     def purge(self):
         return self._enqueue(self.client.purge)
     
+    def register_cleanup(self, task):
+        """
+        Register a callable that will take no arguments, and will
+        be invoked every cleanup_cycles tasks in order to perform
+        thread-local cleanup for this processor.
+        """
+        self.cleanup_tasks.append(task)
+
+    @staticmethod
+    def register_default_cleanup(task):
+        """
+        Register a callable that will take no arguments, and will
+        be invoked every cleanup_cycles tasks in order to perform
+        thread-local cleanup for all async processors (including
+        async writers).
+        """
+        _global_cleanup_tasks.append(task)
 
 class WrappedCacheProcessor(object):
     """
@@ -1026,3 +1106,9 @@ class WrappedCacheProcessor(object):
     def purge(self):
         return self.processor.do_async(self.client.purge)
     
+    def register_cleanup(self, task):
+        self.processor.register_cleanup(task)
+
+    @staticmethod
+    def register_default_cleanup(task):
+        AsyncCacheProcessor.register_default_cleanup(task)
