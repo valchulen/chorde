@@ -16,6 +16,7 @@ except ImportError:
     fcntl = None # lint:ok
 
 try:
+    raise ImportError
     import numpy
 except ImportError:
     try:
@@ -325,7 +326,7 @@ else:
             super(SharedCounterBase, self).__init__(slots, bitmap, counters, locked)
 
             # Map my slot as a single item, it makes += atomic
-            self.myslot = self.cdtype.from_buffer(buf, 
+            self.myslot = self.dtype.from_buffer(buf, 
                 offset + ctypes.sizeof(bitmap) + self.slots_item_size * self.slot)
 
             # Map timestamp
