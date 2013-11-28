@@ -46,7 +46,8 @@ class SharedCounterGenericBase(object):
     will be raised.
 
     SharedCounterGenericBase objects and derivations
-    are both thread and process-safe.
+    are both thread and process-safe, as long as you don't
+    map a file/buffer more than once through different instances.
     """
     # Pick one
     dtype = None
