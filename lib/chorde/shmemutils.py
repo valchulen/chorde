@@ -16,7 +16,6 @@ except ImportError:
     fcntl = None # lint:ok
 
 try:
-    raise ImportError
     import numpy
 except ImportError:
     try:
@@ -84,14 +83,14 @@ class SharedCounterGenericBase(object):
 
     @classmethod
     def size(cls, slots):
-        return (cls.slots_item_size + cls.bitmap_item_size) * slots + ctypes.sizeof(ctypes.c_int64())
+        return (cls.slots_item_size + cls.bitmap_item_size) * slots + ctypes.sizeof(ctypes.c_uint64())
 
     def _update_ts(self):
         # Careful to maintain out-of-sync status out-of-sync
         ts = self.timestamp
         rand = self.__rnd
         if self.cached_timestamp is not None:
-            self.cached_timestamp += rand
+            self.cached_timestamp = (self.cached_timestamp + rand) & 0xffffffffffffffff
         ts.value += rand
 
     @property
@@ -277,7 +276,7 @@ if numpy is not None:
             assert ctypes.sizeof(ctypes.c_bool()) == self.bitmap_item_size
             assert ctypes.sizeof(self.cdtype()) == self.slots_item_size
 
-            timestamp = ctypes.c_int64.from_buffer(buf, offset)
+            timestamp = ctypes.c_uint64.from_buffer(buf, offset)
             offset += ctypes.sizeof(timestamp)
             
             # Slow, read-write bitmap
@@ -319,7 +318,7 @@ else:
         bitmap_item_size = ctypes.sizeof(btype())
         
         def __init__(self, slots, buf, offset = 0, locked = False):
-            timestamp = ctypes.c_int64.from_buffer(buf, offset)
+            timestamp = ctypes.c_uint64.from_buffer(buf, offset)
             offset += ctypes.sizeof(timestamp)
             
             bitmap = (ctypes.c_bool * slots).from_buffer(buf, offset)
