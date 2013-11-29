@@ -718,7 +718,9 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
 
         if self.queueset.get(key, NONE) is not NONE:
             return False
-            
+        elif self.workset.get(key, NONE) is not NONE:
+            return False
+        
         value = self.encode(key, ttl+time.time(), value)
         rv = self.client.add(key, value, ttl)
 
@@ -735,7 +737,9 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
     
     def clear(self):
         # We don't want to clear memcache, it might be shared
-        pass
+        # But we can purge our queueset
+        self.queueset.clear()
+        self.workset.clear()
 
     def purge(self):
         # Memcache does that itself
