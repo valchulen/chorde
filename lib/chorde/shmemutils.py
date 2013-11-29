@@ -75,6 +75,7 @@ class SharedCounterGenericBase(object):
         self.slots = counters
         self.slot = slot
         self.basemap = None
+        self.baseoffset = None
         self.timestamp = None
         self.cached_timestamp = None
         self.cached_value = None
@@ -100,6 +101,10 @@ class SharedCounterGenericBase(object):
             self.cached_value = self._value
             self.__rnd = random.getrandbits(62) + self.slot
         return self.cached_value
+
+    def flush(self):
+        if self.basemap is not None:
+            self.basemap.flush()
 
     @property
     def _value(self):
@@ -199,6 +204,7 @@ class SharedCounterGenericBase(object):
 
         rv = cls.from_buffer(slots, buf, remnant_offset, fileno, offset)
         rv.basemap = buf
+        rv.baseoffset = offset
         return rv
 
     @classmethod
