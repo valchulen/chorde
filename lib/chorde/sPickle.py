@@ -170,7 +170,7 @@ def dumps(key, obj, *p, **kw):
     pickler.dump(obj)
     return buf.getvalue()
 
-def load(key, obj, file, *p, **kw):
+def load(key, file, *p, **kw):
     unpickler = SecureUnpickler(key, file, *p, **kw)
     return unpickler.load()
 

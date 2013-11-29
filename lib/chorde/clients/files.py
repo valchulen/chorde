@@ -12,6 +12,7 @@ import mmap
 import os.path
 import shutil
 import tempfile
+import thread
 import threading
 import time
 import weakref
@@ -61,9 +62,18 @@ class CacheJanitorThread(threading.Thread):
                     self.logger.error("Exception during cache purge", exc_info = True)
 
 def startCacheJanitorThread(sleep_interval=3600, purge_timeout=0):
-    thread = CacheJanitorThread(sleep_interval, purge_timeout)
-    thread.start()
-    return thread
+    jthread = CacheJanitorThread(sleep_interval, purge_timeout)
+    jthread.start()
+    return jthread
+
+def _tmpprefix():
+    return ".tmp.%d.%x.%x" % (os.getpid(),thread.get_ident(),int(time.time()))
+
+def _touch(path):
+    try:
+        os.utime(path, (time.time(), os.path.getmtime(path)))
+    except OSError:
+        pass
 
 def _swap(source, dest, sizeback = None):
     cursize = 0
@@ -77,7 +87,7 @@ def _swap(source, dest, sizeback = None):
         os.rename(source, dest)
     except OSError:
         # Do an indirect swap, in case it was on a different filesystem
-        tmpname = dest+".tmp.%d.%d" % (os.getpid(),int(time.time()))
+        tmpname = dest+_tmpprefix()
         try:
             # This might work still, on systems with os.link where rename doesn't overwrite
             os.link(source, tmpname)
@@ -120,7 +130,7 @@ def _clean(path, sizeback = None):
 class FilesCacheClient(base.BaseCacheClient):
     def __init__(self, size, basepath, 
             failfast_size = 500, failfast_time = 0.25, counter_slots = 256, 
-            key_pickler = json.dumps, value_pickler = sPickle, checksum_key = None,
+            key_pickler = json.dumps, value_pickler = None, value_unpickler = None, checksum_key = None,
             dirmode = 0700, filemode = 0400, mmap_raw = True):
         self._failfast_cache = inproc.Cache(size)
         self.failfast_time = failfast_time
@@ -130,10 +140,21 @@ class FilesCacheClient(base.BaseCacheClient):
         self.size = self._make_counter()
         self.key_pickler = key_pickler
         self.checksum_key = checksum_key
-        self.value_pickler = value_pickler
         self.filemode = filemode
         self.dirmode = dirmode
         self.mmap_raw = mmap_raw
+
+        if value_pickler is None or value_unpickler is None:
+            if checksum_key is None:
+                raise ValueError, "Must be given a checksum_key when using the default pickler"
+            else:
+                self.value_pickler = functools.partial(sPickle.dump, checksum_key)
+                self.value_unpickler = functools.partial(sPickle.load, checksum_key)
+        elif value_pickler is not None or value_unpickler is not None:
+            raise ValueError, "Must be given both pickler and unpickler when using custom picklers"
+        else:
+            self.value_pickler = value_pickler
+            self.value_unpickler = value_unpickler
         
         _register_files(self)
 
@@ -168,6 +189,8 @@ class FilesCacheClient(base.BaseCacheClient):
             logger.info("Initialized concurrent counter for file-based cache on %r (%.3fs)", 
                 self.basepath, t1 - t0)
 
+        return rv
+
     def _walk(self):
         for dirpath, dirs, files in os.walk(self.basepath):
             if dirpath != self.basepath:
@@ -179,7 +202,10 @@ class FilesCacheClient(base.BaseCacheClient):
         getsize = os.path.getsize
         join = os.path.join
         for fpath in self._walk():
-            rv += getsize(join(self.basepath, fpath))
+            try:
+                rv += getsize(join(self.basepath, fpath))
+            except OSError:
+                pass # Meh, entries are transient
         return rv
 
     def _mkpath(self, key):
@@ -241,7 +267,7 @@ class FilesCacheClient(base.BaseCacheClient):
             os.utime(path, (now, now + ttl))
 
         def setPermsf(fileobj):
-            os.chmod(fileobj.fileno(), self.filemode)
+            os.fchmod(fileobj.fileno(), self.filemode)
         
         if not reuse_keyfile:
             # Create a key file
@@ -271,7 +297,7 @@ class FilesCacheClient(base.BaseCacheClient):
                     _swap(name, targetpath+'.file', self.size.__iadd__, self.filemode)
                     if not reuse_keyfile:
                         _swap(keyfile.name, keypath, self.size.__iadd__, self.filemode)
-                        keyfile.close()
+                        keyfile.delete = False
                     
                     # Succeeded, clean up other representations, if they exist, set ttl
                     _clean(targetpath+'.raw', self.size.__isub__)
@@ -291,8 +317,10 @@ class FilesCacheClient(base.BaseCacheClient):
                     rawfile.flush()
 
                     _swap(rawfile.name, targetpath+'.raw', self.size.__iadd__)
+                    rawfile.delete = False
                     if not reuse_keyfile:
                         _swap(keyfile.name, keypath, self.size.__iadd__)
+                        keyfile.delete = False
                     
                     # Succeeded, clean up other representations, if they exist
                     _clean(targetpath+'.file', self.size.__isub__)
@@ -305,12 +333,14 @@ class FilesCacheClient(base.BaseCacheClient):
                     raise RuntimeError, "Cannot encode arbitrary objects without a checksum key"
                 
                 with self._mktmp() as rawfile:
-                    self.value_pickler.dump(value, rawfile, 2)
+                    self.value_pickler(value, rawfile, 2)
                     rawfile.flush()
                     
                     _swap(rawfile.name, targetpath+'.ser', self.size.__iadd__)
+                    rawfile.delete = False
                     if not reuse_keyfile:
                         _swap(keyfile.name, keypath, self.size.__iadd__)
+                        keyfile.delete = False
                     
                     # Succeeded, clean up other representations, if they exist
                     _clean(targetpath+'.file', self.size.__isub__)
@@ -360,55 +390,64 @@ class FilesCacheClient(base.BaseCacheClient):
             except:
                 pass
 
-    def _getTtl(self, key, default = base.NONE, baseNONE = base.NONE, time=time.time, ttl_skip=None, decode=True):
+    def _getTtl(self, key, default = base.NONE, baseNONE = base.NONE, ttl_skip=None, decode=True):
         key = self.key_pickler(key)
         kpath = self._mkpath(key)
         targetpath = os.path.join(self.basepath, *kpath)
         keypath = targetpath + '.key'
 
-        if os.path.exists(keypath) and os.path.getsize(keypath) == len(key):
-            # Check fail-fast cache before opening files and all taht
-            if self._failfast_cache.get(key) > (time.time() - self.failfast_time):
-                return default, -1
-            
-            with open(keypath) as ekey:
-                if ekey.read() == key:
-                    # Um... check the validity of the current value before going further
-                    ttl = os.path.getmtime(keypath)
-                    rttl = ttl - time.time()
+        if not os.path.exists(keypath):
+            return default, -1
 
-                    if ttl_skip is not None and rttl < ttl_skip:
-                        return default, -1
-                    elif decode:
-                        try:
-                            if os.access(targetpath+'.file', os.R_OK):
-                                return open(targetpath+'.file', 'rb'), rttl
-                            elif os.access(targetpath+'.raw', os.R_OK):
-                                with open(targetpath+'.raw', 'rb') as rawfile:
-                                    rawfile.seek(0, os.SEEK_END)
-                                    size = rawfile.tell()
-                                    rawfile.seek(0)
-                                    if 0 > size > MMAP_THRESHOLD:
-                                        return mmap.mmap(rawfile, size, access = mmap.ACCESS_READ), rttl
-                                    elif size == 0:
-                                        return "", rttl
-                                    else:
-                                        return rawfile.read(), rttl
-                            elif self.checksum_key and os.access(targetpath+'.ser', os.R_OK):
-                                with open(targetpath+'.ser', 'rb') as rawfile:
-                                    return self.value_pickler.load(rawfile), rttl
-                            else:
-                                # Broken?
-                                return default, -1
-                        except:
-                            # Oops
-                            logging.getLogger('chorde').error("Error retrieving file contents", exc_info = True)
-                            return default, -1
-                    else:
-                        return default, rttl
-                else:
-                    self._failfast_cache[key] = time.time()
+        try:
+            if os.path.getsize(keypath) != len(key):
+                return default, -1
+        except OSError:
+            return default, -1
+
+        # Check fail-fast cache before opening files and all taht
+        if self._failfast_cache.get(key) > (time.time() - self.failfast_time):
+            return default, -1
+        
+        with open(keypath) as ekey:
+            if ekey.read() == key:
+                # Um... check the validity of the current value before going further
+                ttl = os.path.getmtime(keypath)
+                rttl = ttl - time.time()
+
+                if ttl_skip is not None and rttl < ttl_skip:
                     return default, -1
+                elif decode:
+                    try:
+                        _touch(keypath) # force atime update, in case it's a non-strict-atime mount
+                        if os.access(targetpath+'.file', os.R_OK):
+                            return open(targetpath+'.file', 'rb'), rttl
+                        elif os.access(targetpath+'.raw', os.R_OK):
+                            with open(targetpath+'.raw', 'rb') as rawfile:
+                                rawfile.seek(0, os.SEEK_END)
+                                size = rawfile.tell()
+                                rawfile.seek(0)
+                                if size > MMAP_THRESHOLD:
+                                    return mmap.mmap(rawfile.fileno(), size, access = mmap.ACCESS_READ), rttl
+                                elif size == 0:
+                                    return "", rttl
+                                else:
+                                    return rawfile.read(), rttl
+                        elif self.checksum_key and os.access(targetpath+'.ser', os.R_OK):
+                            with open(targetpath+'.ser', 'rb') as rawfile:
+                                return self.value_unpickler(rawfile), rttl
+                        else:
+                            # Broken?
+                            return default, -1
+                    except:
+                        # Oops
+                        logging.getLogger('chorde').error("Error retrieving file contents", exc_info = True)
+                        return default, -1
+                else:
+                    return default, rttl
+            else:
+                self._failfast_cache[key] = time.time()
+                return default, -1
 
     def getTtl(self, key, default=NONE, ttl_skip = None):
         # This trampoline is necessary to avoid re-entrancy issues when this client
@@ -437,7 +476,22 @@ class FilesCacheClient(base.BaseCacheClient):
     
     def clear(self):
         # Bye bye everything
-        shutil.rmtree(self.basepath)
+        self.size.flush()
+        for dirpath, dirnames, filenames in os.walk(self.basepath):
+            for subpath in dirnames:
+                try:
+                    shutil.rmtree(os.path.join(dirpath, subpath))
+                except OSError:
+                    logging.error("Oops", exc_info = True)
+                    pass
+            for subpath in filenames:
+                try:
+                    os.unlink(os.path.join(dirpath, subpath))
+                except OSError:
+                    logging.error("Oops", exc_info = True)
+                    pass
+            del dirnames[:]
+            del filenames[:]
         
         # Must reset counter now
         self.size = self._make_counter()
@@ -522,23 +576,3 @@ class FilesCacheClient(base.BaseCacheClient):
         adjustment = fullsize - int(self.size)
         if adjustment != 0:
             self.size += adjustment
-
-    def contains(self, key, ttl = None):
-        if key in self.store:
-            if ttl is None:
-                ttl = 0
-
-            rv = self.store.get(key, base.NONE)
-            if rv is not base.NONE:
-                store_ttl = rv[1] - time.time()
-                return store_ttl > ttl
-            else:
-                return False
-        else:
-            return False
-
-if not CacheIsThreadsafe:
-    InprocCacheClient_ = InprocCacheClient
-    def InprocCacheClient(*p, **kw):
-        return base.ReadWriteSyncAdapter(InprocCacheClient_(*p, **kw))
-

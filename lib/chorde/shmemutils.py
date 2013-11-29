@@ -55,9 +55,17 @@ class SharedCounterGenericBase(object):
     bitmap_item_size = None # make sizeof(btype)
 
     def __init__(self, slots, bitmap, counters, locked):
-        slot = os.getpid() % slots
+        self.bitmap = None
+        self.slots = None
+        self.slot = None
+        self.basemap = None
+        self.baseoffset = None
+        self.timestamp = None
+        self.cached_timestamp = None
+        self.cached_value = None
 
         # Try to acquire the slot
+        slot = os.getpid() % slots
         if bitmap[slot]:
             if not locked:
                 raise AssertionError, "Slot occupied"
@@ -74,11 +82,6 @@ class SharedCounterGenericBase(object):
         self.bitmap = bitmap
         self.slots = counters
         self.slot = slot
-        self.basemap = None
-        self.baseoffset = None
-        self.timestamp = None
-        self.cached_timestamp = None
-        self.cached_value = None
         self.__rnd = random.getrandbits(62) + self.slot
         self.__wlock = threading.Lock()
 
@@ -257,16 +260,17 @@ class SharedCounterGenericBase(object):
         return self
 
     def close(self):
-        # Release slot
-        self.bitmap[self.slot] = False
+        if self.bitmap is not None:
+            # Release slot
+            self.bitmap[self.slot] = False
 
         # Release possibly fd-holding resources
         if self.basemap is not None:
             self.basemap.flush()
             self.basemap.close()
-        del self.bitmap
-        del self.slots
-        del self.basemap
+        self.bitmap = None
+        self.slots = None
+        self.basemap = None
 
     def __del__(self):
         self.close()

@@ -112,6 +112,8 @@ class CacheClientTestMixIn:
     def testLRU(self):
         if not self.is_lru:
             self.skipTest("Client's not LRU")
+        elif not self.capacity_means_entries:
+            self.skipTest("LRU-testing non-entry-limited clients requires specialization")
 
         client = self.client
         cap = client.capacity
