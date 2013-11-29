@@ -342,7 +342,6 @@ class NamespaceWrapper(DecoratedWrapper):
         # Cannot clear a shared client, so, instead, switch revisions
         self.revision += 1
         self.client.put((self.namespace, 'REVMARK'), self.revision, 3600)
-        return self.client.clear()
 
     def __str__(self):
         return "<%s namespace %r/%r on %r>" % (self.__class__.__name__, self.namespace, self.revision, self.client)
