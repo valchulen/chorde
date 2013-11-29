@@ -20,6 +20,7 @@ extra = {}
 packages = [
       "chorde",
       "chorde.clients",
+      "chorde.mq",
 ]
 
 if not no_pyrex:
@@ -31,7 +32,6 @@ if not no_pyrex:
           ],
         cmdclass = {'build_ext': build_ext}
     ))
-    packages.append("chorde.mq")
 
 setup(
   name = "chorde",
