@@ -652,10 +652,11 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                         self.client.set_multi(batch, ttl)
                     except:
                         logging.error("Exception in background writer", exc_info = True)
-            workset.clear()
             
             # Let us be suicidal
-            del self, plan, deletions, workset
+            del self, plan, deletions
+            workset.clear()
+            del workset
             key = value = ttl = batch = None
             workev.wait(1)
     
