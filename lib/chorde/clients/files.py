@@ -110,6 +110,37 @@ def _swap(source, dest, sizeback = None):
         # Call with size delta
         sizeback(os.path.getsize(dest) - cursize)
 
+def _link(source, dest, sizeback = None):
+    cursize = 0
+    if sizeback is not None:
+        # remember the existing file's size
+        try:
+            cursize = os.path.getsize(dest)
+        except:
+            pass
+    try:
+        os.link(source, dest)
+    except OSError:
+        # Do an indirect swap, in case it was on a different filesystem
+        tmpname = dest+_tmpprefix()
+        shutil.copy2(source, tmpname)
+        try:
+            # Try again the rename, it might work now
+            os.rename(tmpname, dest)
+        except:
+            try:
+                # Non-atomic replace, needed in windows
+                os.unlink(dest)
+                os.rename(tmpname, dest)
+            except:
+                _clean(tmpname)
+                raise
+        os.unlink(source)
+
+    if sizeback is not None:
+        # Call with size delta
+        sizeback(os.path.getsize(dest) - cursize)
+
 def _clean(path, sizeback = None):
     if sizeback is not None:
         # remember size, for the callback
@@ -294,7 +325,7 @@ class FilesCacheClient(base.BaseCacheClient):
                     name = value.name
                     
                     # Overwiting from unknown location, must take extra care
-                    _swap(name, targetpath+'.file', self.size.__iadd__, self.filemode)
+                    _link(name, targetpath+'.file', self.size.__iadd__, self.filemode)
                     if not reuse_keyfile:
                         _swap(keyfile.name, keypath, self.size.__iadd__, self.filemode)
                         keyfile.delete = False
