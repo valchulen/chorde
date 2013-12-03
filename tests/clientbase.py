@@ -70,6 +70,19 @@ class CacheClientTestMixIn:
         self.assertRaises(CacheMissError, client.get, 4)
         self.assertRaises(CacheMissError, client.get, 5)
 
+    def testPurge(self):
+        client = self.client
+        client.put(4, 15, 0)
+        client.put(5, 16, 2)
+        self.assertTrue(client.getTtl(4, None)[0] is not None)
+        self.assertEqual(client.get(5), 16)
+        client.purge(86400)
+        self.assertTrue(client.getTtl(4, None)[0] is not None)
+        self.assertEqual(client.get(5), 16)
+        client.purge(0)
+        self.assertTrue(client.getTtl(4, None)[0] is None)
+        self.assertEqual(client.get(5), 16)
+
     def testDelete(self):
         client = self.client
         client.put(4, 11, 10)

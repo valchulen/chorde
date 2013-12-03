@@ -107,9 +107,9 @@ class TieredInclusiveClient(BaseCacheClient):
         for client in self.clients:
             client.clear()
 
-    def purge(self):
+    def purge(self, *p, **kw):
         for client in self.clients:
-            client.purge()
+            client.purge(*p, **kw)
     
     def _getTtl(self, key, default = NONE, _max_tiers = None, ttl_skip = 0, **kw):
         ttl = -1

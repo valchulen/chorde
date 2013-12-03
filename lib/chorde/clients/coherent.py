@@ -220,8 +220,8 @@ class CoherentWrapperClient(BaseCacheClient):
         # Warn others
         self.manager.fire_deletion(coherence.CLEAR)
 
-    def purge(self):
-        self.client.purge()
+    def purge(self, *p, **kw):
+        self.client.purge(*p, **kw)
     
     def getTtl(self, key, default = NONE, **kw):
         return self.client.getTtl(key, default, **kw)

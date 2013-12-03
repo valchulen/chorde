@@ -169,8 +169,8 @@ class ReadWriteSyncAdapter(BaseCacheClient):
         return self.client.clear()
 
     @serialize_write
-    def purge(self, timeout = 0):
-        return self.client.purge(timeout)
+    def purge(self, *p, **kw):
+        return self.client.purge(*p, **kw)
 
     @serialize_read
     def contains(self, key, ttl = None, **kw):
@@ -228,8 +228,8 @@ class SyncAdapter(BaseCacheClient):
         return self.client.clear()
 
     @serialize
-    def purge(self, timeout = 0):
-        return self.client.purge(timeout)
+    def purge(self, *p, **kw):
+        return self.client.purge(*p, **kw)
 
     @serialize
     def contains(self, key, ttl = None, **kw):
@@ -312,8 +312,8 @@ class DecoratedWrapper(BaseCacheClient):
     def clear(self):
         return self.client.clear()
 
-    def purge(self, timeout = 0):
-        return self.client.purge(timeout)
+    def purge(self, *p, **kw):
+        return self.client.purge(*p, **kw)
 
     def contains(self, key, ttl = None, **kw):
         key_decorator = self.key_decorator

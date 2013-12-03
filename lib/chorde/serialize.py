@@ -258,7 +258,7 @@ def serialize(*p,**kw):
             # so implementing a watchdog would hurt performance).
             return acquire()
     elif deadlock_timeout == 0:
-        def deadlock_watchdog(f,acquire):
+        def deadlock_watchdog(f,acquire):  # lint:ok
             # deadlock_timeout == 0 means no timeout, but do watch for deadlocks.
             # with a nice and gentle sampling period of 100ms, will only log deadlocks
             # (since we have no way of knowing for certain when a deadlock happens)
@@ -279,16 +279,19 @@ def serialize(*p,**kw):
                     time.sleep(0.1)
                     waiting += 0.1
     elif deadlock_timeout > 0:
-        def deadlock_watchdog(f,acquire):
+        def deadlock_watchdog(f,acquire):  # lint:ok
             # with a nice timout specified by client code, will try to acquire
             # nonblockingly during that time, with a nice and gentle sampling period
             # of 100ms.
             # Will raise an exception if all else fails
-            for i in xrange(deadlock_timeout / 0.1):
+            sleepstep = min(0.1, deadlock_timeout)
+            spins = max(1,int(deadlock_timeout / sleepstep))
+            for i in xrange(spins):
                 rv = acquire(0)
                 if rv:
                     return rv
-                time.sleep(0.1)
+                if (i+1) < spins:
+                    time.sleep(sleepstep)
             else:
                 raise DeadlockError, "Timeout expired after %s seconds waiting for %s" % (deadlock_timeout,f.__name__)
     else:
@@ -305,7 +308,7 @@ def serialize(*p,**kw):
                     @wraps(f)
                     def rv(*pos,**kw):
                         try:
-                            rv = deadlock_watchdog(f,getattr(lockobj, acquire))
+                            rv = deadlock_watchdog(f,getattr(lockobj, acquire))  # lint:ok
                             return f(*pos,**kw)
                         finally:
                             getattr(lockobj, release)()
@@ -315,7 +318,7 @@ def serialize(*p,**kw):
             lockpool = kw['lockobj']
             if not isinstance(lockpool,GLockPool):
                 raise TypeError("lockobj must be a GLockPool when a key is specified")
-            def decor(f):
+            def decor(f):  # lint:ok
                 if generator:
                     raise NotImplementedError
                 else:
@@ -334,7 +337,7 @@ def serialize(*p,**kw):
         # unkeyed lock attribute
         locktype = kw.get('locktype',RLock)
         lockattr = kw.get('lockmember','__serialization_lock')
-        def decor(f):
+        def decor(f):  # lint:ok
             if generator:
                 raise NotImplementedError
             else:
@@ -353,7 +356,7 @@ def serialize(*p,**kw):
         # keyed lock attribute
         locktype = kw.get('locktype',RLock)
         lockpooltype = kw.get('lockpooltype',LockPool)
-        def decor(f):
+        def decor(f):  # lint:ok
             lockattr = kw.get('lockmember','__serialization_lock_' + f.__name__)
             if generator:
                 raise NotImplementedError

@@ -742,7 +742,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         self.queueset.clear()
         self.workset.clear()
 
-    def purge(self):
+    def purge(self, timeout = 0):
         # Memcache does that itself
         pass
     

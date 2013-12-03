@@ -30,6 +30,7 @@ class MemcacheTest(CacheClientTestMixIn, SkipIfUnsupported, unittest.TestCase):
         self.client.client.flush_all()
 
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
+    testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
 
 class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
     def tearDown(self):
@@ -48,6 +49,7 @@ class FastMemcacheTest(CacheClientTestMixIn, SkipIfUnsupported, unittest.TestCas
         self.client.client.flush_all()
 
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
+    testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
 
 class NamespaceFastMemcacheTest(NamespaceWrapperTestMixIn, FastMemcacheTest):
     def tearDown(self):

@@ -1103,8 +1103,8 @@ class WrappedCacheProcessor(object):
     def clear(self):
         return self.processor.do_async(self.client.clear)
 
-    def purge(self):
-        return self.processor.do_async(self.client.purge)
+    def purge(self, *p, **kw):
+        return self.processor.do_async(self.client.purge, *p, **kw)
     
     def register_cleanup(self, task):
         self.processor.register_cleanup(task)

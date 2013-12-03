@@ -185,7 +185,7 @@ class InprocCacheClient(base.BaseCacheClient):
     def clear(self):
         self.store.clear()
 
-    def purge(self, timeout):
+    def purge(self, timeout = 0):
         deletions = []
         retentions = []
         cache = self.store

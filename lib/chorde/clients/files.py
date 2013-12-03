@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from . import base, inproc
 from .base import NONE, CacheMissError
-from chorde import shmemutils, sPickle
+from chorde import shmemutils, sPickle, serialize
 
 import functools
 import hashlib
@@ -110,7 +110,7 @@ def _swap(source, dest, sizeback = None):
         # Call with size delta
         sizeback(os.path.getsize(dest) - cursize)
 
-def _link(source, dest, sizeback = None):
+def _link(source, dest, sizeback = None, filemode = None):
     cursize = 0
     if sizeback is not None:
         # remember the existing file's size
@@ -124,6 +124,8 @@ def _link(source, dest, sizeback = None):
         # Do an indirect swap, in case it was on a different filesystem
         tmpname = dest+_tmpprefix()
         shutil.copy2(source, tmpname)
+        if filemode is not None:
+            os.chmod(tmpname, filemode)
         try:
             # Try again the rename, it might work now
             os.rename(tmpname, dest)
@@ -162,7 +164,8 @@ class FilesCacheClient(base.BaseCacheClient):
     def __init__(self, size, basepath, 
             failfast_size = 500, failfast_time = 0.25, counter_slots = 256, 
             key_pickler = json.dumps, value_pickler = None, value_unpickler = None, checksum_key = None,
-            dirmode = 0700, filemode = 0400, mmap_raw = True):
+            dirmode = 0700, filemode = 0400, mmap_raw = True,
+            sync_purge = None):
         self._failfast_cache = inproc.Cache(size)
         self.failfast_time = failfast_time
         self.basepath = basepath
@@ -174,6 +177,7 @@ class FilesCacheClient(base.BaseCacheClient):
         self.filemode = filemode
         self.dirmode = dirmode
         self.mmap_raw = mmap_raw
+        self.sync_purge = sync_purge
 
         if value_pickler is None or value_unpickler is None:
             if checksum_key is None:
@@ -327,7 +331,7 @@ class FilesCacheClient(base.BaseCacheClient):
                     # Overwiting from unknown location, must take extra care
                     _link(name, targetpath+'.file', self.size.__iadd__, self.filemode)
                     if not reuse_keyfile:
-                        _swap(keyfile.name, keypath, self.size.__iadd__, self.filemode)
+                        _swap(keyfile.name, keypath, self.size.__iadd__)
                         keyfile.delete = False
                     
                     # Succeeded, clean up other representations, if they exist, set ttl
@@ -337,6 +341,7 @@ class FilesCacheClient(base.BaseCacheClient):
                     
                     return True
             except:
+                logging.error("Oops", exc_info = True)
                 # Meh, linking didn't work
                 pass
                 
@@ -393,13 +398,31 @@ class FilesCacheClient(base.BaseCacheClient):
         except:
             pass
 
+        if self.sync_purge is not None and int(self.size) > (self.max_size * self.sync_purge):
+            # Ehm... going overboard man
+            try:
+                self._do_purge(0)
+            except serialize.DeadlockError:
+                # Someone's purging already
+                pass
+
     def add(self, key, value, ttl):
-        return self._put(key, value, ttl, False)
+        rv = self._put(key, value, ttl, False)
         
         try:
             del self._failfast_cache[key]
         except:
             pass
+
+        if rv and self.sync_purge is not None and int(self.size) > (self.max_size * self.sync_purge):
+            # Ehm... going overboard man
+            try:
+                self._do_purge(0)
+            except serialize.DeadlockError:
+                # Someone's purging already
+                pass
+
+        return rv
 
     def delete(self, key):
         key = self.key_pickler(key)
@@ -528,7 +551,21 @@ class FilesCacheClient(base.BaseCacheClient):
         self.size = self._make_counter()
         self._failfast_cache.clear()
 
-    def purge(self, timeout):
+    def purge(self, timeout = 0):
+        # Trampoline necessary to avoid deadlocks if this is wrapped in a SyncWrapper
+        self._do_purge(timeout)
+
+    @serialize.serialize
+    def _do_purge(self, timeout):
+        # Blocking trampoline
+        self.__do_purge(timeout)
+
+    @serialize.serialize(deadlock_timeout=0.01)
+    def _try_purge(self, timeout):
+        # Non-blocking trampoline
+        self.__do_purge(timeout)
+    
+    def __do_purge(self, timeout):
         # Abbreviations to make it more readable
         exists = os.path.exists
         join = os.path.join
@@ -537,6 +574,11 @@ class FilesCacheClient(base.BaseCacheClient):
 
         # Since we're at it, compute size
         fullsize = 0
+        expired_items = expired_bytes = evicted_items = evicted_bytes = 0
+
+        logger = logging.getLogger('chorde')
+        logger.info('Purging file-based cache at %r, cached size %d / %d',
+            basepath, int(self.size), self.max_size)
 
         if int(self.size) > self.max_size:
             # Dingbats... must remove some entries
@@ -544,8 +586,11 @@ class FilesCacheClient(base.BaseCacheClient):
             excess = int(self.size) - self.max_size
         else:
             # Don't even bother gathering deletions
-            deletions = excess = None
-        
+            deletions = None
+            excess = 0
+
+        expirations = []
+
         for fpath in self._walk():
             try:
                 fullsize += getsize(join(basepath, fpath))
@@ -559,26 +604,25 @@ class FilesCacheClient(base.BaseCacheClient):
                     stats = os.stat(fpath)
                 except OSError:
                     continue
-                if deletions is not None:
+                if (stats.st_mtime + timeout) < time.time():
+                    # Stale key, say bye
+                    expirations.append(bpath)
+                elif deletions is not None:
                     itemsize = stats.st_size
-                    for suffix in ('.file','.raw','.ser'):
+                    for suffix in ('.key', '.file','.raw','.ser'):
                         try:
                             itemsize += os.path.getsize(bpath+suffix)
                         except OSError:
                             pass
                     delitem = (stats.st_atime, bpath, itemsize)
                     if deletions and excess <= 0:
-                        excess -= itemsize
-                        delitem = heapq.heapreplace(deletions, delitem)
-                        excess += delitem[2]
+                        if deletions[0] > delitem:
+                            excess -= itemsize
+                            xdelitem = heapq.heapreplace(deletions, delitem)
+                            excess += xdelitem[2]
                     else:
                         excess -= itemsize
                         heapq.heappush(deletions, delitem)
-                if stats.st_mtime > (time.time() + timeout):
-                    # Stale key, say bye
-                    _clean(fpath, self.size.__isub__)
-                    for suffix in ('.file','.raw','.ser'):
-                        _clean(fpath+suffix, self.size.__isub__)
             else:
                 for suffix in ('.file','.raw','.ser'):
                     if fpath.endswith(suffix):
@@ -591,19 +635,64 @@ class FilesCacheClient(base.BaseCacheClient):
                     bpath = join(basepath, bpath)
                     if not exists(bpath+'.key'):
                         # Deleted entry
-                        _clean(fpath, self.size.__isub__)
+                        delta = []
+                        _clean(fpath, delta.append)
+                        if delta:
+                            delta = sum(delta)
+                            self.size -= delta
+                            fullsize -= delta
+                            excess -= delta
+                            logger.debug('Removed stray file %r of size %d', fpath, delta)
                 else:
                     # Extraneous file, remove
-                    _clean(join(basepath,fpath), self.size.__isub__)
+                    delta = []
+                    _clean(join(basepath,fpath), delta.append)
+                    if delta:
+                        delta = sum(delta)
+                        self.size -= delta
+                        fullsize -= delta
+                        excess -= delta
+                        logger.debug('Removed extraneous file %r of size %d', fpath, delta)
+
+        if expirations:
+            for bpath in expirations:
+                delta = []
+                for suffix in ('.key','.file','.raw','.ser'):
+                    _clean(bpath+suffix, delta.append)
+                if delta:
+                    delta = sum(delta)
+                    self.size -= delta
+                    excess -= delta
+                    fullsize -= delta
+                    expired_items += 1
+                    expired_bytes += delta
+                    logger.debug('Removed stale entry of size %d at %r', delta, bpath)
 
         if deletions:
-            for bpath in deletions:
+            while deletions and excess <= -deletions[0][2]:
+                delitem = heapq.heappop(deletions)
+                excess += delitem[2]
+            for atime,bpath,itemsize in deletions:
+                delta = []
                 for suffix in ('.file','.raw','.ser','.key'):
-                    _clean(bpath+suffix, self.size.__isub__)
+                    _clean(bpath+suffix, delta.append)
+                if delta:
+                    delta = sum(delta)
+                    self.size -= delta
+                    fullsize -= delta
+                    evicted_items += 1
+                    evicted_bytes += delta
+                    logger.debug('Removed overflow entry of size %d LRU %fs ago at %r', 
+                        delta, time.time() - atime, bpath)
         
         self._failfast_cache.clear()
+
+        logger.info('Expired %d bytes in %d items', expired_bytes, expired_items)
+        logger.info('Evicted %d bytes in %d items', evicted_bytes, evicted_items)
 
         # We've been computing the actual size, so adjust the approximation
         adjustment = fullsize - int(self.size)
         if adjustment != 0:
             self.size += adjustment
+            logger.info('Adjusted size discrepancy of %+d (final %d)', adjustment, int(self.size))
+        
