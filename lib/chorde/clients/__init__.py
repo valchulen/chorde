@@ -3,6 +3,7 @@ from .inproc import InprocCacheClient # before base, really, it injects CacheMis
 from .base import BaseCacheClient, ReadWriteSyncAdapter, NONE, CacheMissError
 from .async import AsyncWriteCacheClient, Defer, AsyncCacheProcessor
 from .tiered import TieredInclusiveClient
+from .files import FilesCacheClient
 
 __all__ = [
     "NONE",
@@ -15,6 +16,7 @@ __all__ = [
     "InprocCacheClient",
     "ReadWriteSyncAdapter",
     "TieredInclusiveClient",
+    "FilesCacheClient",
 ]
 
 # Optionals below
