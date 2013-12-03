@@ -66,7 +66,7 @@ def startCacheJanitorThread(sleep_interval=3600, purge_timeout=0):
     jthread.start()
     return jthread
 
-def _tmpprefix():
+def _tmpsuffix():
     return ".tmp.%d.%x.%x" % (os.getpid(),thread.get_ident(),int(time.time()))
 
 def _touch(path):
@@ -87,7 +87,7 @@ def _swap(source, dest, sizeback = None):
         os.rename(source, dest)
     except OSError:
         # Do an indirect swap, in case it was on a different filesystem
-        tmpname = dest+_tmpprefix()
+        tmpname = dest+_tmpsuffix()
         try:
             # This might work still, on systems with os.link where rename doesn't overwrite
             os.link(source, tmpname)
@@ -122,7 +122,7 @@ def _link(source, dest, sizeback = None, filemode = None):
         os.link(source, dest)
     except OSError:
         # Do an indirect swap, in case it was on a different filesystem
-        tmpname = dest+_tmpprefix()
+        tmpname = dest+_tmpsuffix()
         shutil.copy2(source, tmpname)
         if filemode is not None:
             os.chmod(tmpname, filemode)
@@ -291,7 +291,21 @@ class FilesCacheClient(base.BaseCacheClient):
             basename = "sizemap.32"
         path = os.path.join(self.basepath, "%s.%x" % (basename, counter_slots))
 
-        rv = cls.from_path(counter_slots, path)
+        try:
+            rv = cls.from_path(counter_slots, path)
+        except:
+            # ouch, broken counter, reset
+
+            # Create a new one
+            tpath = path + _tmpsuffix()
+            rv = cls.from_path(counter_slots, tpath)
+            rv.close()
+
+            # Swap it
+            _swap(tpath, path)
+
+            # Re-open it
+            rv = cls.from_path(counter_slots, path)
         if int(rv) == 0:
             logger = logging.getLogger('chorde')
 
@@ -615,6 +629,11 @@ class FilesCacheClient(base.BaseCacheClient):
             except:
                 pass
             return ettl > ttl
+
+    def close(self):
+        # Free up stuff
+        self.size.close()
+        self.size = None
     
     def clear(self):
         # Bye bye everything

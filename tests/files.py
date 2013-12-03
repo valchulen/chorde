@@ -110,8 +110,26 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
             self.assertTrue(client.usage >= (len(bigval) * min(i, maxentries-1)))
             self.assertLess(client.usage, cap + len(bigval))
 
+    def testCounterReset(self):
+        client = self.client
+        client.put(1, 1, 86400)
+        usage = client.usage
+        client.close()
+        
+        # Break it
+        with open(os.path.join(client.basepath, "sizemap.32.100"), "w") as f:
+            f.seek(0, os.SEEK_END)
+            sz = f.tell()
+            f.seek(0)
+            f.write("\xff" * sz)
+        
+        self.client = client = self.setUpClient()
+        self.assertEqual(client.usage, usage)
+
 class NamespaceFilesTest(NamespaceWrapperTestMixIn, FilesTest):
     def tearDown(self):
         # Manually clear
         self.rclient.clear()
 
+    def testCounterReset(self):
+        pass
