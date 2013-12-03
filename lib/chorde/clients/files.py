@@ -161,11 +161,99 @@ def _clean(path, sizeback = None):
         sizeback()
 
 class FilesCacheClient(base.BaseCacheClient):
+    """
+    This cache client will store itmes on a file hierarchy.
+    Depending on the operating system, the files need not be backed by
+    persistent storage (ie: it could be temporary in-memory storage, making
+    it quite fast), but persistence is a possibility, and a common reason to use
+    this client.
+
+    This client will behave specially when given file objects. Normal clients can't
+    or shouldn't store file objects, but this client has been specifically designed
+    for that task. File objects thus cached must contain a 'name' attribute that
+    points to an absolute path to the file.
+
+    When a file object is added to the client, it is copied in the most efficient
+    manner into the cache's file heirarchy. On posix systems, this will create
+    a hardlink when the file is on the same filesystem as the cache's store,
+    and it is thus the recommended use case.
+
+    When byte strings are given, they will be written to a file within the cache's
+    file heirarchy. Retrieving them is transparent, unless mmap_raw is given and True.
+    In that case, queries to the cache will return a buffer (maybe a string, maybe
+    an mmap object, depending on the value's size), and thus the cache will not be
+    transparent, but it will be more efficient as it will share memory across processes.
+
+    This cache is limited by size in bytes. The size includes book-keeping overhead,
+    so be certain to account for serialized key sizes when specifying it.
+
+    The client is thread and process-safe, but it needs a purging thread to be
+    running, either manually calling purge() every once in a while, or by calling
+    startCacheJanitorThread() with appropriate arguments.
+
+    If entries are added too fast for the purging thread, that is, if considerably
+    more bytes than the limit are added between purging runs, it is possible for this
+    cache to grow past the size limit. If this is a concern, specify sync_purge as
+    the highest acceptable multiple of the cache's size limit. When reached, a
+    synchronous purge will be attempted before returning, guaranteeing adherence
+    to given size limits.
+    """
+    
     def __init__(self, size, basepath, 
             failfast_size = 500, failfast_time = 0.25, counter_slots = 256, 
             key_pickler = json.dumps, value_pickler = None, value_unpickler = None, checksum_key = None,
-            dirmode = 0700, filemode = 0400, mmap_raw = True,
+            dirmode = 0700, filemode = 0400, mmap_raw = False,
             sync_purge = None):
+        """
+        Params:
+            size: Maximum cache size, in bytes, counting key serialization and book-keeping overheads
+
+            failfast_size: Entries in a small key-only inproc cache used to speed up cache misses
+
+            failfast_time: TTL of the failfast cache
+
+            counter_slots: Number of PID slots in the cached size counter file. In order to make size
+                updates wait-free, each process uses a separate entry. In platforms where fcntl.lock
+                is implemented, this needs only be as big as the number of processes that will attempt
+                to concurrently update this cache, plus some free space to allow dying processes to
+                respawn (their slot will be unusable). In other platforms, this should be 65536, since
+                otherwise hash collisions would prevent the cache from starting (there's no atomic
+                way of grabbing a counter slot implemented in those platforms). The default should
+                work on most posix platforms.
+
+            key_pickler: Pickling *function* used to serialize keys. By default, it's json. This 
+                function should be stable: equal keys must serialize to equal strings. 
+                Important Note: Pickle doesn't always respect this invariant.
+
+            value_pickler: Pickling *function* used to serialize values. It should take a signature
+                compatible with pickle.dump, including protocol version. By default, it's built
+                out of sPickle.dump and the checksum_key (which is then mandatory)
+
+            value_unpickler: Unpickling *function* used to de-serialize values. It should take a
+                signature compatible with pickle.load. By default, it's built out of sPickle.load
+                and the checksum_key (which is then mandatory). Always validate contents if this
+                function is based on pickling, otherwise malicious injection into the cache
+                file heirarchy could result in arbitrary code execution.
+
+            checksum_key: When using the default picklers, this *private* key is necessary
+                in order to authenticate values and make sure they have been written by this process
+                (or any process with access to the key). Otherwise, malicious injection into the
+                cache's file heirarchy could result in arbitrary code execution, and file corruption
+                even if not malicious, could result in hard crashes (out-of-memory, segmentation fault, etc).
+
+            dirmode: Permissions bitfield used for creating directories. See os.chmod
+
+            filemode: Permissions bitfield used for cache files. See os.chmod
+
+            mmap_raw: Whether to return mmap objects when reading large byte strings from the cache,
+                instead of string copies of the contents. This is far more efficient than reading the
+                whole contents of the file, but the returned buffer isn't fully compatible with string semantics,
+                so by default it's False.
+
+            sync_purge: A (possibly float) multiplier of size that will trigger a synchronous purge when
+                reached. To avoid the long pauses that could be generated by those forced purge cycles, this
+                is None (no sync purges) by default.
+        """
         self._failfast_cache = inproc.Cache(size)
         self.failfast_time = failfast_time
         self.basepath = basepath

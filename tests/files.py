@@ -39,7 +39,10 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
     
     def setUpClient(self):
         from chorde.clients.files import FilesCacheClient
-        return FilesCacheClient(SIZE, self.tempdir, checksum_key = "test", sync_purge = 1)
+        return FilesCacheClient(SIZE, self.tempdir, 
+            checksum_key = "test", 
+            sync_purge = 1,
+            mmap_raw = True)
 
     def testMmap(self):
         client = self.client
