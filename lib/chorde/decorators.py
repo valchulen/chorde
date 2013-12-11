@@ -395,23 +395,24 @@ def cached(client, ttl,
                 return f(*p, **kw)
 
             client = aclient[0]
-            rv, rvttl = client.getTtl(callkey, _NONE)
+            __NONE = _NONE
+            rv, rvttl = client.getTtl(callkey, __NONE)
 
-            if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
+            if (rv is __NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
                 # Launch background update
                 _put_deferred(client, af, callkey, ttl, *p, **kw)
-            elif rv is not _NONE:
+            elif rv is not __NONE:
                 if rvttl < async_ttl:
                     client.promote(callkey, ttl_skip = async_ttl)
                 stats.hits += 1
 
-            if rv is _NONE:
+            if rv is __NONE:
                 # Must wait for it
                 if timings:
                     t0 = time.time()
                 client.wait(callkey)
-                rv, rvttl = client.getTtl(callkey, _NONE)
-                if rv is _NONE or rvttl < async_ttl:
+                rv, rvttl = client.getTtl(callkey, __NONE)
+                if rv is __NONE or rvttl < async_ttl:
                     # FUUUUU
                     rv = f(*p, **kw)
                 else:
@@ -441,17 +442,18 @@ def cached(client, ttl,
             client = aclient[0]
             clientf = fclient[0]
             frv = async.Future()
+            __NONE = _NONE
 
             if future_sync_check:
                 # Quick sync call with lazy_kwargs
-                rv, rvttl = client.getTtl(callkey, _NONE, **lazy_kwargs)
+                rv, rvttl = client.getTtl(callkey, __NONE, **lazy_kwargs)
             else:
-                rv = _NONE
+                rv = __NONE
                 rvttl = -1
 
-            if (rv is _NONE or rvttl < async_ttl):
+            if (rv is __NONE or rvttl < async_ttl):
                 # The hard way
-                if rv is _NONE:
+                if rv is __NONE:
                     # It was a miss, so wait for setting the value
                     def on_value(value):
                         stats.hits += 1
@@ -485,7 +487,7 @@ def cached(client, ttl,
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
                 clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
-            elif rv is not _NONE:
+            elif rv is not __NONE:
                 if rvttl < async_ttl and async_expire:
                     async_expire(callkey)
                 stats.hits += 1
@@ -534,17 +536,18 @@ def cached(client, ttl,
             client = aclient[0]
             clientf = fclient[0]
             frv = async.Future()
+            __NONE = _NONE
 
             if future_sync_check:
                 # Quick sync call with lazy_kwargs
-                rv, rvttl = client.getTtl(callkey, _NONE, **lazy_kwargs)
+                rv, rvttl = client.getTtl(callkey, __NONE, **lazy_kwargs)
             else:
-                rv = _NONE
+                rv = __NONE
                 rvttl = -1
 
-            if (rv is _NONE or rvttl < async_ttl):
+            if (rv is __NONE or rvttl < async_ttl):
                 # The hard way
-                if rv is _NONE:
+                if rv is __NONE:
                     # It was a miss, so wait for setting the value
                     def on_value(value):
                         stats.hits += 1
@@ -580,7 +583,7 @@ def cached(client, ttl,
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
                 clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
-            elif rv is not _NONE:
+            elif rv is not __NONE:
                 if rvttl < async_ttl and async_expire:
                     async_expire(callkey)
                 stats.hits += 1
@@ -608,17 +611,18 @@ def cached(client, ttl,
             client = aclient[0]
             clientf = fclient[0]
             frv = async.Future()
+            __NONE = _NONE
 
             if future_sync_check:
                 # Quick sync call with lazy_kwargs
-                rv, rvttl = client.getTtl(callkey, _NONE, **lazy_kwargs)
+                rv, rvttl = client.getTtl(callkey, __NONE, **lazy_kwargs)
             else:
-                rv = _NONE
+                rv = __NONE
                 rvttl = -1
 
-            if (rv is _NONE or rvttl < async_ttl):
+            if (rv is __NONE or rvttl < async_ttl):
                 # The hard way
-                if rv is _NONE:
+                if rv is __NONE:
                     # It was a miss, so wait for setting the value
                     def on_value(value):
                         stats.hits += 1
@@ -634,7 +638,7 @@ def cached(client, ttl,
                     # It was a stale hit, so set the value now
                     stats.hits += 1
                     frv.set(rv)
-            elif rv is not _NONE:
+            elif rv is not __NONE:
                 if rvttl < async_ttl and async_expire:
                     async_expire(callkey)
                 stats.hits += 1
@@ -731,19 +735,20 @@ def cached(client, ttl,
                 stats.errors += 1
                 raise CacheMissError
 
+            __NONE = _NONE
             client = aclient[0]
 
-            rv, rvttl = client.getTtl(callkey, _NONE, **lazy_kwargs)
+            rv, rvttl = client.getTtl(callkey, __NONE, **lazy_kwargs)
 
-            if (rv is _NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl, **lazy_kwargs):
+            if (rv is __NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl, **lazy_kwargs):
                 if async_lazy_recheck:
                     stats.misses += 1
                     
                     # send a Defer that touches the client with recheck kwargs
                     # before doing the refresh. Needs not be coherent.
                     def touch_key(*p, **kw):
-                        rv, rvttl = nclient.getTtl(callkey, _NONE, ttl_skip = async_ttl, **async_lazy_recheck_kwargs)
-                        if (rv is _NONE or rvttl < async_ttl) and not nclient.contains(callkey, async_ttl, 
+                        rv, rvttl = nclient.getTtl(callkey, __NONE, ttl_skip = async_ttl, **async_lazy_recheck_kwargs)
+                        if (rv is __NONE or rvttl < async_ttl) and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
                         return base.NONE
@@ -754,14 +759,14 @@ def cached(client, ttl,
                     _lazy_recheck_put_deferred(client, touch_key, callkey, ttl, *p, **kw)
                 else:
                     _put_deferred(client, af, callkey, ttl, *p, **kw)
-            elif rv is not _NONE:
+            elif rv is not __NONE:
                 if rvttl < async_ttl and async_expire:
                     async_expire(callkey)
                 stats.hits += 1
             else:
                 stats.misses += 1
 
-            if rv is _NONE:
+            if rv is __NONE:
                 raise CacheMissError, callkey
             else:
                 return rv
