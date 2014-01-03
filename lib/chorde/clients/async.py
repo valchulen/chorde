@@ -102,7 +102,7 @@ class AsyncCacheWriterPool(ThreadPool):
         self.tl = threading.local()
         self.cleanup_tasks = []
         self.cleanup_cycles = cleanup_cycles
-        
+
         ThreadPool.__init__(self, workers)
 
     @staticmethod
@@ -340,8 +340,10 @@ class AsyncCacheWriterPool(ThreadPool):
                 timeout = tfin - time.time()
     
     def getTtl(self, key, default = None):
-        return self.queueset.get(key, default)
-    
+        # Speeding up things - we have the same signature and semantics
+        self.getTtl = getTtl = self.queueset.get
+        return getTtl(key, default)
+
     def contains(self, key):
         # Not atomic, but it doesn't really matter much, very unlikely and benignly to fail
         if key in self.queueset:
@@ -453,7 +455,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
     
     def getTtl(self, key, default = NONE, **kw):
         ettl = None
-        if self.is_started():
+        if self.writer is not None: # self.is_started() inlined for speed
             # Try to read pending writes as if they were on the cache
             value = self.writer.getTtl(key, _NONE)
             if value is not _NONE:
