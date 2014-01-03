@@ -775,7 +775,7 @@ class Future(object):
             self._running = True
             return True
 
-    def result(self, timeout=None, hasattr=hasattr, getattr=getattr, norecurse=False):
+    def result(self, timeout=None, hasattr=hasattr, getattr=getattr, isinstance=isinstance, norecurse=False):
         """
         Return the operation's result, if any. If an exception was the result, re-raise it.
         If it was cancelled, raises CancelledError, and if timeout is specified and not None,
