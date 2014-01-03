@@ -534,7 +534,6 @@ def cached(client, ttl,
                 raise CacheMissError
 
             client = aclient[0]
-            clientf = fclient[0]
             frv = async.Future()
             __NONE = _NONE
 
@@ -586,6 +585,7 @@ def cached(client, ttl,
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
+                clientf = fclient[0]
                 clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
             else:
                 stats.hits += 1
@@ -620,30 +620,29 @@ def cached(client, ttl,
 
             if (rv is __NONE or rvttl < async_ttl):
                 # The hard way
-                if rv is __NONE:
+                if rv is __NONE and async_lazy_recheck:
                     # It was a miss, so wait for setting the value
                     def on_value(value):
                         stats.hits += 1
-                        frv.set(value[0])
+                        return frv.set(value[0])
                     def on_miss():
                         # Ok, real miss, report it
-                        frv.miss()
+                        return frv.miss()
                     def on_exc(exc_info):
                         stats.errors += 1
                         return frv.exc(exc_info)
                     clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
                 else:
-                    # It was a stale hit, so set the value now
-                    stats.hits += 1
-                    frv.set(rv)
-            elif rv is not __NONE:
-                if rvttl < async_ttl and async_expire:
-                    async_expire(callkey)
+                    # It was a stale hit or permanent miss
+                    if rv is __NONE:
+                        stats.misses += 1
+                        frv.miss()
+                    else:
+                        stats.hits += 1
+                        frv.set(rv)
+            else:
                 stats.hits += 1
                 frv.set(rv)
-            else:
-                # report a miss rightaway, no computation, we're peeking
-                frv.miss()
             return frv
         if decorate is not None:
             future_peek_cached_f = decorate(future_peek_cached_f)
