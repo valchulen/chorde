@@ -453,9 +453,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
         if self.is_started():
             self.writer.purge()
     
-    def getTtl(self, key, default = NONE, 
-            _NONE=_NONE, _DELETE=_DELETE, _EXPIRE=_EXPIRE, isinstance=isinstance,
-            **kw):
+    def getTtl(self, key, default = NONE, **kw):
         ettl = None
         writer = self.writer
         if writer is not None: # self.is_started() inlined for speed
