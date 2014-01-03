@@ -547,8 +547,8 @@ def cached(client, ttl,
 
             if (rv is __NONE or rvttl < async_ttl):
                 # The hard way
-                if rv is __NONE:
-                    # It was a miss, so wait for setting the value
+                if rv is __NONE and async_lazy_recheck:
+                    # It was a preliminar miss, so wait for a recheck to set the value
                     def on_value(value):
                         stats.hits += 1
                         frv.set(value[0])
@@ -561,15 +561,19 @@ def cached(client, ttl,
                             nclient.promote(callkey, ttl_skip = async_ttl)
                     def on_miss():
                         # Ok, real miss, report it and start the computation
-                        _put_deferred(client, af, callkey, ttl, *p, **kw)
                         frv.miss()
+                        _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_exc(exc_info):
                         stats.errors += 1
-                        return frv.exc(exc_info)
+                        frv.exc(exc_info)
                 else:
-                    # It was a stale hit, so set the value now, but start a touch-refresh
-                    stats.hits += 1
-                    frv.set(rv)
+                    # It was a stale hit or permanent miss, so set the value now, but start a touch-refresh
+                    if rv is __NONE:
+                        stats.misses += 1
+                        frv.miss()
+                    else:
+                        stats.hits += 1
+                        frv.set(rv)
                     def on_value(value):  # lint:ok
                         if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
@@ -583,15 +587,9 @@ def cached(client, ttl,
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
                 clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
-            elif rv is not __NONE:
-                if rvttl < async_ttl and async_expire:
-                    async_expire(callkey)
+            else:
                 stats.hits += 1
                 frv.set(rv)
-            else:
-                # Start the computation, but report a miss rightaway
-                _put_deferred(client, af, callkey, ttl, *p, **kw)
-                frv.miss()
             return frv
         if decorate is not None:
             future_lazy_cached_f = decorate(future_lazy_cached_f)
