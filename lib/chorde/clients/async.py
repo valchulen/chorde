@@ -534,6 +534,30 @@ class Future(object):
         self._cb = []
         self._logger = logger
         self._lock = threading.Lock()
+
+    def _set_nothreads(self, value, hasattr = hasattr, tuple = tuple, getattr = getattr):
+        """
+        Like set(), but assuming no threading is involved. It won't wake waiting threads,
+        nor will it try to be thread-safe. Safe to call when the calling
+        thread is the only one owning references to this future, and much faster.
+        """
+        if hasattr(self, '_value'):
+            # No setting twice
+            return
+        
+        self._value = value
+
+        if self._cb:
+            for cb in tuple(self._cb):
+                try:
+                    cb(value)
+                except:
+                    if self._logger is not None:
+                        error = self._logger
+                    else:
+                        error = logging.error
+                    error("Error in async callback", exc_info = True)
+        self._running = False
     
     def set(self, value, hasattr = hasattr, tuple = tuple, getattr = getattr):
         """
@@ -572,12 +596,27 @@ class Future(object):
         """
         self.set(CacheMissError)
 
+    def _miss_nothreads(self):
+        """
+        Shorthand for setting a cache miss result without thread safety.
+        See _set_nothreads
+        """
+        self._set_nothreads(CacheMissError)
+
     def exc(self, exc_info):
         """
         Shorthand for setting an exception result from an exc_info tuple
         as returned by sys.exc_info()
         """
         self.set(ExceptionWrapper(exc_info))
+
+    def _exc_nothreads(self, exc_info):
+        """
+        Shorthand for setting an exception result from an exc_info tuple
+        as returned by sys.exc_info(), without thread safety. 
+        See _set_nothreads
+        """
+        self._set_nothreads(ExceptionWrapper(exc_info))
 
     def set_exception(self, exception):
         """

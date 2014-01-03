@@ -453,7 +453,7 @@ def cached(client, ttl,
 
             if (rv is __NONE or rvttl < async_ttl):
                 # The hard way
-                if rv is __NONE:
+                if rv is __NONE and async_lazy_recheck:
                     # It was a miss, so wait for setting the value
                     def on_value(value):
                         stats.hits += 1
@@ -472,8 +472,12 @@ def cached(client, ttl,
                         return frv.exc(exc_info)
                 else:
                     # It was a stale hit, so set the value now, but start a touch-refresh
-                    stats.hits += 1
-                    frv.set(rv)
+                    if rv is __NONE:
+                        stats.misses += 1
+                        frv._miss_nothreads()
+                    else:
+                        stats.hits += 1
+                        frv._set_nothreads(rv)
                     def on_value(value):  # lint:ok
                         if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
@@ -487,14 +491,9 @@ def cached(client, ttl,
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
                 clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
-            elif rv is not __NONE:
-                if rvttl < async_ttl and async_expire:
-                    async_expire(callkey)
-                stats.hits += 1
-                frv.set(rv)
             else:
-                # Start the computation
-                _fput_deferred(frv, client, af, callkey, ttl, *p, **kw)
+                stats.hits += 1
+                frv._set_nothreads(rv)
             return frv
         if decorate is not None:
             future_cached_f = decorate(future_cached_f)
@@ -569,10 +568,10 @@ def cached(client, ttl,
                     # It was a stale hit or permanent miss, so set the value now, but start a touch-refresh
                     if rv is __NONE:
                         stats.misses += 1
-                        frv.miss()
+                        frv._miss_nothreads()
                     else:
                         stats.hits += 1
-                        frv.set(rv)
+                        frv._set_nothreads(rv)
                     def on_value(value):  # lint:ok
                         if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
@@ -589,7 +588,7 @@ def cached(client, ttl,
                 clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
             else:
                 stats.hits += 1
-                frv.set(rv)
+                frv._set_nothreads(rv)
             return frv
         if decorate is not None:
             future_lazy_cached_f = decorate(future_lazy_cached_f)
@@ -636,13 +635,13 @@ def cached(client, ttl,
                     # It was a stale hit or permanent miss
                     if rv is __NONE:
                         stats.misses += 1
-                        frv.miss()
+                        frv._miss_nothreads()
                     else:
                         stats.hits += 1
-                        frv.set(rv)
+                        frv._set_nothreads(rv)
             else:
                 stats.hits += 1
-                frv.set(rv)
+                frv._set_nothreads(rv)
             return frv
         if decorate is not None:
             future_peek_cached_f = decorate(future_peek_cached_f)
