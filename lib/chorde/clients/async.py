@@ -453,11 +453,14 @@ class AsyncWriteCacheClient(BaseCacheClient):
         if self.is_started():
             self.writer.purge()
     
-    def getTtl(self, key, default = NONE, **kw):
+    def getTtl(self, key, default = NONE, 
+            _NONE=_NONE, _DELETE=_DELETE, _EXPIRE=_EXPIRE, isinstance=isinstance,
+            **kw):
         ettl = None
-        if self.writer is not None: # self.is_started() inlined for speed
+        writer = self.writer
+        if writer is not None: # self.is_started() inlined for speed
             # Try to read pending writes as if they were on the cache
-            value = self.writer.getTtl(key, _NONE)
+            value = writer.getTtl(key, _NONE)
             if value is not _NONE:
                 value, ttl = value
                 if value is _DELETE:
