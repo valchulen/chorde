@@ -3,8 +3,9 @@
 cdef extern from "Python.h":
     int PySequence_SetItem(object o, Py_ssize_t i, object v) except -1
     object PySequence_GetItem(object o, Py_ssize_t i)
-    int PyList_SET_ITEM(object o, Py_ssize_t i, void* v) except -1
+    void PyList_SET_ITEM(object o, Py_ssize_t i, void* v)
     void* PyList_GET_ITEM(object o, Py_ssize_t i)
+    Py_ssize_t PyList_GET_SIZE(object o)
 
 cdef extern from *:
     # Note: the C name below is extracted from the generated code. As such,
@@ -85,8 +86,8 @@ cdef class LRUCache:
         cdef unsigned int bprio
 
         bprio = self.pqueue[0].prio
-        sz = len(self.pqueue)
-        for i from 0 <= i < n:
+        sz = <unsigned int>PyList_GET_SIZE(self.pqueue)
+        for i from 0 <= i < sz:
             node = <_borrowed_node*>PyList_GET_ITEM(self.pqueue, i)
             node.prio = node.prio - bprio
         self.next_prio = self.next_prio - bprio
@@ -105,7 +106,7 @@ cdef class LRUCache:
         # This is possible since we're only shuffling items, in 
         # reference-neutral way, atomically, within a GIL-protected opcode
         bnode = <_borrowed_node*><void*>node
-        sz = len(self.pqueue)
+        sz = <unsigned int>PyList_GET_SIZE(self.pqueue)
         while 1:
             ix = bnode.index
             l  = 2 * ix + 1
