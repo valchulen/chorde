@@ -348,7 +348,7 @@ def cached(client, ttl,
         else:
             of = f
             @wraps(f)
-            def af(*p, **kw):
+            def af(*p, **kw):  # lint:ok
                 stats.misses += 1
                 try:
                     return of(*p, **kw)
@@ -356,7 +356,7 @@ def cached(client, ttl,
                     stats.errors += 1
                     raise
             @wraps(f)
-            def f(*p, **kw):
+            def f(*p, **kw):  # lint:ok
                 stats.sync_misses += 1
                 return af(*p, **kw)
 
@@ -453,7 +453,7 @@ def cached(client, ttl,
 
             if (rv is __NONE or rvttl < async_ttl):
                 # The hard way
-                if rv is __NONE and async_lazy_recheck:
+                if rv is __NONE:
                     # It was a miss, so wait for setting the value
                     def on_value(value):
                         stats.hits += 1
