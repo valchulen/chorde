@@ -643,6 +643,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             # Deletions are value=NONE
             plan = collections.defaultdict(dict)
             deletions = []
+            quicknow = time.time()
             for i in xrange(2):
                 # It can explode if a thread lingers, so restart if that happens
                 try:
@@ -650,7 +651,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                         if value is NONE:
                             deletions.append(key)
                         else:
-                            plan[ttl][key] = value
+                            plan[ttl][key] = self.encode(key, ttl+quicknow, value)
                     break
                 except RuntimeError:
                     pass
@@ -724,7 +725,6 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
         key = self.encode_key(key)
-        value = self.encode(key, ttl+time.time(), value)
         self._enqueue_put(key, value, ttl)
     
     def add(self, key, value, ttl):
