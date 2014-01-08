@@ -53,11 +53,28 @@ except ImportError:
 from chorde import sPickle
 
 try:
-    import json
+    try:
+        import simplejson as json
+    except:
+        import json  # lint:ok
 except ImportError:
     json = None  # lint:ok
 JSON_SEPARATORS = (',',':')
 
+try:
+    import simplejson as cjson
+except ImportError:
+    try:
+        import cjson as cjson_
+        class cjson:  # lint:ok
+            loads = cjson_.decode
+            dumps = staticmethod(lambda x, separators=None, encode = cjson_.encode : encode(x))
+    except ImportError:
+        try:
+            import json as cjson  # lint:ok
+        except:
+            cjson = None # lint:ok
+    
 class ZlibFile:
     def __init__(self, fileobj, level = 9):
         self.fileobj = fileobj
@@ -544,13 +561,10 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             max_backing_key_length,
             memcache.SERVER_MAX_KEY_LENGTH)
 
-        if key_pickler is None:
-            key_pickler = json
-        
         self.max_backing_key_length = max_backing_key_length 
         self.max_backing_value_length = max_backing_value_length - 32 # 32-bytes for various overheads
-        self.key_pickler = key_pickler
-        self.pickler = pickler or key_pickler
+        self.key_pickler = key_pickler or json
+        self.pickler = pickler or key_pickler or cjson
         self.namespace = namespace
         
         if self.namespace:
