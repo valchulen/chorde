@@ -648,6 +648,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                 # It can explode if a thread lingers, so restart if that happens
                 try:
                     for key, (value, ttl) in workset.iteritems():
+                        key = self.encode_key(key)
                         if value is NONE:
                             deletions.append(key)
                         else:
@@ -688,15 +689,29 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         value, ttl = self.pickler.loads(value)
         return value, ttl
     
-    def _getTtl(self, key, default, ttl_skip = None):
-        key = self.encode_key(key)
-        
+    def _getTtl(self, key, default, ttl_skip = None, encoded = False):
         # Quick check for a concurrent put
-        value = self.queueset.get(key, self.workset.get(key, NONE))
-        if value is NONE:
-            value = self.client.get(key)
+        if encoded:
+            value = NONE
         else:
-            value = value[0]
+            value = self.queueset.get(key, self.workset.get(key, NONE))
+        if value is NONE:
+            # Not in queue, get from memcached, and decode
+            if not encoded:
+                key = self.encode_key(key)
+            value = self.client.get(key)
+            if value is not None:
+                try:
+                    value, ttl = self.decode(value)
+                    ttl -= time.time()
+                except ValueError:
+                    return default, -1
+                except:
+                    logging.warning("Error decoding cached data (%r)", value, exc_info=True)
+                    return default, -1
+        else:
+            # In queue, so it's already in decoded form
+            value, ttl = value
             if value is NONE:
                 # A deletion is queued, so we deleted
                 value = None
@@ -704,17 +719,10 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         if value is None:
             return default, -1
         
-        try:
-            value, ttl = self.decode(value)
-            if ttl_skip is not None and ttl < ttl_skip:
-                return default, -1
-            else:
-                return value, ttl - time.time()
-        except ValueError:
+        if ttl_skip is not None and ttl < ttl_skip:
             return default, -1
-        except:
-            logging.warning("Error decoding cached data (%r)", value, exc_info=True)
-            return default, -1
+        else:
+            return value, ttl
 
     def getTtl(self, key, default = NONE, ttl_skip = None):
         # This trampoline is necessary to avoid re-entrancy issues when this client
@@ -724,18 +732,16 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
     
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
-        key = self.encode_key(key)
         self._enqueue_put(key, value, ttl)
     
     def add(self, key, value, ttl):
         # set_multi all pages in one roundtrip
-        key = self.encode_key(key)
-
         if self.queueset.get(key, NONE) is not NONE:
             return False
         elif self.workset.get(key, NONE) is not NONE:
             return False
         
+        key = self.encode_key(key)
         value = self.encode(key, ttl+time.time(), value)
         rv = self.client.add(key, value, ttl)
 
@@ -747,7 +753,6 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             raise RuntimeError, "Memcache add returned %r" % (rv,)
     
     def delete(self, key):
-        key = self.encode_key(key)
         self._enqueue_put(key, NONE, 0)
     
     def clear(self):
@@ -761,14 +766,13 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         pass
     
     def contains(self, key, ttl = None):
-        key = self.encode_key(key)
-
         # Quick check against worker queues
         if key in self.queueset or key in self.workset:
             return True
 
         # Else exploit the fact that append returns True on success (the key exists)
         # and False on failure (the key doesn't exist), with minimal bandwidth
+        key = self.encode_key(key)
         exists = self.client.append(key,"")
         if exists:
             if ttl is None:
@@ -778,7 +782,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                 # When checking with a TTL margin a key that's stale, this will
                 # minimize bandwidth, but when it's valid, it will result in
                 # 2x roundtrips: check with append, get ttl
-                _, store_ttl = self._getTtl(key, NONE)
+                _, store_ttl = self._getTtl(key, NONE, encoded = True)
                 return store_ttl > ttl
         else:
             return False
