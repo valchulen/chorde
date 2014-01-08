@@ -62,19 +62,13 @@ except ImportError:
 JSON_SEPARATORS = (',',':')
 
 try:
-    import simplejson as cjson
+    import cjson as cjson_
+    class cjson:  # lint:ok
+        loads = cjson_.decode
+        dumps = staticmethod(lambda x, separators=None, encode = cjson_.encode : encode(x))
 except ImportError:
-    try:
-        import cjson as cjson_
-        class cjson:  # lint:ok
-            loads = cjson_.decode
-            dumps = staticmethod(lambda x, separators=None, encode = cjson_.encode : encode(x))
-    except ImportError:
-        try:
-            import json as cjson  # lint:ok
-        except:
-            cjson = None # lint:ok
-    
+    cjson = json
+
 class ZlibFile:
     def __init__(self, fileobj, level = 9):
         self.fileobj = fileobj
