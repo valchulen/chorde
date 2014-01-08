@@ -54,9 +54,9 @@ from chorde import sPickle
 
 try:
     try:
-        import simplejson as json
-    except:
-        import json  # lint:ok
+        import json
+    except ImportError:
+        import simplejson as json  # lint:ok
 except ImportError:
     json = None  # lint:ok
 JSON_SEPARATORS = (',',':')
@@ -67,7 +67,10 @@ try:
         loads = cjson_.decode
         dumps = staticmethod(lambda x, separators=None, encode = cjson_.encode : encode(x))
 except ImportError:
-    cjson = json
+    try:
+        import simplejson as cjson  # lint:ok
+    except ImportError:
+        import json as cjson  # lint:ok
 
 class ZlibFile:
     def __init__(self, fileobj, level = 9):
