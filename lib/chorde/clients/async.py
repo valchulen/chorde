@@ -130,6 +130,9 @@ class AsyncCacheWriterPool(ThreadPool):
                 deferred = value
                 try:
                     value = value.undefer()
+                except CacheMissError:
+                    # It's ok, accepted pattern to cancel computation in a transparent way
+                    value = _NONE
                 except:
                     self.logger.error("Error in background cache refresh", exc_info=True)
                     value = _NONE
