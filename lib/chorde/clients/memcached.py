@@ -546,6 +546,16 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             it can completely dishonor separators without major issues, as
             spaces and control chars will be accepted for values. If not
             specified, key_pickler will be used.
+
+        failfast_time, failfast_size: (optional) If given, a small in-process
+            cache of misses will be kept in order to avoid repeated queries
+            to the remote cache. By default, it's disabled, since misses
+            are quick enough. Note: the semantics of the failfast cache
+            are slightly different from the regular MemcachedClient. In this
+            case, the failfast cache will be queried before checking the
+            key in the remote cache, which means writes from other processes
+            will be invisible until the failfast_time elapses. Thus, make
+            sure such delay is acceptable before making use of this cache.
     """
     
     def __init__(self, 
@@ -555,6 +565,8 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             key_pickler = None,
             pickler = None,
             namespace = None,
+            failfast_time = None,
+            failfast_size = 100,
             **client_args):
         
         max_backing_key_length = min(
@@ -576,6 +588,9 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         self.queueset = {}
         self.workset = {}
         self.workev = Event()
+
+        self.failfast_time = failfast_time
+        self._failfast_cache = Cache(failfast_size) if failfast_time else None
 
         super(FastMemcachedClient, self).__init__(client_addresses, client_args)
 
@@ -689,26 +704,39 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         value, ttl = self.pickler.loads(value)
         return value, ttl
     
-    def _getTtl(self, key, default, ttl_skip = None, encoded = False):
+    def _getTtl(self, key, default, ttl_skip = None, encoded = False, raw_key = None):
         # Quick check for a concurrent put
         if encoded:
             value = NONE
         else:
             value = self.queueset.get(key, self.workset.get(key, NONE))
         if value is NONE:
+            now = time.time()
+            
             # Not in queue, get from memcached, and decode
             if not encoded:
+                # Check failfast cache, before contacting the remote client
+                if self._failfast_cache is not None and self._failfast_cache.get(key) > (now - self.failfast_time):
+                    return default, -1
+
+                raw_key = key
                 key = self.encode_key(key)
             value = self.client.get(key)
             if value is not None:
                 try:
                     value, ttl = self.decode(value)
-                    ttl -= time.time()
+                    ttl -= now
                 except ValueError:
+                    if self._failfast_cache is not None:
+                        self._failfast_cache[raw_key] = now
                     return default, -1
                 except:
                     logging.warning("Error decoding cached data (%r)", value, exc_info=True)
+                    if self._failfast_cache is not None:
+                        self._failfast_cache[raw_key] = now
                     return default, -1
+            elif self._failfast_cache is not None:
+                self._failfast_cache[raw_key] = now
         else:
             # In queue, so it's already in decoded form
             value, ttl = value
@@ -733,7 +761,14 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
         self._enqueue_put(key, value, ttl)
-    
+
+        # Not necessary anymore, queue checks will resolve it from now on
+        if self._failfast_cache is not None:
+            try:
+                del self._failfast_cache[key]
+            except:
+                pass
+        
     def add(self, key, value, ttl):
         # set_multi all pages in one roundtrip
         if self.queueset.get(key, NONE) is not NONE:
@@ -754,26 +789,40 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
     
     def delete(self, key):
         self._enqueue_put(key, NONE, 0)
+
+        # Not necessary anymore, queue checks will resolve it from now on
+        if self._failfast_cache is not None:
+            try:
+                del self._failfast_cache[key]
+            except:
+                pass
     
     def clear(self):
         # We don't want to clear memcache, it might be shared
         # But we can purge our queueset
         self.queueset.clear()
         self.workset.clear()
+        if self._failfast_cache is not None:
+            self._failfast_cache.clear()
 
     def purge(self, timeout = 0):
         # Memcache does that itself
-        pass
+        if self._failfast_cache is not None:
+            self._failfast_cache.clear()
     
     def contains(self, key, ttl = None):
         # Quick check against worker queues
         if key in self.queueset or key in self.workset:
             return True
 
+        # Check failfast cache, before contacting the remote client
+        if self._failfast_cache is not None and self._failfast_cache.get(key) > (time.time() - self.failfast_time):
+            return False
+        
         # Else exploit the fact that append returns True on success (the key exists)
         # and False on failure (the key doesn't exist), with minimal bandwidth
-        key = self.encode_key(key)
-        exists = self.client.append(key,"")
+        encoded_key = self.encode_key(key)
+        exists = self.client.append(encoded_key,"")
         if exists:
             if ttl is None:
                 return True
@@ -782,7 +831,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                 # When checking with a TTL margin a key that's stale, this will
                 # minimize bandwidth, but when it's valid, it will result in
                 # 2x roundtrips: check with append, get ttl
-                _, store_ttl = self._getTtl(key, NONE, encoded = True)
+                _, store_ttl = self._getTtl(encoded_key, NONE, encoded = True, raw_key = key)
                 return store_ttl > ttl
         else:
             return False
