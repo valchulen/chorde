@@ -62,7 +62,10 @@ except ImportError:
 JSON_SEPARATORS = (',',':')
 
 try:
-    import cjson as cjson_
+    try:
+        import ujson as cjson_
+    except ImpotError:
+        import cjson as cjson_
     class cjson:  # lint:ok
         loads = cjson_.decode
         dumps = staticmethod(lambda x, separators=None, encode = cjson_.encode : encode(x))
