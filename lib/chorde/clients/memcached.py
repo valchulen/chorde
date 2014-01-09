@@ -175,6 +175,8 @@ class DynamicResolvingMemcachedClient(BaseCacheClient):
                         if not addrs:
                             if not dynamic:
                                 static_addresses.add(entry)
+                            else:
+                                allstatic = False
                             servers.append(entry)
                         else:
                             allstatic = False
