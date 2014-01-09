@@ -64,7 +64,7 @@ JSON_SEPARATORS = (',',':')
 try:
     try:
         import ujson as cjson_
-    except ImpotError:
+    except ImportError:
         import cjson as cjson_
     class cjson:  # lint:ok
         loads = cjson_.decode
@@ -124,7 +124,10 @@ class DynamicResolvingMemcachedClient(BaseCacheClient):
         When the addresses in client_addresses point to specific hosts, this will
         just return client_addresses. But when entries in client_addresses are indirect,
         eg by specifying a dns name that resolves to a CNAME, it will dynamically update
-        the returned list according to whatever the dns query returns.
+        the returned list according to whatever the dns query returns. Entries
+        can also be callables, to dynamically generate server lists using other custom procedures.
+        The callable must return a list of entries that will be used as if they had been included
+        in place of the callable (ie: they can also be CNAME entries).
         """
         if self._static_client_addresses is True:
             return self._client_addresses
@@ -140,34 +143,44 @@ class DynamicResolvingMemcachedClient(BaseCacheClient):
                 if entry in static_addresses:
                     servers.append(entry)
                 else:
-                    host,port = entry.split(':',1)
-                    port = int(port)
+                    if callable(entry):
+                        # Custom callable, just call it
+                        sentries = entry()
+                        dynamic = True
+                    else:
+                        sentries = (entry,)
+                        dynamic = False
 
-                    # Check CNAME indirection
-                    try:
-                        addrs = list(dnsquery(host, 'CNAME'))
-                    except:
-                        addrs = []
-                    if not addrs:
-                        # Check dns round-robin
+                    for entry in sentries:
+                        host,port = entry.split(':',1)
+                        port = int(port)
+    
+                        # Check CNAME indirection
                         try:
-                            addrs = list(dnsquery(host, 'A'))
+                            addrs = list(dnsquery(host, 'CNAME'))
                         except:
                             addrs = []
-                        if len(addrs) == 1:
-                            # normal A record, forget to mark static
-                            addrs = []
-                    if addrs:
-                        # sort to maintain consistent hashing
-                        addrs = sorted(addrs)
-                    if not addrs:
-                        static_addresses.add(entry)
-                        servers.append(entry)
-                    else:
-                        allstatic = False
-                        for addr,ttl in addrs:
-                            expiration = min(ttl, expiration)
-                            servers.append("%s:%d" % (addr,port))
+                        if not addrs:
+                            # Check dns round-robin
+                            try:
+                                addrs = list(dnsquery(host, 'A'))
+                            except:
+                                addrs = []
+                            if len(addrs) == 1:
+                                # normal A record, forget to mark static
+                                addrs = []
+                        if addrs:
+                            # sort to maintain consistent hashing
+                            addrs = sorted(addrs)
+                        if not addrs:
+                            if not dynamic:
+                                static_addresses.add(entry)
+                            servers.append(entry)
+                        else:
+                            allstatic = False
+                            for addr,ttl in addrs:
+                                expiration = min(ttl, expiration)
+                                servers.append("%s:%d" % (addr,port))
             if allstatic:
                 self._static_client_addresses = True
                 return self._client_addresses
