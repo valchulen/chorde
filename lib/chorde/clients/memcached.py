@@ -9,7 +9,7 @@ import socket
 import time
 import weakref
 import zlib
-from threading import Event, Thread
+from threading import Event, Thread, Lock
 
 from .base import BaseCacheClient, CacheMissError, NONE
 from .inproc import Cache
@@ -609,8 +609,8 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
 
         super(FastMemcachedClient, self).__init__(client_addresses, client_args)
 
-        self._bgwriter_thread = MemcacheWriterThread(self._bgwriter, weakref.ref(self))
-        self._bgwriter_thread.setDaemon(True)
+        self._bgwriter_thread = None
+        self._spawning_lock = Lock()
 
     @property
     def async(self):
@@ -619,9 +619,18 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
     @property
     def stats(self):
         stats = getattr(self, '_stats', None)
-        if stats is None or stats[0] < time.time():
-            stats = self.client.get_stats() or {}
+        if stats is None or stats[1] < time.time():
+            stats = collections.defaultdict(int)
+            for srv,s in self.client.get_stats():
+                for k,v in s.iteritems():
+                    try:
+                        v = int(v)
+                        stats[k] += v
+                    except:
+                        pass
             self._stats = (stats, time.time() + 1)
+        else:
+            stats = stats[0]
         return stats
     
     @property
@@ -642,12 +651,14 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         self.queueset[key] = value
         self.workev.set()
 
-        if not self._bgwriter_thread.isAlive():
-            try:
-                self._bgwriter_thread.start()
-            except:
-                # Might have been started by other thread
-                pass
+        if not self._bgwriter_thread or not self._bgwriter_thread.isAlive():
+            with self._spawning_lock:
+                if not self._bgwriter_thread or not self._bgwriter_thread.isAlive():
+                    if not self._bgwriter_thread or not self._bgwriter_thread.isAlive():
+                        bgwriter_thread = MemcacheWriterThread(self._bgwriter, weakref.ref(self))
+                        bgwriter_thread.setDaemon(True)
+                        bgwriter_thread.start()
+                        self._bgwriter_thread = bgwriter_thread
 
     def _dequeue_put(self):
         # Almost-Atomic swap, time.sleep after extracting and it's fully-atomic
@@ -684,25 +695,32 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                         else:
                             plan[ttl][key] = self.encode(key, ttl+quicknow, value)
                     break
-                except RuntimeError:
-                    pass
+                except RuntimeError, e:
+                    last_error = e
+            else:
+                # Um...
+                logging.error("Exception preparing plan: %r", last_error)
+                plan = deletions = None
+            last_error = None
 
-            if deletions:
-                try:
-                    self.client.delete_multi(deletions)
-                except:
-                    logging.error("Exception in background writer", exc_info = True)
-            if plan:
-                for ttl, batch in plan.iteritems():
+            if plan or deletions:
+                if deletions:
                     try:
-                        self.client.set_multi(batch, ttl)
+                        self.client.delete_multi(deletions)
                     except:
                         logging.error("Exception in background writer", exc_info = True)
+                if plan:
+                    for ttl, batch in plan.iteritems():
+                        try:
+                            self.client.set_multi(batch, ttl)
+                        except:
+                            logging.error("Exception in background writer", exc_info = True)
+                
+                # Let us be suicidal
+                del self, plan, deletions
+                workset.clear()
+                del workset
             
-            # Let us be suicidal
-            del self, plan, deletions
-            workset.clear()
-            del workset
             key = value = ttl = batch = None
             workev.wait(1)
     
