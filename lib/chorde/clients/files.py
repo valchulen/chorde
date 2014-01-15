@@ -137,7 +137,6 @@ def _link(source, dest, sizeback = None, filemode = None):
             except:
                 _clean(tmpname)
                 raise
-        os.unlink(source)
 
     if sizeback is not None:
         # Call with size delta
