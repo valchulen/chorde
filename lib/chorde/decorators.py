@@ -462,9 +462,6 @@ def cached(client, ttl,
                         if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
-                        else:
-                            # else promote
-                            nclient.promote(callkey, ttl_skip = async_ttl)
                     def on_miss():
                         _fput_deferred(frv, client, af, callkey, ttl, *p, **kw)
                     def on_exc(exc_info):
@@ -482,15 +479,13 @@ def cached(client, ttl,
                         if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
-                        else:
-                            # just promote
-                            nclient.promote(callkey, ttl_skip = async_ttl)
                     def on_miss():  # lint:ok
                         if not nclient.contains(callkey, async_ttl, **async_lazy_recheck_kwargs):
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
-                clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
+                clientf.getTtl(callkey, ttl_skip = async_ttl, **async_lazy_recheck_kwargs)\
+                    .on_any(on_value, on_miss, on_exc)
             else:
                 stats.hits += 1
                 frv._set_nothreads(rv)
@@ -554,9 +549,6 @@ def cached(client, ttl,
                         if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
-                        else:
-                            # just promote
-                            nclient.promote(callkey, ttl_skip = async_ttl)
                     def on_miss():
                         # Ok, real miss, report it and start the computation
                         frv.miss()
@@ -576,16 +568,14 @@ def cached(client, ttl,
                         if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
-                        else:
-                            # just promote
-                            nclient.promote(callkey, ttl_skip = async_ttl)
                     def on_miss():  # lint:ok
                         if not nclient.contains(callkey, async_ttl, **async_lazy_recheck_kwargs):
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
                 clientf = fclient[0]
-                clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
+                clientf.getTtl(callkey, ttl_skip = async_ttl, **async_lazy_recheck_kwargs)\
+                    .on_any(on_value, on_miss, on_exc)
             else:
                 stats.hits += 1
                 frv._set_nothreads(rv)
