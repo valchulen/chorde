@@ -160,6 +160,8 @@ cdef class LRUCache:
 
         if key in self.emap:
             node = self.emap[key]
+            # delay collection of old value, to avoid firing python code and thus releasing the GIL
+            oldval = node.value 
             node.value = val
             self.c_decrease(node)
         elif len(self.pqueue) >= self.size:
@@ -268,13 +270,27 @@ cdef class LRUCache:
                 self[k] = v
 
     def clear(LRUCache self not None):
-        self.pqueue = []
-        self.emap = {}
+        # Hold onto old lists to prevent decref from freeing them before we're done
+        cdef object pqueue, emap
+        cdef object opqueue, oemap
+        opqueue = self.pqueue
+        oemap = self.emap
+        pqueue = []
+        emap = {}
+        self.pqueue = pqueue
+        self.emap = emap
         self.next_prio = 0
     
     def defrag(LRUCache self not None):
-        self.pqueue = list(self.pqueue)
-        self.emap = self.emap.copy()
+        # Hold onto old lists to prevent decref from freeing them before we're done
+        cdef object pqueue, emap
+        cdef object opqueue, oemap
+        opqueue = self.pqueue
+        oemap = self.emap
+        pqueue = list(self.pqueue)
+        emap = self.emap.copy()
+        self.pqueue = pqueue
+        self.emap = emap
 
     def __repr__(LRUCache self not None):
         return "<LRUCache (%d elements, %d max)>" % (len(self), self.size)
