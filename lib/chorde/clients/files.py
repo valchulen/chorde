@@ -197,10 +197,10 @@ class FilesCacheClient(base.BaseCacheClient):
     synchronous purge will be attempted before returning, guaranteeing adherence
     to given size limits.
     """
-    
-    def __init__(self, size, basepath, 
-            failfast_size = 500, failfast_time = 0.25, counter_slots = 256, 
-            key_pickler = json.dumps, value_pickler = None, value_unpickler = None, checksum_key = None,
+
+    def __init__(self, size, basepath,
+            failfast_size = 500, failfast_time = 0.25, counter_slots = 256,
+            key_pickler = json.dumps, value_pickler = None, value_unpickler = None, value_opener=None, checksum_key = None,
             dirmode = 0700, filemode = 0400, mmap_raw = False,
             sync_purge = None):
         """
@@ -234,6 +234,8 @@ class FilesCacheClient(base.BaseCacheClient):
                 function is based on pickling, otherwise malicious injection into the cache
                 file heirarchy could result in arbitrary code execution.
 
+	   value_opener: opener *function* used to return non-file object. It should take a fileobject parameter
+
             checksum_key: When using the default picklers, this *private* key is necessary
                 in order to authenticate values and make sure they have been written by this process
                 (or any process with access to the key). Otherwise, malicious injection into the
@@ -265,6 +267,10 @@ class FilesCacheClient(base.BaseCacheClient):
         self.dirmode = dirmode
         self.mmap_raw = mmap_raw
         self.sync_purge = sync_purge
+
+        if value_opener is None:
+            value_opener = open
+        self.value_opener = value_opener
 
         if value_pickler is None or value_unpickler is None:
             if checksum_key is None:
@@ -576,7 +582,7 @@ class FilesCacheClient(base.BaseCacheClient):
                     try:
                         _touch(keypath) # force atime update, in case it's a non-strict-atime mount
                         if os.access(targetpath+'.file', os.R_OK):
-                            return open(targetpath+'.file', 'rb'), rttl
+                            return self.value_opener(targetpath+'.file', 'rb') ,rttl
                         elif os.access(targetpath+'.raw', os.R_OK):
                             with open(targetpath+'.raw', 'rb') as rawfile:
                                 rawfile.seek(0, os.SEEK_END)
