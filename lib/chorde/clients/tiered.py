@@ -128,7 +128,6 @@ class TieredInclusiveClient(BaseCacheClient):
                     for i in xrange(i-1, -1, -1):
                         try:
                             self.clients[i].put(key, rv, ttl)
-                            break
                         except:
                             # Ignore, go to the next
                             logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
@@ -165,7 +164,6 @@ class TieredInclusiveClient(BaseCacheClient):
                     for i in xrange(i-1, -1, -1):
                         try:
                             self.clients[i].put(key, rv, ttl)
-                            break
                         except:
                             # Ignore, go to the next
                             logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
