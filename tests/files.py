@@ -78,6 +78,28 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
         tmp.close()
         self.assertTrue(os.path.exists(tmp.name))
 
+        tmp = tempfile.NamedTemporaryFile(dir=self.tempdir)
+        self.assertTrue(os.path.exists(tmp.name))
+        self.assertTrue(client.contains("weefile"))
+
+        rnd = os.urandom(1024)
+        tmp.write(rnd)
+        tmp.flush()
+        client.put("weefile", tmp, 86400)
+        self.assertTrue(os.path.exists(tmp.name)) # not deleted
+        self.assertTrue(client.contains("weefile"))
+
+        tmp.close()
+        self.assertFalse(os.path.exists(tmp.name))
+        del tmp
+
+        tmp = client.get("weefile")
+        self.assertIsInstance(tmp, file)
+        self.assertTrue(os.path.exists(tmp.name))
+        self.assertEqual(tmp.read(), rnd)
+        tmp.close()
+        self.assertTrue(os.path.exists(tmp.name))
+
     def testLRU(self):
         client = self.client
         bigval = "12" * chorde.clients.files.MMAP_THRESHOLD
