@@ -475,8 +475,7 @@ class CoherenceManager(object):
                 else:
                     break
             else:
-                if expired():
-                    waiter.poll(timeout/4)
+                waiter.poll(timeout/4)
             if waiter.poll(1):
                 rv = json.load(cStringIO.StringIO(fbuffer(waiter.recv(copy=False))))
                 if rv is not None:
