@@ -725,11 +725,11 @@ class Future(object):
                 return callback(self)
         return self._on_stuff(weak_callback)
 
-    def done(self, hasattr=hasattr):
+    def done(self, hasattr=hasattr, getattr=getattr):
         """
-        Return True if the operation has finished, in a result or exception, and False if not.
+        Return True if the operation has finished, in a result or exception or cancelled, and False if not.
         """
-        return hasattr(self, '_value')
+        return hasattr(self, '_value') or getattr(self, '_cancelled', False)
 
     def running(self, getattr=getattr):
         """
@@ -771,9 +771,15 @@ class Future(object):
         if getattr(self, '_cancel_pending', False):
             self._cancelled = True
             self._running = False
+
+            # Notify waiters
             event = getattr(self, '_done_event', None)
             if event is not None:
                 event.set()
+            
+            # Notify callbacks
+            self.set_exception(CancelledError()) 
+            
             return False
         else:
             self._running = True
@@ -942,39 +948,42 @@ class AsyncCacheProcessor(object):
 
                     self = wself()
                     if self is not None:
-                        if not hasattr(self.tl, 'dirty_rounds'):
-                            self.tl.dirty_rounds = 0
-                        self.tl.dirty_rounds += 1
-                        if self.tl.dirty_rounds > self.cleanup_cycles or not self.queuelen:
-                            self.tl.dirty_rounds = 0
-                            for task in self.cleanup_tasks:
-                                task()
-                            for task in _global_cleanup_tasks:
-                                task()
+                        try:
+                            if not hasattr(self.tl, 'dirty_rounds'):
+                                self.tl.dirty_rounds = 0
+                            self.tl.dirty_rounds += 1
+                            if self.tl.dirty_rounds > self.cleanup_cycles or not self.queuelen:
+                                self.tl.dirty_rounds = 0
+                                for task in self.cleanup_tasks:
+                                    task()
+                                for task in _global_cleanup_tasks:
+                                    task()
+                        except:
+                            self.logger.error("Error during background thread cleanup", exc_info = True)
                 
                 # discard queue head quickly when we're overloaded
                 # head is always less relevant
                 self = wself()
                 if self is not None and self.maxqueue is not None:
                     if self.queuelen > self.maxqueue:
-                        future.cancel()
+                        cfuture.cancel()
                 
-                if future.set_running_or_notify_cancelled():
+                if cfuture.set_running_or_notify_cancelled():
                     try:
                         rv = action()
                         clean()
-                        future.set(rv)
+                        cfuture.set(rv)
                     except CacheMissError:
                         clean()
-                        future.miss()
+                        cfuture.miss()
                     except:
                         clean()
                         # Clear up traceback to avoid leaks
-                        future.exc(sys.exc_info()[:-1] + (None,))
+                        cfuture.exc(sys.exc_info()[:-1] + (None,))
                 else:
                     clean()
             self.threadpool.apply_async(wrapped_action, ())
-        return future
+        return cfuture
 
     @property
     def capacity(self):
