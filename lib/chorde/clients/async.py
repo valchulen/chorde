@@ -1137,9 +1137,11 @@ class WrappedCacheProcessor(object):
     def contains(self, key, *p, **kw):
         if not p and not kw:
             ckey = key
+        elif not kw:
+            ckey = (key, p)
         else:
-            ckey = NONE
-        return self.processor.do_async(self.coalesce_contains, ckey,
+            ckey = (key, p, frozenset(kw.items()))
+        return self.processor.do_async_coalescent(self.coalesce_contains, ckey,
             self.client.contains, key, *p, **kw)
 
     def put(self, key, value, ttl):

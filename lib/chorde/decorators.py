@@ -284,6 +284,8 @@ def cached(client, ttl,
             value_undecorator = value_deserialization_function )
     if namespace is not None and namespace is not NO_NAMESPACE:
         client = base.NamespaceWrapper(namespace, client)
+        if async_client:
+            async_client = base.NamespaceMirrorWrapper(client, async_client)
 
     if not client.async:
         if async_writer_queue_size is None:
@@ -309,8 +311,13 @@ def cached(client, ttl,
     def decor(f):
         if namespace is None:
             nclient = base.NamespaceWrapper(_make_namespace(f), client)
+            if async_client:
+                nasync_client = base.NamespaceMirrorWrapper(nclient, async_client)
+            else:
+                nasync_client = async_client
         else:
             nclient = client
+            nasync_client = async_client
 
         stats = CacheStats()
         stop_initializing = [None]
@@ -467,6 +474,8 @@ def cached(client, ttl,
                     def on_exc(exc_info):
                         stats.errors += 1
                         return frv.exc(exc_info)
+                    clientf.getTtl(callkey, ttl_skip = async_ttl, **async_lazy_recheck_kwargs)\
+                        .on_any(on_value, on_miss, on_exc)
                 else:
                     # It was a stale hit, so set the value now, but start a touch-refresh
                     if rv is __NONE:
@@ -475,17 +484,18 @@ def cached(client, ttl,
                     else:
                         stats.hits += 1
                         frv._set_nothreads(rv)
-                    def on_value(value):  # lint:ok
-                        if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
-                                **async_lazy_recheck_kwargs):
+                    def on_value(contains):  # lint:ok
+                        if not contains:
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
+                        else:
+                            # just promote
+                            nclient.promote(callkey, ttl_skip = async_ttl)
                     def on_miss():  # lint:ok
-                        if not nclient.contains(callkey, async_ttl, **async_lazy_recheck_kwargs):
-                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                        _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
-                clientf.getTtl(callkey, ttl_skip = async_ttl, **async_lazy_recheck_kwargs)\
-                    .on_any(on_value, on_miss, on_exc)
+                    clientf.contains(callkey, async_ttl, **async_lazy_recheck_kwargs)\
+                        .on_any(on_value, on_miss, on_exc)
             else:
                 stats.hits += 1
                 frv._set_nothreads(rv)
@@ -540,13 +550,14 @@ def cached(client, ttl,
 
             if (rv is __NONE or rvttl < async_ttl):
                 # The hard way
-                if rv is __NONE and async_lazy_recheck:
+                clientf = fclient[0]
+                if rv is __NONE and (not future_sync_check or async_lazy_recheck):
                     # It was a preliminar miss, so wait for a recheck to set the value
                     def on_value(value):
                         stats.hits += 1
                         frv.set(value[0])
                         # If it's stale, though, start an async refresh
-                        if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
+                        if value[1] < async_ttl and not client.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_miss():
@@ -556,6 +567,8 @@ def cached(client, ttl,
                     def on_exc(exc_info):
                         stats.errors += 1
                         frv.exc(exc_info)
+                    clientf.getTtl(callkey, ttl_skip = async_ttl, **async_lazy_recheck_kwargs)\
+                        .on_any(on_value, on_miss, on_exc)
                 else:
                     # It was a stale hit or permanent miss, so set the value now, but start a touch-refresh
                     if rv is __NONE:
@@ -564,18 +577,18 @@ def cached(client, ttl,
                     else:
                         stats.hits += 1
                         frv._set_nothreads(rv)
-                    def on_value(value):  # lint:ok
-                        if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
-                                **async_lazy_recheck_kwargs):
+                    def on_value(contains):  # lint:ok
+                        if not contains:
                             _put_deferred(client, af, callkey, ttl, *p, **kw)
+                        else:
+                            # just promote
+                            nclient.promote(callkey, ttl_skip = async_ttl)
                     def on_miss():  # lint:ok
-                        if not nclient.contains(callkey, async_ttl, **async_lazy_recheck_kwargs):
-                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                        _put_deferred(client, af, callkey, ttl, *p, **kw)
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
-                clientf = fclient[0]
-                clientf.getTtl(callkey, ttl_skip = async_ttl, **async_lazy_recheck_kwargs)\
-                    .on_any(on_value, on_miss, on_exc)
+                    clientf.contains(callkey, async_ttl, **async_lazy_recheck_kwargs)\
+                        .on_any(on_value, on_miss, on_exc)
             else:
                 stats.hits += 1
                 frv._set_nothreads(rv)
@@ -816,8 +829,8 @@ def cached(client, ttl,
         if client.async:
             cached_f = async_cached_f
             lazy_cached_f = async_lazy_cached_f
-        elif async_client:
-            aclient = [async_client]
+        elif nasync_client:
+            aclient = [nasync_client]
         else:
             aclient = []
 
@@ -826,9 +839,7 @@ def cached(client, ttl,
             if initialize is not None and not stop_initializing[0]:
                 stop_initializing[0] = initialize()
             if not fclient:
-                if client.async:
-                    _client = nclient
-                elif aclient:
+                if aclient:
                     _client = aclient[0]
                 else:
                     async_f() # initializes aclient

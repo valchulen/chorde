@@ -167,7 +167,11 @@ class TieredInclusiveClient(BaseCacheClient):
                         except:
                             # Ignore, go to the next
                             logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
-                    break
+                
+                # Even if we don't really promote, stop trying
+                # If the above client.contains returns True but getTtl doesn't find it,
+                # it's probably an enqueued deferred write, which means we shouldn't promote anyway
+                break
             # Ok, gotta inspect other tiers
     
     def contains(self, key, ttl = None, _max_tiers = None, **kw):

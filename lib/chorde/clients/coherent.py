@@ -228,3 +228,6 @@ class CoherentWrapperClient(BaseCacheClient):
     
     def contains(self, key, ttl = None, **kw):
         return self.client.contains(key, ttl, **kw)
+
+    def promote(self, key, *p, **kw):
+        return self.client.promote(key, *p, **kw)
