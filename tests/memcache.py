@@ -30,6 +30,14 @@ class MemcacheTest(CacheClientTestMixIn, SkipIfUnsupported, unittest.TestCase):
         # Manually clear memcached
         self.client.client.flush_all()
 
+    def testSucceedFast(self):
+        client = self.client
+        val = "a" * 2
+        client.put(4, val, 10)
+        self.assertEqual(client.get(4, None), val)
+        val = client.get(4, None)
+        self.assertIs(client.get(4, None), val)
+
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
 
