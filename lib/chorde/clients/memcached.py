@@ -395,7 +395,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         
         return data
     
-    def _getTtl(self, key, default, decode = True, ttl_skip = None, short_key = None):
+    def _getTtl(self, key, default, decode = True, ttl_skip = None, short_key = None, pages = None):
         now = time.time()
         
         # get the first page (gambling that most entries will span only a single page)
@@ -403,8 +403,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         # for a combined total of 2 roundtrips.
         if short_key is None:
             short_key,exact = self.shorten_key(key)
-        
-        pages = { 0 : self.client.get(short_key+"|0") }
+
+        if pages is None:
+            pages = { 0 : self.client.get(short_key+"|0") }
         if pages[0] is None or not isinstance(pages[0],tuple) or len(pages[0]) != 5:
             return default, -1
         
@@ -412,7 +413,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         npages = pages[0][0]
 
         if not decode:
-            return default, ttl - now
+            return pages, ttl - now
         elif ttl_skip is not None and ttl < ttl_skip:
             return default, -1
         # Check failfast cache, before making a huge effort decoding for not
@@ -486,10 +487,14 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         pass
     
     def contains(self, key, ttl = None):
-        # Exploit the fact that append returns True on success (the key exists)
-        # and False on failure (the key doesn't exist), with minimal bandwidth
         short_key,exact = self.shorten_key(key)
-        exists = self.client.append(short_key+"|0","")
+        if ttl is None:
+            # Exploit the fact that append returns True on success (the key exists)
+            # and False on failure (the key doesn't exist), with minimal bandwidth
+            exists = self.client.append(short_key+"|0","")
+        else:
+            # But not for ttl checks, those need to check the contents
+            exists = True
         if exists:
             if ttl is None:
                 try:
@@ -503,18 +508,19 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 # the TTL in the first page, and validate pessimistically.
                 # When checking with a TTL margin a key that's stale, this will
                 # minimize bandwidth, but when it's valid, it will result in
-                # 3x roundtrips: check with append, get ttl, get key
+                # 1 roundtrip still: no check with append, get ttl, 
+                # get key with cached result, although it will incur higher CPU costs
                 
                 # check TTL quickly, no decoding (or fetching) of pages needed
                 # to check stale TTL
-                _, store_ttl = self._getTtl(key, NONE, False, short_key = short_key)
+                raw_pages, store_ttl = self._getTtl(key, NONE, False, short_key = short_key)
                 if store_ttl <= ttl:
                     return False
                 elif exact:
                     return True
                 else:
                     # Must validate the key, so we must decode
-                    rv, store_ttl = self._getTtl(key, NONE, short_key = short_key)
+                    rv, store_ttl = self._getTtl(key, NONE, short_key = short_key, pages = raw_pages)
                     if rv is NONE:
                         # wrong key
                         return False
