@@ -214,6 +214,8 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             max_backing_value_length = 1000*1024,
             failfast_size = 100,
             failfast_time = 0.1,
+            succeedfast_size = 10,
+            succeedfast_time = 0.25,
             pickler = None,
             namespace = None,
             checksum_key = None, # CHANGE IT!
@@ -234,6 +236,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         self.pickler = pickler or cPickle
         self.namespace = namespace
         self.failfast_time = failfast_time
+        self.succeedfast_time = succeedfast_time
         
         if self.namespace:
             self.max_backing_key_length -= len(self.namespace)+1
@@ -253,6 +256,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             client_args['unpickler'] = lambda *p, **kw: sPickle.SecureUnpickler(checksum_key, *p, **kw)
 
         self._failfast_cache = Cache(failfast_size)
+        self._succeedfast_cache = Cache(succeedfast_size)
 
         super(MemcachedClient, self).__init__(client_addresses, client_args)
 
@@ -397,6 +401,19 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     
     def _getTtl(self, key, default, decode = True, ttl_skip = None, short_key = None, pages = None):
         now = time.time()
+
+        if decode:
+            # First, check the succeedfast, in case a recent _getTtl already fetched this
+            # This is a necessary optimization when used in tiered architectures, since
+            # promotion and other tiered operations tend to abuse of contains and getTtl,
+            # creating lots of redundant roundtrips and decoding overhead
+            cached = self._succeedfast_cache.get(key, NONE)
+            if cached is not NONE:
+                cached, cached_time = cached
+                if cached_time > (now - self.succeedfast_time):
+                    # Ok
+                    cached, ttl = cached
+                    return cached, ttl - now
         
         # get the first page (gambling that most entries will span only a single page)
         # then query for the remaining ones in a single roundtrip, if present,
@@ -428,6 +445,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             cached_key, cached_value = self.decode_pages(pages)
             
             if cached_key == key:
+                self._succeedfast_cache[key] = (cached_value, ttl), now
                 return cached_value, ttl - now
             else:
                 self._failfast_cache[key] = now
@@ -463,6 +481,11 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             del self._failfast_cache[key]
         except:
             pass
+        
+        try:
+            del self._succeedfast_cache[key]
+        except:
+            pass
     
     def delete(self, key):
         # delete the first page (gambling that most entries will span only a single page)
@@ -477,14 +500,21 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             del page # big structure, free ASAP
             
             self.client.delete_multi(xrange(1,npages), key_prefix=short_key+"|")
+        
+        try:
+            del self._succeedfast_cache[key]
+        except:
+            pass
     
     def clear(self):
         # We don't want to clear memcache, it might be shared
-        pass
+        self._failfast_cache.clear()
+        self._succeedfast_cache.clear()
 
     def purge(self):
         # Memcache does that itself
-        pass
+        self._failfast_cache.clear()
+        self._succeedfast_cache.clear()
     
     def contains(self, key, ttl = None):
         short_key,exact = self.shorten_key(key)

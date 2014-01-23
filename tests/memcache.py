@@ -58,6 +58,11 @@ class FastFailFastMemcacheTest(FastMemcacheTest):
         self.client2 = FastMemcachedClient([DEFAULT_CLIENT_ADDR], failfast_time = 1, failfast_size = 100)
         return FastMemcachedClient([DEFAULT_CLIENT_ADDR], failfast_time = 1, failfast_size = 100)
 
+    def tearDown(self):
+        # Manually clear memcached
+        FastMemcacheTest.tearDown(self)
+        self.client2.client.flush_all()
+
     def testFailFast(self):
         client = self.client
         client2 = self.client2
