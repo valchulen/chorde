@@ -389,12 +389,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             pages.clear()
         
         # join pages, decompress, unpickle
-        if len(data) > 1:
-            data = ''.join(data)
-        elif len(data) == 1:
-            data = data[0]
-        else:
-            data = ''
+        data = ''.join(data)
         data = zlib.decompress(data)
         data = self.pickler.loads(data)
         
