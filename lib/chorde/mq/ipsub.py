@@ -393,9 +393,18 @@ class IPSub(object):
         self.heartbeat_push_timeout = 4000
         self.fsm_thread_id = None
 
-        self.context = ctx
+        self.__context = ctx
+        self.__context_lock = threading.Lock()
 
         self.reset()
+
+    @property
+    def context(self):
+        if self.__context is None:
+            with self.__context_lock:
+                if self.__context is None:
+                    self.__context = zmq.Context()
+        return self.__context
 
     def reset(self):
         self.fsm = IPSub.FSM.Bootstrap(self)
@@ -404,8 +413,8 @@ class IPSub(object):
         # Must start in bootstrap
         assert not self.is_running
 
-        if self.context is None:
-            self.context = zmq.Context()
+        # Initialize context by touching
+        self.context
 
         self.stop = False
         try:
@@ -459,11 +468,7 @@ class IPSub(object):
     def _pushsocket(self):
         local = self.local
         if not hasattr(local, 'push_socket'):
-            if self.context:
-                ctx = self.context
-            else:
-                ctx = zmq.Context()
-                self.context = ctx
+            ctx = self.context
             push_socket = ctx.socket(zmq.PUSH)
             set_hwm(push_socket, INPROC_HWM)
             push_socket.connect("inproc://IPSub%08x_queue" % id(self))
@@ -737,7 +742,7 @@ class IPSub(object):
             self._pushsocket().send_multipart(parts, copy = copy)
 
     def wake(self):
-        if self.context:
+        if self.__context is not None:
             try:
                 self._pushsocket().send("")
             except zmq.ZMQError:
