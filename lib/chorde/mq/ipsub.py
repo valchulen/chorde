@@ -473,7 +473,6 @@ class IPSub(object):
             set_hwm(push_socket, INPROC_HWM)
             push_socket.connect("inproc://IPSub%08x_queue" % id(self))
             local.push_socket = push_socket
-            
         else:
             push_socket = local.push_socket
         return push_socket
@@ -744,7 +743,10 @@ class IPSub(object):
     def wake(self):
         if self.__context is not None:
             try:
-                self._pushsocket().send("")
+                # Don't block, mute means awaken and not catching up anyway
+                push = self._pushsocket()
+                if push.poll(1, zmq.POLLOUT):
+                    push.send("")
             except zmq.ZMQError:
                 # Shit happens, probably not connected
                 pass
