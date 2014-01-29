@@ -22,11 +22,11 @@ class IPSubTest(unittest.TestCase):
         del s1,s2
         logging.debug("ipsub1 ports: %d, %d", port1, port2)
         
-        self.ipsub = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)])
+        self.ipsub = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)], ctx=ctx)
         self.ipsub_thread = threading.Thread(target=self.ipsub.run)
         self.ipsub_thread.daemon = True
         
-        self.ipsub2 = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)])
+        self.ipsub2 = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)], ctx=ctx)
         self.ipsub2_thread = threading.Thread(target=self.ipsub2.run)
         self.ipsub2_thread.daemon = True
 
