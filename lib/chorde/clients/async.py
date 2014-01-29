@@ -936,53 +936,57 @@ class AsyncCacheProcessor(object):
             cfuture = coalesce.setdefault(coalesce_key, future)
 
         if cfuture is future:
-            # I'm the one queueing
-            wself = weakref.ref(self)
-            def wrapped_action():
-                def clean():
-                    if coalesce is not None and coalesce_key is not NONE:
-                        try:
-                            del coalesce[coalesce_key]
-                        except:
-                            pass
-
+            if self.maxqueue is not None and self.queuelen > (self.maxqueue*2):
+                # Stop filling it
+                cfuture.cancel()
+            else:
+                # I'm the one queueing
+                wself = weakref.ref(self)
+                def wrapped_action():
+                    def clean():
+                        if coalesce is not None and coalesce_key is not NONE:
+                            try:
+                                del coalesce[coalesce_key]
+                            except:
+                                pass
+    
+                        self = wself()
+                        if self is not None:
+                            try:
+                                if not hasattr(self.tl, 'dirty_rounds'):
+                                    self.tl.dirty_rounds = 0
+                                self.tl.dirty_rounds += 1
+                                if self.tl.dirty_rounds > self.cleanup_cycles or not self.queuelen:
+                                    self.tl.dirty_rounds = 0
+                                    for task in self.cleanup_tasks:
+                                        task()
+                                    for task in _global_cleanup_tasks:
+                                        task()
+                            except:
+                                self.logger.error("Error during background thread cleanup", exc_info = True)
+                    
+                    # discard queue head quickly when we're overloaded
+                    # head is always less relevant
                     self = wself()
-                    if self is not None:
+                    if self is not None and self.maxqueue is not None:
+                        if self.queuelen > self.maxqueue:
+                            cfuture.cancel()
+                    
+                    if cfuture.set_running_or_notify_cancelled():
                         try:
-                            if not hasattr(self.tl, 'dirty_rounds'):
-                                self.tl.dirty_rounds = 0
-                            self.tl.dirty_rounds += 1
-                            if self.tl.dirty_rounds > self.cleanup_cycles or not self.queuelen:
-                                self.tl.dirty_rounds = 0
-                                for task in self.cleanup_tasks:
-                                    task()
-                                for task in _global_cleanup_tasks:
-                                    task()
+                            rv = action()
+                            clean()
+                            cfuture.set(rv)
+                        except CacheMissError:
+                            clean()
+                            cfuture.miss()
                         except:
-                            self.logger.error("Error during background thread cleanup", exc_info = True)
-                
-                # discard queue head quickly when we're overloaded
-                # head is always less relevant
-                self = wself()
-                if self is not None and self.maxqueue is not None:
-                    if self.queuelen > self.maxqueue:
-                        cfuture.cancel()
-                
-                if cfuture.set_running_or_notify_cancelled():
-                    try:
-                        rv = action()
+                            clean()
+                            # Clear up traceback to avoid leaks
+                            cfuture.exc(sys.exc_info()[:-1] + (None,))
+                    else:
                         clean()
-                        cfuture.set(rv)
-                    except CacheMissError:
-                        clean()
-                        cfuture.miss()
-                    except:
-                        clean()
-                        # Clear up traceback to avoid leaks
-                        cfuture.exc(sys.exc_info()[:-1] + (None,))
-                else:
-                    clean()
-            self.threadpool.apply_async(wrapped_action, ())
+                self.threadpool.apply_async(wrapped_action, ())
         return cfuture
 
     @property
