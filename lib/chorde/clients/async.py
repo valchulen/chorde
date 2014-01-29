@@ -495,7 +495,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
             return self.client.promote(key, *p, **kw)
     
     def wait(self, key, timeout = None):
-        if self.writer.contains(key):
+        if self.is_started() and self.writer.contains(key):
             self.writer.waitkey(key, timeout)
     
     def contains(self, key, ttl = None, **kw):
