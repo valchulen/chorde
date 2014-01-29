@@ -738,7 +738,11 @@ class IPSub(object):
             except Queue.Full:
                 logging.error("While handling re-entrant IPSub publication: Queue full, update lost")
         else:
-            self._pushsocket().send_multipart(parts, copy = copy)
+            push = self._pushsocket()
+            if push.poll(self.heartbeat_push_timeout, zmq.POLLOUT):
+                push.send_multipart(parts, copy = copy)
+            else:
+                logging.error("While handling IPSub publication: Push socket timeout, update lost")
 
     def wake(self):
         if self.__context is not None:
