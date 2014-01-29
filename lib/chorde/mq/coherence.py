@@ -452,7 +452,7 @@ class CoherenceManager(object):
             self.p2p_pub_binds, 
             optimistic_lock))
         
-        ctx = zmq.Context.instance()
+        ctx = ipsub_.context
         waiter, waiter_id = _mkwaiter(ctx, zmq.PAIR, "qpw")
         try:
             def signaler(prefix, event, message, req = map(fbuffer,req)):
@@ -672,7 +672,7 @@ class CoherenceManager(object):
         doneprefix = self.doneprefix+keysuffix
         abortprefix = self.abortprefix+keysuffix
         
-        ctx = zmq.Context.instance()
+        ctx = ipsub_.context
         waiter, waiter_id = _mkwaiter(ctx, zmq.PAIR, "qpw")
         dsignaler = asignaler = ssignaler = None
         try:
