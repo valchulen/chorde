@@ -26,15 +26,15 @@ class CoherenceProtocolTest(unittest.TestCase):
         del s1,s2
         logging.debug("ipsub1 ports: %d, %d", port1, port2)
         
-        self.ipsub = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)])
+        self.ipsub = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)], ctx=ctx)
         self.ipsub_thread = threading.Thread(target=self.ipsub.run)
         self.ipsub_thread.daemon = True
         
-        self.ipsub2 = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)])
+        self.ipsub2 = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)], ctx=ctx)
         self.ipsub2_thread = threading.Thread(target=self.ipsub2.run)
         self.ipsub2_thread.daemon = True
         
-        self.ipsub3 = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)])
+        self.ipsub3 = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)], ctx=ctx)
 
         self.private = inproc.InprocCacheClient(100)
         self.private2 = inproc.InprocCacheClient(100)
@@ -163,7 +163,7 @@ class CoherenceProtocolTest(unittest.TestCase):
         self.assertEqual(pending, None) # No pending
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 in self.coherence2.pending) # Locally pending now
-        
+
         t1 = time.time()
         pending = self.coherence.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
