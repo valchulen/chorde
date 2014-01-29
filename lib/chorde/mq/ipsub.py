@@ -365,7 +365,7 @@ class IPSub(object):
                     owner._notify_all(EVENT_LEAVE_BROKER, None)
                     owner._unbind()
 
-    def __init__(self, broker_addresses, subscriptions = ()):
+    def __init__(self, broker_addresses, subscriptions = (), ctx=None):
         self.broker_addresses = broker_addresses
         self.updates = Queue.Queue(INPROC_HWM)
         self.current_update = None
@@ -393,7 +393,18 @@ class IPSub(object):
         self.heartbeat_push_timeout = 4000
         self.fsm_thread_id = None
 
+        self.__context = ctx
+        self.__context_lock = threading.Lock()
+
         self.reset()
+
+    @property
+    def context(self):
+        if self.__context is None:
+            with self.__context_lock:
+                if self.__context is None:
+                    self.__context = zmq.Context()
+        return self.__context
 
     def reset(self):
         self.fsm = IPSub.FSM.Bootstrap(self)
@@ -401,7 +412,10 @@ class IPSub(object):
     def run(self):
         # Must start in bootstrap
         assert not self.is_running
-        
+
+        # Initialize context by touching
+        self.context
+
         self.stop = False
         try:
             self.fsm_thread_id = thread.get_ident()
@@ -416,8 +430,8 @@ class IPSub(object):
         self.stop = True
 
     def _bind(self):
-        ctx = zmq.Context.instance()
-
+        ctx = self.context
+        
         pub = ctx.socket(zmq.PUB)
         rep = ctx.socket(zmq.REP)
         set_hwm(pub, BROKER_PUB_HWM)
@@ -442,7 +456,7 @@ class IPSub(object):
     def _pullsocket(self):
         local = self.local
         if not hasattr(local, 'pull_socket'):
-            ctx = zmq.Context.instance()
+            ctx = self.context
             pull_socket = ctx.socket(zmq.PULL)
             set_hwm(pull_socket, INPROC_HWM)
             pull_socket.bind("inproc://IPSub%08x_queue" % id(self))
@@ -454,11 +468,12 @@ class IPSub(object):
     def _pushsocket(self):
         local = self.local
         if not hasattr(local, 'push_socket'):
-            ctx = zmq.Context.instance()
+            ctx = self.context
             push_socket = ctx.socket(zmq.PUSH)
             set_hwm(push_socket, INPROC_HWM)
             push_socket.connect("inproc://IPSub%08x_queue" % id(self))
             local.push_socket = push_socket
+            
         else:
             push_socket = local.push_socket
         return push_socket
@@ -476,7 +491,7 @@ class IPSub(object):
         self.broker_rep = None
 
     def _connect(self):
-        ctx = zmq.Context.instance()
+        ctx = self.context
 
         sub = ctx.socket(zmq.SUB)
         req = ctx.socket(zmq.REQ)
@@ -727,11 +742,12 @@ class IPSub(object):
             self._pushsocket().send_multipart(parts, copy = copy)
 
     def wake(self):
-        try:
-            self._pushsocket().send("")
-        except zmq.ZMQError:
-            # Shit happens, probably not connected
-            pass
+        if self.__context is not None:
+            try:
+                self._pushsocket().send("")
+            except zmq.ZMQError:
+                # Shit happens, probably not connected
+                pass
 
     def listen(self, prefix, event, callback):
         """

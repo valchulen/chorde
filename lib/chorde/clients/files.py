@@ -234,7 +234,7 @@ class FilesCacheClient(base.BaseCacheClient):
                 function is based on pickling, otherwise malicious injection into the cache
                 file heirarchy could result in arbitrary code execution.
 
-	   value_opener: opener *function* used to return non-file object. It should take a fileobject parameter
+            value_opener: opener *function* used to return non-file object. It should take a fileobject parameter
 
             checksum_key: When using the default picklers, this *private* key is necessary
                 in order to authenticate values and make sure they have been written by this process

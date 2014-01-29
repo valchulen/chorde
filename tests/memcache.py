@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 import unittest
 import time
-
+import os
 from .clientbase import CacheClientTestMixIn, NamespaceWrapperTestMixIn, CacheMissError
 
-DEFAULT_CLIENT_ADDR = "localhost:11211"
+DEFAULT_CLIENT_ADDR = os.getenv("MEMCACHE_ADDR", "localhost:11211")
 
 class SkipIfUnsupported:
     @classmethod
