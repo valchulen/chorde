@@ -866,7 +866,7 @@ def cached(client, ttl,
                     async_cached_f.client = aclient[0]
                 return async_cached_f
             async_cached_f.clear = nclient.clear
-            async_cached_f.client = None
+            async_cached_f.client = aclient[0] if aclient else None
             async_cached_f.async = weakref.ref(async_cached_f)
             async_cached_f.lazy = async_lazy_cached_f
             async_cached_f.refresh = async_refresh_f
