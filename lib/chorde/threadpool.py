@@ -82,7 +82,7 @@ class ThreadPool:
     optimized for that usage pattern.
     """
     
-    Thread = WorkerThread
+    Process = WorkerThread
 
     def __init__(self, workers = None, min_batch = 10, max_batch = 1000, max_slice = None):
         if workers is None:
@@ -319,7 +319,7 @@ class ThreadPool:
     def populate_workers(self):
         with self.__spawnlock:
             if not self.is_started():
-                self.__workers = [ self.Thread(functools.partial(self.worker, weakref.ref(self)))
+                self.__workers = [ self.Process(functools.partial(self.worker, weakref.ref(self)))
                                    for i in xrange(self.workers) ]
                 for w in self.__workers:
                     w.daemon = True
@@ -328,7 +328,7 @@ class ThreadPool:
                 self.__pid = os.getpid()
             # Else, just keep number of workers in sync
             elif len(self.__workers) < self.workers:
-                nworkers = [ self.Thread(functools.partial(self.worker, weakref.ref(self)))
+                nworkers = [ self.Process(functools.partial(self.worker, weakref.ref(self)))
                                    for i in xrange(self.workers - len(self.__workers)) ]
                 for w in nworkers:
                     w.daemon = True
