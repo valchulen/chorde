@@ -112,6 +112,14 @@ class ThreadPool:
     def queuelen(self, queue = None):
         return len(self.queues.get(queue,()))
 
+    # alias for multiprocessing.pool compatibility
+    qsize = queuelen
+
+    # alias for multiprocessing.pool compatibility
+    @property
+    def _taskqueue(self):
+        return self
+
     def queueprio(self, queue = None):
         return self.queue_weights.get(queue,1)
 
