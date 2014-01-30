@@ -271,12 +271,7 @@ class ThreadPool:
             task()
 
     def is_started(self):
-        if self.__workers is None or self.__pid != os.getpid():
-            return False
-        try:
-            return all(itertools.imap(operator.methodcaller('is_alive'), self.__workers))
-        except:
-            return False
+        return not(self.__workers is None or self.__pid != os.getpid())
 
     def stop(self, wait = False):
         if self.__workers:
