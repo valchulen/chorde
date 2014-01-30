@@ -71,8 +71,6 @@ class WaitIter:
         raise StopIteration
 
 class ThreadPool:
-    Thread = WorkerThread
-    
     """
     Re-implementation of multiprocessing.pool.ThreadPool optimized for threads
     and asynchronous result-less tasks.
@@ -83,7 +81,10 @@ class ThreadPool:
     will cancel all pending tasks, and no task returns any result, and has been 
     optimized for that usage pattern.
     """
-    def __init__(self, workers = None):
+    
+    Thread = WorkerThread
+
+    def __init__(self, workers = None, min_batch = 10, max_batch = 1000, max_slice = None):
         if workers is None:
             workers = multiprocessing.cpu_count()
         
@@ -98,10 +99,15 @@ class ThreadPool:
 
         self.queues = collections.defaultdict(list)
         self.queue_weights = {}
+        self.__queue_slices = {}
         self.__workset = set()
         self.__busyqueues = set()
         self.__exhausted_iter = WaitIter(self.__not_empty, self.queues)
         self.__dequeue = self.__exhausted = self.__exhausted_iter.next
+
+        self.min_batch = min_batch
+        self.max_batch = max_batch
+        self.max_slice = max_slice
 
     def queuelen(self, queue = None):
         return len(self.queues.get(queue,()))
@@ -112,17 +118,57 @@ class ThreadPool:
     def set_queueprio(self, prio, queue = None):
         self.queue_weights[queue] = prio
 
-    def __swap_queues(self):
+    def __swap_queues(self, max=max, min=min, len=len):
         qpop = self.queues.pop
+        qget = self.queues.get
+        queue_slices = self.__queue_slices
+        pget = queue_slices.get
+        ppop = queue_slices.pop
         qprio = self.queue_weights.get
+        qnames = self.queues.keys()
         wqueues = []
         wprios = []
-        qnames = []
-        for qname in self.queues.keys():
-            q = qpop(qname)
-            qnames.append(qname)
-            wqueues.append(q)
-            wprios.append(qprio(qname,1))
+        can_straggle = False
+
+        if qnames:
+            # Compute batch size
+            # Must be fair, so we must calibrate the batch ends
+            # with all queues more or less at the same time
+            # Allow some unfairness (but only some)
+            # Slices are zero-copy (we don't want to copy a lot of stuff)
+            # until maxbatch (we don't want race coditions that result in infinite growth)
+            # maxbatch, if None, means "half the queue" (which auto-amortizes the cost of slicing)
+            min_batch = self.min_batch
+            max_batch = self.max_batch
+            max_slice = self.max_slice
+            qslots = min(max_batch, max(min_batch,min([len(qget(q)) / qprio(q,1) for q in qnames])))
+            for qname in qnames:
+                q = qget(qname)
+                qpos = pget(qname,0)
+                prio = qprio(qname,1)
+                margin = max(prio,min_batch)
+                batch = qslots * prio
+                if batch >= (len(q) - margin - qpos):
+                    #print "move %s" % (qname,)
+                    q = qpop(qname)
+                    if qpos:
+                        del q[:qpos] # atomic re. pushes
+                        ppop(qname,None) # reset
+                    wqueues.append(q)
+                    can_straggle = True
+                else:
+                    if qpos > (max_slice or (len(q)/2)):
+                        # copy-slicing
+                        #print "copy-slice %s[%d:%d] of %d" % (qname,qpos,qpos+batch,len(q))
+                        wqueues.append(q[qpos:qpos+batch])
+                        del q[:qpos+batch]
+                        ppop(qname,None)
+                    else:
+                        # zero-copy slicing
+                        #print "iter-slice %s[%d:%d] of %d" % (qname,qpos,qpos+batch,len(q))
+                        wqueues.append(itertools.islice(q, qpos, qpos+batch)) # queue heads are immutable
+                        queue_slices[qname] = qpos+batch
+                wprios.append(prio)
 
         if wqueues:
             self.__busyqueues.clear()
@@ -139,8 +185,9 @@ class ThreadPool:
             retry = True
 
             while retry:
-                # Wait for stragglers
-                time.sleep(0.0001)
+                if can_straggle:
+                    # Wait for stragglers
+                    time.sleep(0.0001)
                 
                 wqueues = queues
                 ioffs = 0
@@ -152,7 +199,7 @@ class ThreadPool:
                                 iappend(q())
                     except StopIteration:
                         del wqueues[ioffs]
-                retry = len(iqueue) != ilen
+                retry = can_straggle and len(iqueue) != ilen
             self.__dequeue = iter(iqueue).next
         elif self.__dequeue is not self.__exhausted:
             self.__not_empty.clear()
@@ -223,7 +270,7 @@ class ThreadPool:
         except:
             return False
 
-    def stop(self):
+    def stop(self, wait = False):
         if self.__workers:
             with self.__spawnlock:
                 for w in self.__workers or ():
