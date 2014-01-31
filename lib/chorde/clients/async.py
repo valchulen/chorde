@@ -13,7 +13,8 @@ import sys
 # multiprocessing would force pickling of values, which would be
 # undesirable, pushing pickling cost into foreground threads.
 import multiprocessing.dummy
-from multiprocessing.pool import ThreadPool
+import multiprocessing.pool
+from chorde.threadpool import ThreadPool
 
 from .base import BaseCacheClient, CacheMissError, NONE
 from .inproc import Cache
@@ -73,22 +74,30 @@ class Defer(object):
 
 _global_cleanup_tasks = []
 
-class AsyncCacheWriterPool(ThreadPool):
+class AsyncCacheWriterThreadPool(ThreadPool):
     class AsyncCacheWriterThread(ThreadPool.Process):
         pass
     Process = AsyncCacheWriterThread
     
+    def __init__(self, workers):
+        if ThreadPool is multiprocessing.pool.ThreadPool:
+            # This patches ThreadPool, which is broken when instanced 
+            # from inside a DummyThread (happens after forking)
+            current = multiprocessing.dummy.current_process()
+            if not hasattr(current, '_children'):
+                current._children = weakref.WeakKeyDictionary()
+        
+        ThreadPool.__init__(self, workers)
+
+class AsyncCacheWriterPool:
     def __init__(self, size, workers, client, overflow = False, cleanup_cycles = 500):
-        # This patches ThreadPool, which is broken when instanced 
-        # from inside a DummyThread (happens after forking)
-        current = multiprocessing.dummy.current_process()
-        if not hasattr(current, '_children'):
-            current._children = weakref.WeakKeyDictionary()
         
         self.client = client
         self.logger = logging.getLogger("chorde")
         self.size = size
         self.workers = workers
+        self._spawnlock = threading.Lock()
+        self._threadpool = None
         
         # queueset holds the values to be written, associated
         # by key, providing some write-back coalescense in
@@ -103,7 +112,13 @@ class AsyncCacheWriterPool(ThreadPool):
         self.cleanup_tasks = []
         self.cleanup_cycles = cleanup_cycles
 
-        ThreadPool.__init__(self, workers)
+    @property
+    def threadpool(self):
+        if self._threadpool is None:
+            with self._spawnlock:
+                if self._threadpool is None:
+                    self._threadpool = AsyncCacheWriterThreadPool(self.workers)
+        return self._threadpool
 
     @staticmethod
     def _writer(self, key):
@@ -272,7 +287,7 @@ class AsyncCacheWriterPool(ThreadPool):
         if key not in queueset:
             if not isinstance(value, Defer) or key not in workset:
                 queueset[key] = value, ttl
-                self.apply_async(self._writer, (weakref.ref(self), key))
+                self.threadpool.apply_async(self._writer, (weakref.ref(self), key))
             else:
                 # else, bad luck, we assume defers compute, so if two
                 # defers go in concurrently, only the first will be invoked,
@@ -877,6 +892,15 @@ class AsyncCacheProcessorThreadPool(ThreadPool):
     class AsyncCacheProcessorThread(ThreadPool.Process):
         pass
     Process = AsyncCacheProcessorThread
+    
+    def __init__(self, workers):
+        if ThreadPool is multiprocessing.pool.ThreadPool:
+            # This patches ThreadPool, which is broken when instanced 
+            # from inside a DummyThread (happens after forking)
+            current = multiprocessing.dummy.current_process()
+            if not hasattr(current, '_children'):
+                current._children = weakref.WeakKeyDictionary()
+        ThreadPool.__init__(self, workers)
 
 class AsyncCacheProcessor(object):
     """
@@ -900,12 +924,6 @@ class AsyncCacheProcessor(object):
     """
     
     def __init__(self, workers, client, coalescence_buffer_size = 500, maxqueue = None, cleanup_cycles = 500):
-        # This patches ThreadPool, which is broken when instanced 
-        # from inside a DummyThread (happens after forking)
-        current = multiprocessing.dummy.current_process()
-        if not hasattr(current, '_children'):
-            current._children = weakref.WeakKeyDictionary()
-        
         self.client = client
         self.logger = logging.getLogger("chorde")
         self.workers = workers
