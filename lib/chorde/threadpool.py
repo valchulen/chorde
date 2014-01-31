@@ -100,6 +100,7 @@ class ThreadPool:
         self.queues = collections.defaultdict(list)
         self.queue_weights = {}
         self.__queue_slices = {}
+        self.__worklen = 0
         self.__workset = set()
         self.__busyqueues = set()
         self.__exhausted_iter = WaitIter(self.__not_empty, self.queues)
@@ -110,7 +111,7 @@ class ThreadPool:
         self.max_slice = max_slice
 
     def queuelen(self, queue = None):
-        return len(self.queues.get(queue,()))
+        return len(self.queues.get(queue,())) + self.__worklen
 
     # alias for multiprocessing.pool compatibility
     qsize = queuelen
@@ -208,9 +209,11 @@ class ThreadPool:
                     except StopIteration:
                         del wqueues[ioffs]
                 retry = can_straggle and len(iqueue) != ilen
+            self.__worklen = len(iqueue)
             self.__dequeue = iter(iqueue).next
         elif self.__dequeue is not self.__exhausted:
             self.__not_empty.clear()
+            self.__worklen = 0
             self.__dequeue = self.__exhausted
 
             # Try again
@@ -221,6 +224,7 @@ class ThreadPool:
         else:
             # Still empty, give up
             self.__not_empty.clear()
+            self.__worklen = 0
             self.__dequeue = self.__exhausted
 
     def _dequeue(self):
@@ -236,7 +240,9 @@ class ThreadPool:
             else:
                 workset.add(tid)
             try:
-                return self.__dequeue()
+                rv = self.__dequeue()
+                self.__worklen -= 1 # not atomic, but we don't care
+                return rv
             except StopIteration:
                 # Exhausted whole workqueue?
                 with self.__swap_lock:
@@ -247,7 +253,9 @@ class ThreadPool:
                         else:
                             # Try it
                             workset.add(tid)
-                            return self.__dequeue()
+                            rv = self.__dequeue()
+                            self.__worklen -= 1 # not atomic, but we don't care
+                            return rv
                     except StopIteration:
                         # Yep, exhausted queue, build up new workqueue
                         self.__swap_queues()
