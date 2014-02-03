@@ -5,7 +5,6 @@ import itertools
 import logging
 import multiprocessing
 import os
-import operator
 import sys
 import thread
 import threading
@@ -137,6 +136,7 @@ class ThreadPool:
         qnames = self.queues.keys()
         wqueues = []
         wprios = []
+        wposes = []
         can_straggle = False
 
         if qnames:
@@ -164,6 +164,7 @@ class ThreadPool:
                         del q[:qpos] # atomic re. pushes
                         ppop(qname,None) # reset
                     wqueues.append(q)
+                    wposes.append(0)
                     can_straggle = True
                 else:
                     if qpos > (max_slice or (len(q)/2)):
@@ -177,6 +178,7 @@ class ThreadPool:
                         #print "iter-slice %s[%d:%d] of %d" % (qname,qpos,qpos+batch,len(q))
                         wqueues.append(itertools.islice(q, qpos, qpos+batch)) # queue heads are immutable
                         queue_slices[qname] = qpos+batch
+                    wposes.append(None)
                 wprios.append(prio)
 
         if wqueues:
@@ -185,8 +187,6 @@ class ThreadPool:
             
             # Flatten with weights
             # Do it repeatedly to catch stragglers (those that straggle past the flattening step)
-            queues = [ functools.partial(itertools.repeat, iter(q).next, qprio) 
-                       for q,qprio in itertools.izip(wqueues, wprios) ]
             iqueue = []
             iappend = iqueue.append
             islice = itertools.islice
@@ -198,16 +198,30 @@ class ThreadPool:
                     # Wait for stragglers
                     time.sleep(0.0001)
                 
-                wqueues = queues
+                queues = []
+                qposes = []
+                for q,qprio,wpos in itertools.izip(wqueues, wprios, wposes):
+                    if wpos is not None:
+                        # must slice to make sure we take a stable snapshot of the list
+                        # we'll process stragglers on the next iteration
+                        qlen = len(q)
+                        qiter = iter(itertools.islice(q,wpos,wpos+qlen))
+                        qposes.append(wpos+qlen)
+                    else:
+                        qiter = iter(q)
+                        qposes.append(None)
+                    queues.append(functools.partial(itertools.repeat, qiter.next, qprio))
+                wposes = qposes
+                
                 ioffs = 0
                 ilen = len(iqueue)
-                while wqueues:
+                while queues:
                     try:
-                        for ioffs,q in islice(cycle(enumerate(wqueues)), ioffs, None):
+                        for ioffs,q in islice(cycle(enumerate(queues)), ioffs, None):
                             for q in q():
                                 iappend(q())
                     except StopIteration:
-                        del wqueues[ioffs]
+                        del queues[ioffs]
                 retry = can_straggle and len(iqueue) != ilen
             self.__worklen = len(iqueue)
             self.__dequeue = iter(iqueue).next
