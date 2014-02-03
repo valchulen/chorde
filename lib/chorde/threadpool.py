@@ -191,6 +191,9 @@ class ThreadPool:
             iappend = iqueue.append
             islice = itertools.islice
             cycle = itertools.cycle
+            izip = itertools.izip
+            repeat = itertools.repeat
+            partial = functools.partial
             retry = True
 
             while retry:
@@ -200,17 +203,17 @@ class ThreadPool:
                 
                 queues = []
                 qposes = []
-                for q,qprio,wpos in itertools.izip(wqueues, wprios, wposes):
+                for q,qprio,wpos in izip(wqueues, wprios, wposes):
                     if wpos is not None:
                         # must slice to make sure we take a stable snapshot of the list
                         # we'll process stragglers on the next iteration
                         qlen = len(q)
-                        qiter = iter(itertools.islice(q,wpos,wpos+qlen))
+                        qiter = iter(islice(q,wpos,wpos+qlen))
                         qposes.append(wpos+qlen)
                     else:
                         qiter = iter(q)
                         qposes.append(None)
-                    queues.append(functools.partial(itertools.repeat, qiter.next, qprio))
+                    queues.append(partial(repeat, qiter.next, qprio))
                 wposes = qposes
                 
                 ioffs = 0
