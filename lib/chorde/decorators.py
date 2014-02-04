@@ -100,6 +100,8 @@ class CacheStats(object):
             hbin = min(hbins-1, min(hmax, time) * hbins / hmax)
             self.miss_time_histogram[hbin] += 1
 
+decorated_functions = weakref.WeakSet()
+
 def cached(client, ttl,
         key = lambda *p, **kw:(p,frozenset(kw.items()) or ()),
         namespace = None,
@@ -909,7 +911,8 @@ def cached(client, ttl,
         future_cached_f.ttl = ttl
         future_cached_f.async_ttl = async_ttl
         future_cached_f.stats = stats
-        
+
+        decorated_functions.add(cached_f)
         return cached_f
     return decor
 
