@@ -526,6 +526,7 @@ def cached(client, ttl,
                 raise
         if decorate is not None:
             lazy_cached_f = decorate(lazy_cached_f)
+        peek_cached_f = lazy_cached_f
         
         @wraps(f)
         def future_lazy_cached_f(*p, **kw):
@@ -872,7 +873,7 @@ def cached(client, ttl,
             async_cached_f.async = weakref.ref(async_cached_f)
             async_cached_f.lazy = async_lazy_cached_f
             async_cached_f.refresh = async_refresh_f
-            async_cached_f.peek = lazy_cached_f
+            async_cached_f.peek = peek_cached_f
             async_cached_f.invalidate = invalidate_f
             async_cached_f.put = async_put_f
             async_cached_f.ttl = ttl
@@ -881,7 +882,7 @@ def cached(client, ttl,
             cached_f.async = async_f
             cached_f.lazy = lazy_cached_f
             cached_f.refresh = refresh_f
-            cached_f.peek = lazy_cached_f
+            cached_f.peek = peek_cached_f
             cached_f.invalidate = invalidate_f
             cached_f.put = put_f
         else:
@@ -889,7 +890,7 @@ def cached(client, ttl,
             cached_f.async = weakref.ref(cached_f)
             cached_f.lazy = async_lazy_cached_f
             cached_f.refresh = async_refresh_f
-            cached_f.peek = lazy_cached_f
+            cached_f.peek = peek_cached_f
             cached_f.invalidate = invalidate_f
             cached_f.put = async_put_f
 
