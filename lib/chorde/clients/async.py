@@ -65,6 +65,9 @@ class Defer(object):
                 raise
             return rv
         else:
+            future = getattr(self, 'future', None)
+            if future is not None and not future.done():
+                future.exception(CancelledError())
             return _NONE
 
     def done(self, getattr=getattr):
@@ -141,7 +144,7 @@ class AsyncCacheWriterPool:
             if value is _NONE or value is NONE:
                 # Something's hinky
                 return
-            elif isinstance(value, Defer):
+            elif hasattr(value, 'undefer'):
                 deferred = value
                 try:
                     value = value.undefer()
@@ -280,12 +283,12 @@ class AsyncCacheWriterPool:
         self.queueset.clear()
     
     @serialize
-    def _enqueue(self, key, value, ttl, isinstance=isinstance, getattr=getattr):
+    def _enqueue(self, key, value, ttl, isinstance=isinstance, getattr=getattr, hasattr=hasattr):
         delayed = None
         queueset = self.queueset
         workset = self.workset
         if key not in queueset:
-            if not isinstance(value, Defer) or key not in workset:
+            if not hasattr(value, 'undefer') or key not in workset:
                 queueset[key] = value, ttl
                 self.threadpool.apply_async(self._writer, (weakref.ref(self), key))
             else:
@@ -296,31 +299,35 @@ class AsyncCacheWriterPool:
                 
                 # ...if the defer has a future attached
                 future = getattr(value, 'future', None)
-                if future is not None:
+                if future is not None and hasattr(future, 'add_done_callback'):
                     # we do have to hook into the future though... 
                     working = workset.get(key)
                     if working is not None:
                         working = working[1]
                         if working is not _NONE:
                             working = working[0]
-                        if isinstance(working, Defer):
+                        if hasattr(working, 'undefer'):
                             working_future = getattr(working, 'future', None)
-                            if working_future is not None:
+                            if working_future is not None and hasattr(working_future, 'chain'):
                                 delayed = functools.partial(working_future.chain, future)
+                            elif getattr(working, 'rv', _NONE) is not _NONE:
+                                # Delay the callback, we're in a critical section here
+                                delayed = functools.partial(future.set, working.rv)
                             else:
                                 working.future = future
                         else:
                             # Delay the callback, we're in a critical section here
                             delayed = functools.partial(future.set, working)
         else:
-            if isinstance(value, Defer):
+            if hasattr(value, 'undefer'):
+                # Queued one wins, we just have to chain the futures if any
                 future = getattr(value, 'future', None)
-                if future is not None:
+                if future is not None and hasattr(future, 'add_done_callback'):
                     queue_value = queueset.get(key)
                     if queue_value is not None:
                         # Ok, they'll wanna get the value when it's done
                         queue_value = queue_value[0]
-                        if isinstance(queue_value, Defer):
+                        if hasattr(queue_value, 'undefer'):
                             queue_future = getattr(queue_value, 'future', None)
                             if queue_future is not None:
                                 delayed = functools.partial(queue_future.chain, future)
@@ -329,7 +336,18 @@ class AsyncCacheWriterPool:
                         else:
                             # Why not
                             delayed = functools.partial(future.set, queue_value)
-            queueset[key] = value, ttl
+            else:
+                # New one wins, we just have to chain any queued future
+                queue_value = queueset.get(key)
+                if queue_value is not None:
+                    # Ok, they'll wanna get the value when it's done
+                    queue_value = queue_value[0]
+                    if hasattr(queue_value, 'undefer'):
+                        queue_future = getattr(queue_value, 'future', None)
+                        if queue_future is not None:
+                            # Delay the callback, we're in a critical section here
+                            delayed = functools.partial(queue_future.set, value)
+                queueset[key] = value, ttl
         return delayed
     
     def waitkey(self, key, timeout=None):
@@ -407,10 +425,10 @@ class AsyncCacheWriterPool:
         _global_cleanup_tasks.append(task)
 
 class AsyncWriteCacheClient(BaseCacheClient):
-    def __init__(self, client, writer_queue_size, writer_workers, overflow = False):
+    def __init__(self, client, writer_queue_size, writer_workers = None, overflow = False):
         self.client = client
         self.writer_queue_size = writer_queue_size
-        self.writer_workers = writer_workers
+        self.writer_workers = writer_workers if writer_workers is not None else multiprocessing.cpu_count()
         self.writer = None
         self.overflow = overflow
         self.spawning_lock = threading.Lock()
@@ -488,7 +506,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
                 elif value is _EXPIRE:
                     # Expiration just sets the TTL
                     ettl = -1
-                elif not isinstance(value, Defer):
+                elif not hasattr(value, 'undefer'):
                     return value, ttl
             # Yep, _NONE when querying the writer, because we don't want
             # to return a default if the writer doesn't have it, we must
@@ -787,12 +805,7 @@ class Future(object):
             self._cancelled = True
             self._running = False
 
-            # Notify waiters
-            event = getattr(self, '_done_event', None)
-            if event is not None:
-                event.set()
-            
-            # Notify callbacks
+            # Notify waiters and callbacks
             self.set_exception(CancelledError()) 
             
             return False
