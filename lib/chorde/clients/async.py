@@ -93,14 +93,14 @@ class AsyncCacheWriterThreadPool(ThreadPool):
         ThreadPool.__init__(self, workers)
 
 class AsyncCacheWriterPool:
-    def __init__(self, size, workers, client, overflow = False, cleanup_cycles = 500):
+    def __init__(self, size, workers, client, overflow = False, cleanup_cycles = 500, threadpool = None):
         
         self.client = client
         self.logger = logging.getLogger("chorde")
         self.size = size
         self.workers = workers
         self._spawnlock = threading.Lock()
-        self._threadpool = None
+        self._threadpool = threadpool
         
         # queueset holds the values to be written, associated
         # by key, providing some write-back coalescense in
@@ -443,13 +443,14 @@ class AsyncCacheWriterPool:
         _global_cleanup_tasks.append(task)
 
 class AsyncWriteCacheClient(BaseCacheClient):
-    def __init__(self, client, writer_queue_size, writer_workers = None, overflow = False):
+    def __init__(self, client, writer_queue_size, writer_workers = None, overflow = False, threadpool = None):
         self.client = client
         self.writer_queue_size = writer_queue_size
         self.writer_workers = writer_workers if writer_workers is not None else multiprocessing.cpu_count()
         self.writer = None
         self.overflow = overflow
         self.spawning_lock = threading.Lock()
+        self.threadpool = threadpool
         
     def assert_started(self):
         if self.writer is None:
@@ -459,7 +460,8 @@ class AsyncWriteCacheClient(BaseCacheClient):
                         self.writer_queue_size, 
                         self.writer_workers,
                         self.client,
-                        self.overflow)
+                        self.overflow,
+                        threadpool = self.threadpool)
     
     def is_started(self):
         return self.writer is not None
