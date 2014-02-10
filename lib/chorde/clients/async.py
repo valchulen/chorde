@@ -138,7 +138,13 @@ class AsyncCacheWriterPool:
 
         ev = self.done_event
         deferred = _NONE
-        value, ttl = self.dequeue(key)
+        value = self.dequeue(key)
+        if value is _NONE or value is NONE:
+            # Cancelled
+            return
+        else:
+            # Unpack
+            value, ttl = value
 
         try:
             if value is _NONE or value is NONE:
@@ -280,7 +286,14 @@ class AsyncCacheWriterPool:
 
     @serialize
     def clearqueue(self):
+        delayed = []
+        for value, ttl in self.queueset.itervalues():
+            if hasattr(value, 'undefer') and hasattr(value, 'future'):
+                future = getattr(value, 'future', None)
+                if future is not None and hasattr(future, 'add_done_callback'):
+                    delayed.append(future.cancel)
         self.queueset.clear()
+        return delayed
     
     @serialize
     def _enqueue(self, key, value, ttl, isinstance=isinstance, getattr=getattr, hasattr=hasattr):
@@ -400,8 +413,13 @@ class AsyncCacheWriterPool:
         self.enqueue(key, _EXPIRE)
 
     def clear(self):
-        self.clearqueue()
+        delayed = self.clearqueue()
         self.enqueue(_CLEAR, _CLEAR)
+        for delayed in delayed:
+            try:
+                delayed()
+            except:
+                pass
 
     def purge(self):
         self.enqueue(_PURGE, _PURGE)
@@ -485,7 +503,10 @@ class AsyncWriteCacheClient(BaseCacheClient):
         if self.is_started():
             self.writer.clear()
 
-    def purge(self):
+    def purge(self, timeout = None):
+        """
+        Timeout is ignored
+        """
         if self.is_started():
             self.writer.purge()
     
@@ -511,6 +532,14 @@ class AsyncWriteCacheClient(BaseCacheClient):
             # Yep, _NONE when querying the writer, because we don't want
             # to return a default if the writer doesn't have it, we must
             # still check the client.
+
+            # Check pending clear - after checking the queue for sorted semantics
+            if writer.contains(_CLEAR):
+                # Well, 
+                if default is NONE:
+                    raise CacheMissError, key
+                else:
+                    return default, -1
         
         # Ok, read the cache then
         value, ttl = self.client.getTtl(key, default, **kw)
