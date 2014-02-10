@@ -450,7 +450,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
         self.writer = None
         self.overflow = overflow
         self.spawning_lock = threading.Lock()
-        self.threadpool = threadpool
+        self._threadpool = threadpool
         
     def assert_started(self):
         if self.writer is None:
@@ -461,7 +461,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
                         self.writer_workers,
                         self.client,
                         self.overflow,
-                        threadpool = self.threadpool)
+                        threadpool = self._threadpool)
     
     def is_started(self):
         return self.writer is not None
