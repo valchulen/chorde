@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 import time
+import random
 import unittest
 import threading
 
-from .clientbase import CacheClientTestMixIn
+from .clientbase import CacheClientTestMixIn, CacheMissError
 
 class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
     # Hard to guarantee LRU logic with an async writing queue
@@ -86,3 +87,48 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
     # Testing limits cannot be done deterministically because of the
     # concurrent worker, so don't bother
     testLimit = unittest.skip("non-deterministic")(CacheClientTestMixIn.testLimit)
+
+class AsyncProcessorTest(unittest.TestCase):
+    def setUp(self):
+        from chorde.clients.async import AsyncCacheProcessor
+        from chorde.clients.inproc import InprocCacheClient
+        self.client = AsyncCacheProcessor(1, InprocCacheClient(100))
+
+    def testBasic(self):
+        self.client.put(1, 2, 120).result(1)
+        self.assertTrue(self.client.contains(1).result(1))
+        self.assertFalse(self.client.contains(2).result(1))
+        self.assertEquals(self.client.get(1).result(1), 2)
+        self.assertRaises(CacheMissError, self.client.get(2).result, 1)
+    
+    def testParallel(self):
+        # don't wait for it, we have 1 thread, it should respect FIFO
+        self.client.put(1, 2, 120) 
+        contains1 = self.client.contains(1)
+        contains2 = self.client.contains(2)
+        get1 = self.client.get(1)
+        get2 = self.client.get(2)
+        
+        self.assertTrue(contains1.result(1))
+        self.assertFalse(contains2.result(1))
+        self.assertEquals(get1.result(1), 2)
+        self.assertRaises(CacheMissError, get2.result, 1)
+    
+    def testCoalescence(self):
+        # Poor man's mock
+        oldget = self.client.client.get
+        numget = [0]
+        def newget(*p, **kw):
+            numget[0] += 1
+            return oldget(*p, **kw)
+        self.client.client.get = newget
+
+        def sleepit():
+            time.sleep(0.1)
+        
+        self.client.do_async(sleepit) # just slow down the pool
+        self.client.get(2)
+        self.client.get(2)
+        self.client.get(2)
+        self.assertRaises(CacheMissError, self.client.get(2).result, 1)
+        self.assertEqual(numget[0], 1)
