@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import time
-import random
 import unittest
 import threading
+import functools
 
 from .clientbase import CacheClientTestMixIn, CacheMissError
 
@@ -88,6 +88,15 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
     # concurrent worker, so don't bother
     testLimit = unittest.skip("non-deterministic")(CacheClientTestMixIn.testLimit)
 
+class AsyncCustomPoolTest(AsyncTest):
+    def setUpClient(self):
+        from chorde.clients.inproc import InprocCacheClient
+        from chorde.clients.async import AsyncWriteCacheClient
+        from chorde.threadpool import ThreadPool
+        return AsyncWriteCacheClient(InprocCacheClient(100), 100, 1,
+            threadpool = functools.partial(ThreadPool(1).subqueue, "meh"))
+
+
 class AsyncProcessorTest(unittest.TestCase):
     def setUp(self):
         from chorde.clients.async import AsyncCacheProcessor
@@ -132,3 +141,11 @@ class AsyncProcessorTest(unittest.TestCase):
         self.client.get(2)
         self.assertRaises(CacheMissError, self.client.get(2).result, 1)
         self.assertEqual(numget[0], 1)
+
+class AsyncProcessorCustomPoolTest(AsyncProcessorTest):
+    def setUp(self):
+        from chorde.clients.async import AsyncCacheProcessor
+        from chorde.clients.inproc import InprocCacheClient
+        from chorde.threadpool import ThreadPool
+        self.client = AsyncCacheProcessor(1, InprocCacheClient(100),
+            threadpool = functools.partial(ThreadPool(1).subqueue, "meh"))
