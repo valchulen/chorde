@@ -100,7 +100,12 @@ class AsyncCacheWriterPool:
         self.size = size
         self.workers = workers
         self._spawnlock = threading.Lock()
-        self._threadpool = threadpool
+        if callable(threadpool):
+            self._threadpool_factory = threadpool
+            self._threadpool = None
+        else:
+            self._threadpool_factory = None
+            self._threadpool = threadpool
         
         # queueset holds the values to be written, associated
         # by key, providing some write-back coalescense in
@@ -120,7 +125,10 @@ class AsyncCacheWriterPool:
         if self._threadpool is None:
             with self._spawnlock:
                 if self._threadpool is None:
-                    self._threadpool = AsyncCacheWriterThreadPool(self.workers)
+                    if self._threadpool_factory is not None:
+                        self._threadpool = self._threadpool_factory(self.workers)
+                    else:
+                        self._threadpool = AsyncCacheWriterThreadPool(self.workers)
         return self._threadpool
 
     @staticmethod
@@ -637,8 +645,10 @@ class Future(object):
             return
         
         with self._lock:
+            old = getattr(self, '_value', None) # avoid deadlocks due to finalizers
             cbs = tuple(self._cb)
             self._value = value
+        del old
         
         for cb in cbs:
             try:
@@ -967,12 +977,19 @@ class AsyncCacheProcessor(object):
     you need to do it for synchronization)
     """
     
-    def __init__(self, workers, client, coalescence_buffer_size = 500, maxqueue = None, cleanup_cycles = 500):
+    def __init__(self, workers, client, 
+            coalescence_buffer_size = 500, maxqueue = None, cleanup_cycles = 500,
+            threadpool = None):
         self.client = client
         self.logger = logging.getLogger("chorde")
         self.workers = workers
         self.maxqueue = maxqueue
-        self._threadpool = None
+        if callable(threadpool):
+            self._threadpool_factory = threadpool
+            self._threadpool = None
+        else:
+            self._threadpool_factory = None
+            self._threadpool = threadpool
         self._spawnlock = threading.Lock()
 
         self.coalesce_get = Cache(coalescence_buffer_size)
@@ -988,7 +1005,10 @@ class AsyncCacheProcessor(object):
         if self._threadpool is None:
             with self._spawnlock:
                 if self._threadpool is None:
-                    self._threadpool = AsyncCacheProcessorThreadPool(self.workers)
+                    if self._threadpool_factory is not None:
+                        self._threadpool = self._threadpool_factory(self.workers)
+                    else:
+                        self._threadpool = AsyncCacheProcessorThreadPool(self.workers)
         return self._threadpool
 
     def _enqueue(self, action, coalesce = None, coalesce_key = NONE):

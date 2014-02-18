@@ -110,6 +110,7 @@ def cached(client, ttl,
         value_deserialization_function = None,
         async_writer_queue_size = None, 
         async_writer_workers = None,
+        async_writer_threadpool = None,
         async_ttl = None,
         async_client = None,
         async_expire = None,
@@ -118,6 +119,7 @@ def cached(client, ttl,
         async_lazy_recheck_kwargs = {},
         async_processor = None,
         async_processor_workers = None,
+        async_processor_threadpool = None,
         future_sync_check = None,
         initialize = None,
         decorate = None,
@@ -235,6 +237,12 @@ def cached(client, ttl,
         async_writer_workers: (optional) Number of async workers for the async() client. 
             Default is multiprocessing.cpu_count
 
+        async_writer_threadpool: (optional) Threadpool to be used for the async writer, instead of
+            workers, this can specify a specific thread pool to use (perhaps shared among other writers).
+            It can also be a callable, in which case it must be a factory function that takes the number
+            of workers as argument and returns a threadpool to be used. It's recommendable to always use
+            factories instead of instances, to avoid premature thread initialization.
+
         async_client: (optional) Alternatively to async_writer_queue_size and async_writer_workers, a specific
             async client may be specified. It is expected this client will be an async wrapper of the 'client'
             mandatorily specified, that can be shared among decorated functions (to avoid multiplying writer
@@ -249,6 +257,12 @@ def cached(client, ttl,
             future() calls, other async operations are configured with async_writer args). Only matters if the
             clients perform expensive serialization (there's no computation involved otherwise). Default is
             multiprocessing.cpu_count
+
+        async_processor_threadpool: (optional) Threadpool to be used for the async processor, instead of
+            workers, this can specify a specific thread pool to use (perhaps shared among other processors).
+            It can also be a callable, in which case it must be a factory function that takes the number
+            of workers as argument and returns a threadpool to be used. It's recommendable to always use
+            factories instead of instances, to avoid premature thread initialization.
 
         async_processor: (optional) Shared processor to utilize in future() calls.
 
@@ -851,7 +865,8 @@ def cached(client, ttl,
                 if async_processor:
                     _client = async_processor.bound(_client)
                 else:
-                    _client = async.AsyncCacheProcessor(async_processor_workers, _client)
+                    _client = async.AsyncCacheProcessor(async_processor_workers, _client,
+                        threadpool = async_processor_threadpool)
                 # atomic
                 fclient[:] = [_client]
                 future_cached_f.client = fclient[0]
@@ -865,7 +880,8 @@ def cached(client, ttl,
                     # atomic
                     aclient[:] = [async.AsyncWriteCacheClient(nclient, 
                         async_writer_queue_size, 
-                        async_writer_workers)]
+                        async_writer_workers,
+                        threadpool = async_writer_threadpool)]
                     async_cached_f.client = aclient[0]
                 return async_cached_f
             async_cached_f.clear = nclient.clear
@@ -930,6 +946,7 @@ if not no_coherence:
             value_deserialization_function = None,
             async_writer_queue_size = None, 
             async_writer_workers = None,
+            async_writer_threadpool = None,
             async_ttl = None,
             async_expire = None,
             lazy_kwargs = {},
@@ -937,6 +954,7 @@ if not no_coherence:
             async_lazy_recheck_kwargs = {},
             async_processor = None,
             async_processor_workers = None,
+            async_processor_threadpool = None,
             future_sync_check = None,
             initialize = None,
             decorate = None,
@@ -1052,6 +1070,7 @@ if not no_coherence:
                 value_deserialization_function = value_deserialization_function,
                 async_writer_queue_size = async_writer_queue_size, 
                 async_writer_workers = async_writer_workers,
+                async_writer_threadpool = async_writer_threadpool,
                 async_ttl = async_ttl,
                 async_expire = async_expire,
                 initialize = initialize,
@@ -1061,6 +1080,7 @@ if not no_coherence:
                 async_lazy_recheck_kwargs = async_lazy_recheck_kwargs,
                 async_processor = async_processor,
                 async_processor_workers = async_processor_workers,
+                async_processor_threadpool = async_processor_threadpool,
                 future_sync_check = future_sync_check,
                 _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl, None),
                 _fput_deferred = partial(_coherent_put_deferred, nshared, async_ttl) )(f)
