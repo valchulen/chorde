@@ -173,12 +173,13 @@ class ThreadPool:
                         wqueues.append(q[qpos:qpos+batch])
                         del q[:qpos+batch]
                         ppop(qname,None)
+                        wposes.append(0)
                     else:
                         # zero-copy slicing
                         #print "iter-slice %s[%d:%d] of %d" % (qname,qpos,qpos+batch,len(q))
                         wqueues.append(itertools.islice(q, qpos, qpos+batch)) # queue heads are immutable
                         queue_slices[qname] = qpos+batch
-                    wposes.append(None)
+                        wposes.append(None)
                 wprios.append(prio)
 
         if wqueues:
@@ -297,6 +298,9 @@ class ThreadPool:
 
     def is_started(self):
         return not(self.__workers is None or self.__pid != os.getpid())
+
+    def check_started(self):
+        return self.is_started() and all([t.is_alive() for t in self.__workers])
 
     def stop(self, wait = False):
         if self.__workers:
