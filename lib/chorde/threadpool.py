@@ -391,4 +391,75 @@ class ThreadPool:
                 return rv
         else:
             raise TimeoutError
-        
+
+    def subqueue(self, queue, *p, **kw):
+        return SubqueueWrapperThreadPool(self, queue, *p, **kw)
+
+class SubqueueWrapperThreadPool(ThreadPool):
+    """
+    Re-implementation of multiprocessing.pool.ThreadPool optimized for threads
+    and asynchronous result-less tasks.
+    Implements quasi-lockless double-buffering so queue insertions are very fast, and
+    multiple queues for managing fairness.
+
+    This implementation is forcibly a daemon thread pool, which when destroyed
+    will cancel all pending tasks, and no task returns any result, and has been 
+    optimized for that usage pattern.
+    """
+    
+    def __init__(self, pool, queue, priority = None):
+        self.queue = queue
+        self.pool = pool
+        if priority is not None:
+            self.set_queueprio(priority)
+
+    def queuelen(self):
+        return self.pool.queuelen(self.queue)
+
+    # alias for multiprocessing.pool compatibility
+    qsize = queuelen
+
+    # alias for multiprocessing.pool compatibility
+    @property
+    def _taskqueue(self):
+        return self
+
+    def queueprio(self):
+        return self.pool.queueprio(self.queue)
+
+    def set_queueprio(self, prio):
+        return self.pool.set_queueprio(prio, self.queue)
+
+    def is_started(self):
+        return self.pool.is_started()
+
+    def stop(self, wait = False):
+        # Must stop the main pool, not the wrapper
+        # Don't complain though
+        pass
+
+    def close(self):
+        pass
+
+    def terminate(self):
+        pass
+
+    def start(self):
+        return self.pool.start()
+
+    def assert_started(self):
+        return self.pool.assert_started()
+
+    def join(self, timeout = None):
+        # To-do: join only the subqueue
+        return self.pool.join(timeout)
+
+    def populate_workers(self):
+        return self.pool.populate_workers()
+
+    def apply_async(self, task, args = (), kwargs = {}):
+        return self.pool.apply_async(task, args, kwargs, queue = self.queue)
+
+    def apply(self, task, args = (), kwargs = {}, timeout = None):
+        return self.pool.apply(task, args, kwargs, self.queue, timeout)
+

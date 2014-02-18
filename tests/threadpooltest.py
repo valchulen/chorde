@@ -131,3 +131,24 @@ class MultiQueueTest(unittest.TestCase):
         terminate.append(None)
         self.assertLess(countsnap["simple"]*2, countsnap["mean"])
 
+    def testWrapper(self):
+        terminate = []
+        counts = collections.defaultdict(int)
+        simple = self.pool.subqueue("simple", 1)
+        mean = self.pool.subqueue("mean", 3)
+        def accounting(i):
+            counts[i] += 1
+        def killit(q):
+            while not terminate:
+                q.apply_async(accounting, (q.queue,))
+        threads = [ 
+            Thread(target=killit, args=(mean,)),
+            Thread(target=killit, args=(simple,)),
+        ]
+        for t in threads:
+            t.start()
+        time.sleep(1) # let it fill up
+        countsnap = counts.copy()
+        terminate.append(None)
+        self.assertLess(countsnap["simple"]*2, countsnap["mean"])
+
