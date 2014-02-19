@@ -420,7 +420,7 @@ class ThreadPool:
     def subqueue(self, queue, *p, **kw):
         return SubqueueWrapperThreadPool(self, queue, *p, **kw)
 
-class SubqueueWrapperThreadPool(ThreadPool):
+class SubqueueWrapperThreadPool:
     """
     Re-implementation of multiprocessing.pool.ThreadPool optimized for threads
     and asynchronous result-less tasks.
