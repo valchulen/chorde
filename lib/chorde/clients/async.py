@@ -4,6 +4,7 @@ import logging
 import time
 import weakref
 import functools
+import itertools
 import thread
 import threading
 import operator
@@ -999,6 +1000,8 @@ class AsyncCacheProcessor(object):
         self.tl = threading.local()
         self.cleanup_tasks = []
         self.cleanup_cycles = cleanup_cycles
+        
+        self._tit_tat = itertools.cycle(iter((True,False))).next
 
     @property
     def threadpool(self):
@@ -1052,7 +1055,11 @@ class AsyncCacheProcessor(object):
                     self = wself()
                     if self is not None and self.maxqueue is not None:
                         if self.queuelen > self.maxqueue:
-                            cfuture.cancel()
+                            # Only discard half the entries, otherwise we can
+                            # enter a race condition in which really fast input
+                            # to the processor keeps the queue full and discarding all
+                            if self._tit_tat():
+                                cfuture.cancel()
                     
                     if cfuture.set_running_or_notify_cancelled():
                         try:
