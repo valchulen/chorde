@@ -95,7 +95,8 @@ class ThreadPool:
         self.__not_empty = threading.Event()
         self.__empty = threading.Event()
         self.__empty.set()
-
+        
+        self.local = threading.local()
         self.queues = collections.defaultdict(list)
         self.queue_weights = {}
         self.__queue_slices = {}
@@ -314,8 +315,19 @@ class ThreadPool:
         self = self()
 
         task = self._dequeue()
+        local = self.local
         if task is not None:
-            task()
+            try:
+                local.working = True
+                task()
+            finally:
+                try:
+                    del local.working
+                except:
+                    pass
+
+    def in_worker(self):
+        return getattr(self.local, 'working', False)
 
     def is_started(self):
         return not(self.__workers is None or self.__pid != os.getpid())
@@ -448,6 +460,13 @@ class SubqueueWrapperThreadPool:
     @property
     def _taskqueue(self):
         return self
+
+    @property
+    def local(self):
+        return self.pool.local
+
+    def in_worker(self):
+        return self.pool.in_worker()
 
     def queueprio(self):
         return self.pool.queueprio(self.queue)
