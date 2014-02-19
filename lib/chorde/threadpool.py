@@ -25,7 +25,6 @@ class WorkerThread(threading.Thread):
         self.__terminate = False
 
     def run(self):
-        global _callCleanupHooks
         while not self.__terminate:
             try:
                 try:
@@ -95,6 +94,7 @@ class ThreadPool:
         self.__not_empty = threading.Event()
         self.__empty = threading.Event()
         self.__empty.set()
+        self.__cleanup_callbacks = []
         
         self.local = threading.local()
         self.queues = collections.defaultdict(list)
@@ -127,6 +127,16 @@ class ThreadPool:
 
     def set_queueprio(self, prio, queue = None):
         self.queue_weights[queue] = prio
+
+    def register_cleanup_callback(self, callback):
+        self.__cleanup_callbacks.append(callback)
+
+    def _call_cleanup_callbacks(self):
+        for callback in self.__cleanup_callbacks:
+            try:
+                callback()
+            except:
+                logging.error("Error in task cleanup callback", exc_info = True)
 
     def __swap_queues(self, max=max, min=min, len=len):
         qpop = self.queues.pop
