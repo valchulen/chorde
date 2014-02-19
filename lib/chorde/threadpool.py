@@ -102,6 +102,7 @@ class ThreadPool:
         self.__worklen = 0
         self.__workset = set()
         self.__busyqueues = set()
+        self.__busyfactors = {}
         self.__exhausted_iter = WaitIter(self.__not_empty, self.queues)
         self.__dequeue = self.__exhausted = self.__exhausted_iter.next
 
@@ -110,7 +111,7 @@ class ThreadPool:
         self.max_slice = max_slice
 
     def queuelen(self, queue = None):
-        return len(self.queues.get(queue,())) + self.__worklen
+        return len(self.queues.get(queue,())) + int(self.__worklen * self.__busyfactors.get(queue,0))
 
     # alias for multiprocessing.pool compatibility
     qsize = queuelen
@@ -137,6 +138,8 @@ class ThreadPool:
         wqueues = []
         wprios = []
         wposes = []
+        iquantities = {}
+        itotal = 0
         can_straggle = False
 
         if qnames:
@@ -165,18 +168,29 @@ class ThreadPool:
                         ppop(qname,None) # reset
                     wqueues.append(q)
                     wposes.append(0)
+                    qlen = len(q)
+                    iquantities[qname] = qlen
+                    itotal += qlen
                     can_straggle = True
                 else:
                     if qpos > (max_slice or (len(q)/2)):
                         # copy-slicing
                         #print "copy-slice %s[%d:%d] of %d" % (qname,qpos,qpos+batch,len(q))
-                        wqueues.append(q[qpos:qpos+batch])
+                        qslice = q[qpos:qpos+batch]
+                        qlen = len(qslice)
+                        iquantities[qname] = qlen
+                        itotal += qlen
+                        wqueues.append(qslice)
                         del q[:qpos+batch]
+                        del qslice
                         ppop(qname,None)
                         wposes.append(0)
                     else:
                         # zero-copy slicing
                         #print "iter-slice %s[%d:%d] of %d" % (qname,qpos,qpos+batch,len(q))
+                        qlen = min(batch, max(1, len(q) - qpos))
+                        iquantities[qname] = qlen
+                        itotal += qlen
                         wqueues.append(itertools.islice(q, qpos, qpos+batch)) # queue heads are immutable
                         queue_slices[qname] = qpos+batch
                         wposes.append(None)
@@ -229,9 +243,15 @@ class ThreadPool:
                 retry = can_straggle and len(iqueue) != ilen
             self.__worklen = len(iqueue)
             self.__dequeue = iter(iqueue).next
+            if itotal:
+                ftotal = float(itotal)
+                self.__busyfactors = dict([(qname, quant/ftotal) for qname,quant in iquantities.iteritems()])
+            else:
+                self.__busyfactors = {}
         elif self.__dequeue is not self.__exhausted:
             self.__not_empty.clear()
             self.__worklen = 0
+            self.__busyfactors = {}
             self.__dequeue = self.__exhausted
 
             # Try again
@@ -243,6 +263,7 @@ class ThreadPool:
             # Still empty, give up
             self.__not_empty.clear()
             self.__worklen = 0
+            self.__busyfactors = {}
             self.__dequeue = self.__exhausted
 
     def _dequeue(self):
@@ -436,6 +457,9 @@ class SubqueueWrapperThreadPool(ThreadPool):
 
     def is_started(self):
         return self.pool.is_started()
+
+    def check_started(self):
+        return self.pool.check_started()
 
     def stop(self, wait = False):
         # Must stop the main pool, not the wrapper
