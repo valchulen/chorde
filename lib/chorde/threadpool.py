@@ -112,7 +112,11 @@ class ThreadPool:
         self.max_slice = max_slice
 
     def queuelen(self, queue = None):
-        return len(self.queues.get(queue,())) + int(self.__worklen * self.__busyfactors.get(queue,0))
+        return (
+            len(self.queues.get(queue,()))
+            - self.__queue_slices.get(queue,0) 
+            + int(self.__worklen * self.__busyfactors.get(queue,0))
+        )
 
     # alias for multiprocessing.pool compatibility
     qsize = queuelen
