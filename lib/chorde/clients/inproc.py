@@ -190,15 +190,25 @@ class InprocCacheClient(base.BaseCacheClient):
         retentions = []
         cache = self.store
         curtime = time.time() - timeout
-        for k, (v, timestamp) in cache.iteritems():
-            if timestamp < curtime:
-                deletions.append(k)
+        try:
+            for k, (v, timestamp) in cache.iteritems():
+                if timestamp < curtime:
+                    deletions.append(k)
+        except RuntimeError:
+            # Dictionary changed, try with a snapshot
+            del deletions[:]
+            for k in cache.keys():
+                v = cache.get(v)
+                if v is not None:
+                    v, timestamp = v
+                    if timestamp < curtime:
+                        deletions.append(k)
         for k in deletions:
             # keep them alive so that no finalizations occur within the mutex's scope 
             # (when wrapped inside a ReadWriteSyncAdapter), otherwise weird deadlocks
             # could arise.
             retentions.append(cache[k])
-            del cache[k]
+            cache.pop(k, None)
         self.store.defrag()
 
         # Returning them makes them live at least until the sync-wrapped method ends
