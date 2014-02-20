@@ -626,7 +626,7 @@ class Future(object):
         self._value = value
 
         if self._cb:
-            for cb in tuple(self._cb):
+            for cb in list(self._cb):
                 try:
                     cb(value)
                 except:
@@ -648,7 +648,7 @@ class Future(object):
         
         with self._lock:
             old = getattr(self, '_value', None) # avoid deadlocks due to finalizers
-            cbs = tuple(self._cb)
+            cbs = list(self._cb)
             self._value = value
         del old
         
