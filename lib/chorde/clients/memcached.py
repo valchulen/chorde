@@ -269,7 +269,13 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         stats = getattr(self, '_stats', None)
         if stats is None or stats[1] < time.time():
             stats = collections.defaultdict(int)
-            for srv,s in self.client.get_stats():
+            try:
+                client_stats = self.client.get_stats()
+            except:
+                logging.warn("MemcachedClient: Error getting stats, resetting client and retrying")
+                del self.client
+                client_stats = self.client.get_stats()
+            for srv,s in client_stats:
                 for k,v in s.iteritems():
                     try:
                         v = int(v)
