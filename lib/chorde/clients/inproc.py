@@ -191,24 +191,30 @@ class InprocCacheClient(base.BaseCacheClient):
         cache = self.store
         curtime = time.time() - timeout
         try:
+            deletions_append = deletions.append
             for k, (v, timestamp) in cache.iteritems():
                 if timestamp < curtime:
-                    deletions.append(k)
+                    deletions_append(k)
         except RuntimeError:
-            # Dictionary changed, try with a snapshot
+            # Store changed, try with a snapshot
+            # Only needed if the store isn't the LRU implementation
+            # which should only happen in really crippled systems
             del deletions[:]
+            cache_get = cache.get
+            deletions_append = deletions.append
             for k in cache.keys():
-                v = cache.get(v)
+                v = cache_get(v)
                 if v is not None:
                     v, timestamp = v
                     if timestamp < curtime:
-                        deletions.append(k)
+                        deletions_append(k)
+        retentions_append = retentions.append
+        cache_pop = cache.pop
         for k in deletions:
             # keep them alive so that no finalizations occur within the mutex's scope 
             # (when wrapped inside a ReadWriteSyncAdapter), otherwise weird deadlocks
             # could arise.
-            retentions.append(cache[k])
-            cache.pop(k, None)
+            retentions_append(cache_pop(k, None))
         self.store.defrag()
 
         # Returning them makes them live at least until the sync-wrapped method ends
