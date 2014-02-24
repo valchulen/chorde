@@ -4,6 +4,7 @@ import weakref
 import md5
 import time
 import logging
+import random
 
 from .clients import base, async, tiered
 
@@ -124,6 +125,7 @@ def cached(client, ttl,
         initialize = None,
         decorate = None,
         timings = True,
+        ttl_spread = True,
         _put_deferred = None,
         _fput_deferred = None,
         _lazy_recheck_put_deferred = None,
@@ -293,6 +295,11 @@ def cached(client, ttl,
 
         timings: (optional) Whether to gather timing statistics. If true, misses will be timed, and timing data
             will be included in the stats attribute. It does imply some overhead. Default is True.
+
+        ttl_spread: (optional - default True). If None, the TTL will be used as-is for cache insertions.
+            If True, an automatic TTL spread will be computed so insertions and recomputatins are better distributed
+            in time. If a number (float or int), an equal-type random amount between [-ttl_spread, ttl_spread]
+            will be added.
     """
     if value_serialization_function or value_deserialization_function:
         client = base.DecoratedWrapper(client,
@@ -313,6 +320,14 @@ def cached(client, ttl,
         async_ttl = ttl / 2
     elif async_ttl < 0:
         async_ttl = ttl + async_ttl
+
+    if ttl_spread is True:
+        ttl_spread = min(ttl, async_ttl, abs(ttl-async_ttl)) / 2
+    if ttl_spread:
+        spread_type = type(ttl_spread)
+        eff_ttl = lambda r = random.random : ttl + spread_type(ttl_spread * (r() - 0.5))
+    else:
+        eff_ttl = lambda : ttl
 
     if _put_deferred is None:
         _fput_deferred = _simple_put_deferred
@@ -400,7 +415,7 @@ def cached(client, ttl,
                 stats.hits += 1
             except CacheMissError:
                 rv = f(*p, **kw)
-                nclient.put(callkey, rv, ttl)
+                nclient.put(callkey, rv, eff_ttl())
             return rv
         if decorate is not None:
             cached_f = decorate(cached_f)
@@ -423,7 +438,7 @@ def cached(client, ttl,
 
             if (rv is __NONE or rvttl < async_ttl) and not client.contains(callkey, async_ttl):
                 # Launch background update
-                _put_deferred(client, af, callkey, ttl, *p, **kw)
+                _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
             elif rv is not __NONE:
                 if rvttl < async_ttl:
                     client.promote(callkey, ttl_skip = async_ttl)
@@ -484,9 +499,9 @@ def cached(client, ttl,
                         # If it's stale, though, start an async refresh
                         if value[1] < async_ttl and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
-                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                            _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_miss():
-                        _fput_deferred(frv, client, af, callkey, ttl, *p, **kw)
+                        _fput_deferred(frv, client, af, callkey, eff_ttl(), *p, **kw)
                     def on_exc(exc_info):
                         stats.errors += 1
                         return frv.exc(exc_info)
@@ -502,12 +517,12 @@ def cached(client, ttl,
                         frv._set_nothreads(rv)
                     def on_value(contains):  # lint:ok
                         if not contains:
-                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                            _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                         else:
                             # just promote
                             nclient.promote(callkey, ttl_skip = async_ttl)
                     def on_miss():  # lint:ok
-                        _put_deferred(client, af, callkey, ttl, *p, **kw)
+                        _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
                     clientf.contains(callkey, async_ttl, **async_lazy_recheck_kwargs)\
@@ -576,11 +591,11 @@ def cached(client, ttl,
                         # If it's stale, though, start an async refresh
                         if value[1] < async_ttl and not client.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
-                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                            _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_miss():
                         # Ok, real miss, report it and start the computation
                         frv.miss()
-                        _put_deferred(client, af, callkey, ttl, *p, **kw)
+                        _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_exc(exc_info):
                         stats.errors += 1
                         frv.exc(exc_info)
@@ -596,12 +611,12 @@ def cached(client, ttl,
                         frv._set_nothreads(rv)
                     def on_value(contains):  # lint:ok
                         if not contains:
-                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                            _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                         else:
                             # just promote
                             nclient.promote(callkey, ttl_skip = async_ttl)
                     def on_miss():  # lint:ok
-                        _put_deferred(client, af, callkey, ttl, *p, **kw)
+                        _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
                     clientf.contains(callkey, async_ttl, **async_lazy_recheck_kwargs)\
@@ -705,7 +720,7 @@ def cached(client, ttl,
                 logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
-            nclient.put(callkey, value, ttl)
+            nclient.put(callkey, value, eff_ttl())
         if decorate is not None:
             put_f = decorate(put_f)
         
@@ -720,7 +735,7 @@ def cached(client, ttl,
                 logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
-            aclient[0].put(callkey, value, ttl)
+            aclient[0].put(callkey, value, eff_ttl())
         if decorate is not None:
             async_put_f = decorate(async_put_f)
         
@@ -735,7 +750,7 @@ def cached(client, ttl,
                 logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
-            return fclient[0].put(callkey, value, ttl)
+            return fclient[0].put(callkey, value, eff_ttl())
         if decorate is not None:
             future_put_f = decorate(future_put_f)
         
@@ -766,7 +781,7 @@ def cached(client, ttl,
                         rv, rvttl = nclient.getTtl(callkey, __NONE, ttl_skip = async_ttl, **async_lazy_recheck_kwargs)
                         if (rv is __NONE or rvttl < async_ttl) and not nclient.contains(callkey, async_ttl, 
                                 **async_lazy_recheck_kwargs):
-                            _put_deferred(client, af, callkey, ttl, *p, **kw)
+                            _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                         return base.NONE
 
                     # This will make contains return True for this key, until touch_key returns
@@ -774,7 +789,7 @@ def cached(client, ttl,
                     # avoiding trying to queue up touch after touch
                     _lazy_recheck_put_deferred(client, touch_key, callkey, ttl, *p, **kw)
                 else:
-                    _put_deferred(client, af, callkey, ttl, *p, **kw)
+                    _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
             elif rv is not __NONE:
                 if rvttl < async_ttl and async_expire:
                     async_expire(callkey)
@@ -802,7 +817,7 @@ def cached(client, ttl,
                 return
 
             rv = f(*p, **kw)
-            nclient.put(callkey, rv, ttl)
+            nclient.put(callkey, rv, eff_ttl())
             return rv
         if decorate is not None:
             refresh_f = decorate(refresh_f)
@@ -821,7 +836,7 @@ def cached(client, ttl,
 
             client = aclient[0]
             if not client.contains(callkey, 0):
-                _put_deferred(client, af, callkey, ttl, *p, **kw)
+                _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
         if decorate is not None:
             async_refresh_f = decorate(async_refresh_f)
 
@@ -838,7 +853,7 @@ def cached(client, ttl,
                 return
 
             frv = async.Future()
-            _fput_deferred(frv, aclient[0], af, callkey, ttl, *p, **kw)
+            _fput_deferred(frv, aclient[0], af, callkey, eff_ttl(), *p, **kw)
             return frv
         if decorate is not None:
             future_refresh_f = decorate(future_refresh_f)
@@ -959,6 +974,7 @@ if not no_coherence:
             initialize = None,
             decorate = None,
             tiered_opts = None,
+            ttl_spread = True,
             **coherence_kwargs ):
         """
         This decorator provides cacheability to suitable functions, in a way that maintains coherency across
@@ -1082,6 +1098,7 @@ if not no_coherence:
                 async_processor_workers = async_processor_workers,
                 async_processor_threadpool = async_processor_threadpool,
                 future_sync_check = future_sync_check,
+                ttl_spread = ttl_spread,
                 _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl, None),
                 _fput_deferred = partial(_coherent_put_deferred, nshared, async_ttl) )(f)
             rv.coherence = coherence_manager
