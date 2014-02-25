@@ -4,12 +4,20 @@ import time
 import unittest
 import logging
 
-import zmq
+skipIfUnsupported = lambda c : c
 
-import chorde.mq.ipsub as ipsub
-import chorde.mq.coherence as coherence
-import chorde.clients.inproc as inproc
+try:
+    import zmq
+    try:
+        import chorde.mq.ipsub as ipsub
+        import chorde.mq.coherence as coherence
+        import chorde.clients.inproc as inproc
+    except ImportError:
+        skipIfUnsupported = unittest.skip("No messaging support built in")
+except ImportError:
+    skipIfUnsupported = unittest.skip("No ZMQ available")
 
+@skipIfUnsupported
 class CoherenceProtocolTest(unittest.TestCase):
     coherence_kwargs = {}
     
@@ -271,5 +279,6 @@ class CoherenceProtocolTest(unittest.TestCase):
         pending = self.coherence3.fire_deletion(1)
         
 
+@skipIfUnsupported
 class CoherenceQuickProtocolTest(CoherenceProtocolTest):
     coherence_kwargs = {'quick_refresh':True}
