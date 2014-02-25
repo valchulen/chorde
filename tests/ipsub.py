@@ -4,10 +4,18 @@ import time
 import unittest
 import logging
 
-import zmq
+skipIfUnsupported = lambda c : c
 
-import chorde.mq.ipsub as ipsub
+try:
+    import zmq
+    try:
+        import chorde.mq.ipsub as ipsub
+    except ImportError:
+        skipIfUnsupported = unittest.skip("No messaging support built in")
+except ImportError:
+    skipIfUnsupported = unittest.skip("No ZMQ available")
 
+@skipIfUnsupported
 class IPSubTest(unittest.TestCase):
     def setUp(self):
         ipsub.IPSub.register_default_pyobj()
