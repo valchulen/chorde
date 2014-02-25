@@ -6,20 +6,38 @@ from .clientbase import CacheClientTestMixIn, NamespaceWrapperTestMixIn, CacheMi
 
 DEFAULT_CLIENT_ADDR = os.getenv("MEMCACHE_ADDR", "localhost:11211")
 
-class SkipIfUnsupported:
-    @classmethod
-    def setupClass(cls):
-        try:
-            import chorde.clients.memcached  # lint:ok
-            raise unittest.SkipTest("memcached not built in")
-        except ImportError:
-            # Test memcached reachability
-            import memcached
-            memcached.Client([DEFAULT_CLIENT_ADDR])
-            if not memcached.get_stats():
-                raise unittest.SkipTest("no memcached reachable at %r" % (DEFAULT_CLIENT_ADDR,) )
+def memcachedBuiltIn():
+    try:
+        import chorde.clients.memcached  # lint:ok
+    except ImportError:
+        return False
 
-class MemcacheTest(CacheClientTestMixIn, SkipIfUnsupported, unittest.TestCase):
+    try:
+        # Test memcached reachability
+        import memcache # lint:ok
+    except ImportError:
+        return False
+    
+    return True
+
+def memcachedReachable():
+    try:
+        import memcache
+    except ImportError:
+        return False
+    
+    c = memcache.Client([DEFAULT_CLIENT_ADDR])
+    return bool(c.get_stats())
+
+if not memcachedBuiltIn():
+    skipIfNoMemcached = unittest.skip("Memcached support not built in")
+elif not memcachedReachable():
+    skipIfNoMemcached = unittest.skip("no memcached reachable at %r" % (DEFAULT_CLIENT_ADDR,))
+else:
+    skipIfNoMemcached = lambda c : c
+
+@skipIfNoMemcached
+class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
     is_lru = False
     capacity_means_entries = False
     
@@ -41,12 +59,14 @@ class MemcacheTest(CacheClientTestMixIn, SkipIfUnsupported, unittest.TestCase):
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
 
+@skipIfNoMemcached
 class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
     def tearDown(self):
         # Manually clear memcached
         self.rclient.client.flush_all()
 
-class FastMemcacheTest(CacheClientTestMixIn, SkipIfUnsupported, unittest.TestCase):
+@skipIfNoMemcached
+class FastMemcacheTest(CacheClientTestMixIn, unittest.TestCase):
     is_lru = False
     capacity_means_entries = False
     
@@ -60,6 +80,7 @@ class FastMemcacheTest(CacheClientTestMixIn, SkipIfUnsupported, unittest.TestCas
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
 
+@skipIfNoMemcached
 class FastFailFastMemcacheTest(FastMemcacheTest):
     def setUpClient(self):
         from chorde.clients.memcached import FastMemcachedClient
@@ -89,6 +110,7 @@ class FastFailFastMemcacheTest(FastMemcacheTest):
         client2.purge()
         self.assertEqual(client2.get(1), 2)
 
+@skipIfNoMemcached
 class NamespaceFastMemcacheTest(NamespaceWrapperTestMixIn, FastMemcacheTest):
     def tearDown(self):
         # Manually clear memcached
