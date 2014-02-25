@@ -92,19 +92,22 @@ class MultiQueueTest(unittest.TestCase):
         # Should be fine due to zero-copy slicing
         self.pool.max_batch = 50
         
-        N = 10000
+        terminate = []
         M = 50
         counts = collections.defaultdict(int)
         def accounting(i):
             counts[thread.get_ident()] += 1
         def killit(i):
-            for j in xrange(N):
+            while not terminate:
                 self.pool.apply_async(accounting, (i,))
                 time.sleep(0) # needed to avoid GIL issues that skew test results
         threads = [ Thread(target=killit, args=(i,)) for i in xrange(M) ]
         for t in threads:
             t.start()
         time.sleep(0.1) # let it fill up
+        terminate.append(None)
+        for t in threads:
+            t.join()
         t0 = time.time()
         self.pool.apply(sum, (counts.itervalues(),), queue = "Johnny")
         t1 = time.time()
@@ -129,6 +132,9 @@ class MultiQueueTest(unittest.TestCase):
         time.sleep(1) # let it fill up
         countsnap = counts.copy()
         terminate.append(None)
+        for t in threads:
+            t.join()
+        self.pool.join(60)
         self.assertLess(countsnap["simple"]*2, countsnap["mean"])
 
     def testWrapper(self):
@@ -150,5 +156,8 @@ class MultiQueueTest(unittest.TestCase):
         time.sleep(1) # let it fill up
         countsnap = counts.copy()
         terminate.append(None)
+        for t in threads:
+            t.join()
+        self.pool.join(60)
         self.assertLess(countsnap["simple"]*2, countsnap["mean"])
 
