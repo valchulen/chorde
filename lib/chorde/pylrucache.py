@@ -221,7 +221,9 @@ class LRUCacheItemsIterator(object):
             return ( node.key, node.value )
     def __iter__(self):
         return self
-    
+        
+    next = __next__
+
 class LRUCacheValuesIterator(object):
     __slots__ = ('cache', 'pos')
 
@@ -237,4 +239,5 @@ class LRUCacheValuesIterator(object):
             return node.value
     def __iter__(self):
         return self
-    
+
+    next = __next__
