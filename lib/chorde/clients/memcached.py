@@ -219,6 +219,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             pickler = None,
             namespace = None,
             checksum_key = None, # CHANGE IT!
+            encoding_cache = None, # should be able to contain attributes
             **client_args):
         if checksum_key is None:
             raise ValueError, "MemcachedClient requires a checksum key for security checks"
@@ -237,6 +238,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         self.namespace = namespace
         self.failfast_time = failfast_time
         self.succeedfast_time = succeedfast_time
+        self.encoding_cache = encoding_cache
         
         if self.namespace:
             self.max_backing_key_length -= len(self.namespace)+1
@@ -357,26 +359,37 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         return stamp
     
     def encode_pages(self, key, ttl, value):
-        # Always pickle & compress, since we'll always unpickle.
-        # Note: compress with very little effort (level=1), 
-        #   otherwise it's too expensive and not worth it
-        sio = StringIO()
-        with ZlibFile(sio, 1) as zio:
-            self.pickler.dump((key,value),zio,2)
-        value = sio.getvalue()
-        sio.close()
-        del sio,zio
+        encoded = None
+        if self.encoding_cache is not None:
+            cached = getattr(self.encoding_cache, 'cache', None)
+            if cached is not None and cached[0] is value:
+                encoded = cached[1]
+            del cached
+
+        if encoded is None:
+            # Always pickle & compress, since we'll always unpickle.
+            # Note: compress with very little effort (level=1), 
+            #   otherwise it's too expensive and not worth it
+            sio = StringIO()
+            with ZlibFile(sio, 1) as zio:
+                self.pickler.dump((key,value),zio,2)
+            encoded = sio.getvalue()
+            sio.close()
+            del sio,zio
+
+            if self.encoding_cache is not None:
+                self.encoding_cache.cache = (value, encoded)
         
-        npages = (len(value) + self.max_backing_value_length - 1) / self.max_backing_value_length
+        npages = (len(encoded) + self.max_backing_value_length - 1) / self.max_backing_value_length
         pagelen = self.max_backing_value_length
         version = self.get_version_stamp()
         page = 0
-        for page,start in enumerate(xrange(0,len(value),self.max_backing_value_length)):
-            yield (npages, page, ttl, version, value[start:start+pagelen])
+        for page,start in enumerate(xrange(0,len(encoded),self.max_backing_value_length)):
+            yield (npages, page, ttl, version, encoded[start:start+pagelen])
         
         assert page == npages-1
 
-    def decode_pages(self, pages, canclear=True):
+    def decode_pages(self, pages, key, canclear=True):
         if 0 not in pages:
             raise ValueError, "Missing page"
         
@@ -400,10 +413,22 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         
         # join pages, decompress, unpickle
         data = ''.join(data)
-        data = zlib.decompress(data)
-        data = self.pickler.loads(data)
+
+        if self.encoding_cache is not None:
+            # Check against the cached encoding just in case it's the same
+            # This way we avoid deserializing
+            cached = getattr(self.encoding_cache, 'cache', None)
+            if cached is not None and cached[1] == data:
+                return (key,cached[0])
+            del cached
         
-        return data
+        value = zlib.decompress(data)
+        value = self.pickler.loads(value)
+
+        if self.encoding_cache is not None and isinstance(value, tuple) and len(value) > 1:
+            self.encoding_cache.cache = (value[1], data)
+        
+        return value
     
     def _getTtl(self, key, default, decode = True, ttl_skip = None, short_key = None, pages = None):
         now = time.time()
@@ -448,7 +473,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             pages.update( self.client.get_multi(xrange(1,npages), key_prefix=short_key+"|") )
         
         try:
-            cached_key, cached_value = self.decode_pages(pages)
+            cached_key, cached_value = self.decode_pages(pages, key)
             
             if cached_key == key:
                 self._succeedfast_cache[key] = (cached_value, ttl), now

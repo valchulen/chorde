@@ -43,7 +43,10 @@ class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
     
     def setUpClient(self):
         from chorde.clients.memcached import MemcachedClient
-        return MemcachedClient([DEFAULT_CLIENT_ADDR], checksum_key = "test")
+        import threading
+        return MemcachedClient([DEFAULT_CLIENT_ADDR], 
+            checksum_key = "test",
+            encoding_cache = threading.local() )
     def tearDown(self):
         # Manually clear memcached
         self.client.client.flush_all()
