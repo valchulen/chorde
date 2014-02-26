@@ -376,6 +376,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             encoded = sio.getvalue()
             sio.close()
             del sio,zio
+
+            if self.encoding_cache is not None:
+                self.encoding_cache.cache = (value, encoded)
         
         npages = (len(encoded) + self.max_backing_value_length - 1) / self.max_backing_value_length
         pagelen = self.max_backing_value_length
