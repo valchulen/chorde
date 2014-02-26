@@ -389,7 +389,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         
         assert page == npages-1
 
-    def decode_pages(self, pages, canclear=True):
+    def decode_pages(self, pages, key, canclear=True):
         if 0 not in pages:
             raise ValueError, "Missing page"
         
@@ -413,11 +413,20 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         
         # join pages, decompress, unpickle
         data = ''.join(data)
+
+        if self.encoding_cache is not None:
+            # Check against the cached encoding just in case it's the same
+            # This way we avoid deserializing
+            cached = getattr(self.encoding_cache, 'cache', None)
+            if cached is not None and cached[1] == data:
+                return (key,cached[0])
+            del cached
+        
         value = zlib.decompress(data)
         value = self.pickler.loads(value)
 
-        if self.encoding_cache is not None:
-            self.encoding_cache.cache = (value, data)
+        if self.encoding_cache is not None and isinstance(value, tuple) and len(value) > 1:
+            self.encoding_cache.cache = (value[1], data)
         
         return value
     
@@ -464,7 +473,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             pages.update( self.client.get_multi(xrange(1,npages), key_prefix=short_key+"|") )
         
         try:
-            cached_key, cached_value = self.decode_pages(pages)
+            cached_key, cached_value = self.decode_pages(pages, key)
             
             if cached_key == key:
                 self._succeedfast_cache[key] = (cached_value, ttl), now
