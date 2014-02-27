@@ -187,6 +187,7 @@ class SharedCounterGenericBase(object):
                         size -= 1024
                     if size:
                         os.write(tmpfileno, buffer(zeros,0,size))
+                    # WHYNOT zeros = '\x00' * size; os.write(tmfileno, zeros)
 
                     # And swap
                     if hasattr(os, 'link'):
@@ -311,7 +312,7 @@ class SharedCounterGenericBase(object):
 if numpy is not None:
     # Numpy-accelerated shared objects
     
-    if numpy.frombuffer is not None: # PyPy doesn't allow frombuffer method
+    if numpy.frombuffer is not None: # PyPy
 
         class SharedCounterBase(SharedCounterGenericBase):
             btype = numpy.bool8
@@ -336,8 +337,8 @@ if numpy is not None:
                 self.bitmap = numpy.frombuffer(buf, numpy.bool8, slots, offset)
 
                 # Map my slot as a single item, it makes += atomic
-                ms_size = offset + slots + self.slots_item_size * self.slot
-                self.myslot = numpy.frombuffer(buf, numpy.uint32, ms_size)
+                self.myslot = self.cdtype.from_buffer(buf, 
+                    offset + ctypes.sizeof(bitmap) + self.slots_item_size * self.slot)
 
                 # Map timestamp
                 self.timestamp = timestamp
