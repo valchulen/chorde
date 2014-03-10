@@ -121,6 +121,7 @@ class MultiQueueTest(unittest.TestCase):
         def killit(q):
             while not terminate:
                 self.pool.apply_async(accounting, (q,), queue=q)
+                time.sleep(0) # needed to avoid GIL issues that skew test results
         threads = [ 
             Thread(target=killit, args=("mean",)),
             Thread(target=killit, args=("simple",)),
@@ -147,6 +148,7 @@ class MultiQueueTest(unittest.TestCase):
         def killit(q):
             while not terminate:
                 q.apply_async(accounting, (q.queue,))
+                time.sleep(0) # needed to avoid GIL issues that skew test results
         threads = [ 
             Thread(target=killit, args=(mean,)),
             Thread(target=killit, args=(simple,)),

@@ -320,8 +320,18 @@ class ThreadPool:
             # Wake up waiting threads
             # Note that it's not necessary if dequeue is set to a dequeuing
             # iterator, since that means threads are busy working already
-            self.__not_empty.set()
-            self.__empty.clear()
+            # It is also not necessary to invoke this all the time. If the
+            # flags are the right way at any point within this function being
+            # run, then it already means the respective waiting threads have
+            # woken up (or are in the process of waking up) in time to pick up the 
+            # just-queued value, so avoid the actual operation 
+            # (which is much more expensive than checking)
+            not_empty = self.__not_empty
+            if not not_empty.isSet():
+                self.__not_empty.set()
+            empty = self.__empty
+            if empty.isSet():
+                self.__empty.clear()
         self.assert_started()
 
     @staticmethod
