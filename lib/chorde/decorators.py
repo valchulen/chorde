@@ -164,6 +164,8 @@ def cached(client, ttl,
         refresh(...): mimicking the underlying function's signature, it will forcefully invoke the function,
             regardless of cache status, and refresh the cache with the returned value.
 
+        uncached(...): this is the underlying function, undecorated.
+
         peek(...): mimicking the underlying function's signature, it will query the cache without ever invoking
             the underlying function. If the cache doesn't contain the key, a CacheMissError will be raised.
 
@@ -906,6 +908,7 @@ def cached(client, ttl,
             async_cached_f.refresh = async_refresh_f
             async_cached_f.peek = peek_cached_f
             async_cached_f.invalidate = invalidate_f
+            async_cached_f.uncached = f
             async_cached_f.put = async_put_f
             async_cached_f.ttl = ttl
             async_cached_f.async_ttl = async_ttl
@@ -931,6 +934,7 @@ def cached(client, ttl,
         cached_f.ttl = ttl
         cached_f.async_ttl = async_ttl or ttl
         cached_f.stats = stats
+        cached_f.uncached = f
         
         future_cached_f.clear = lambda : fclient[0].clear()
         future_cached_f.client = None
@@ -943,6 +947,7 @@ def cached(client, ttl,
         future_cached_f.ttl = ttl
         future_cached_f.async_ttl = async_ttl
         future_cached_f.stats = stats
+        future_cached_f.uncached = f
 
         decorated_functions.add(cached_f)
         return cached_f
