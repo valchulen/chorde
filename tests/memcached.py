@@ -44,9 +44,11 @@ class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
     def setUpClient(self):
         from chorde.clients.memcached import MemcachedClient
         import threading
-        return MemcachedClient([DEFAULT_CLIENT_ADDR], 
+        rv = MemcachedClient([DEFAULT_CLIENT_ADDR], 
             checksum_key = "test",
             encoding_cache = threading.local() )
+        rv.client.flush_all()
+        return rv
     def tearDown(self):
         # Manually clear memcached
         self.client.client.flush_all()
@@ -75,7 +77,9 @@ class FastMemcacheTest(CacheClientTestMixIn, unittest.TestCase):
     
     def setUpClient(self):
         from chorde.clients.memcached import FastMemcachedClient
-        return FastMemcachedClient([DEFAULT_CLIENT_ADDR])
+        rv = FastMemcachedClient([DEFAULT_CLIENT_ADDR])
+        rv.client.flush_all()
+        return rv
     def tearDown(self):
         # Manually clear memcached
         self.client.client.flush_all()
@@ -88,7 +92,9 @@ class FastFailFastMemcacheTest(FastMemcacheTest):
     def setUpClient(self):
         from chorde.clients.memcached import FastMemcachedClient
         self.client2 = FastMemcachedClient([DEFAULT_CLIENT_ADDR], failfast_time = 1, failfast_size = 100)
-        return FastMemcachedClient([DEFAULT_CLIENT_ADDR], failfast_time = 1, failfast_size = 100)
+        rv = FastMemcachedClient([DEFAULT_CLIENT_ADDR], failfast_time = 1, failfast_size = 100)
+        rv.client.flush_all()
+        return rv
 
     def tearDown(self):
         # Manually clear memcached
