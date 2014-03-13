@@ -127,7 +127,8 @@ class SharedCounterGenericBase(object):
         ts = self.timestamp
         rand = self.__rnd
         if self.cached_timestamp is not None:
-            self.cached_timestamp = (self.cached_timestamp + rand) & 0xffffffffffffffff
+            uint = type(self.cached_timestamp)
+            self.cached_timestamp = self.cached_timestamp + uint(rand) & 0xffffffffffffffff
         ts.value += rand
 
     @property
@@ -396,6 +397,9 @@ if numpy is not None:
             slots_item_size = numpy.dtype(dtype).itemsize
 
 else:
+    if not hasattr(ctypes.c_uint64, 'from_buffer'):
+        raise Exception('ctypes has not frombuffer method in PyPy. Try installing numpy')
+
     # Slow, but portable shared objects (based on ctypes)
 
     class SharedCounterBase(SharedCounterGenericBase):  # lint:ok

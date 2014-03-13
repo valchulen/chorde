@@ -1,3 +1,7 @@
-TODO: I'll write it soon.
+Dependencies:
+=============
 
+* numpy
+* python-memcached
+* pyzmq < 14
 
