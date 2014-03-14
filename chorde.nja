@@ -23,7 +23,8 @@
     ".js", 
     ".ini", 
     ".pyx", 
-    ".pxi"
+    ".pxi", 
+    ".rst"
   ], 
   "project-type": "", 
   "postExecScript": "", 
