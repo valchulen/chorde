@@ -8,6 +8,7 @@ import mmap
 import random
 import tempfile
 import threading
+import operator
 
 try:
     import fcntl
@@ -39,6 +40,10 @@ class Slot(object):
     def value(self, val):
         self._mmap[self._offset] = val or 0
 
+    @property
+    def flat(self):
+        return self._mmap
+
     def __iadd__(self, val):
         self._mmap[self._offset] += val
 
@@ -56,6 +61,9 @@ class Slot(object):
 
     def __eq__(self, val):
         return self._mmap[self._offset] == val.value
+
+    def __index__(self):
+        return int(self.value)
 
 
 class SharedCounterGenericBase(object):
