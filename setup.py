@@ -3,11 +3,15 @@ try:
 except ImportError:
     from distutils.core import setup, Extension
 
+no_pyrex = False
 try:
     from Pyrex.Distutils import build_ext
-    no_pyrex = False
 except:
-    no_pyrex = True
+    try:
+        from Cython.Distutils import build_ext
+    except:
+        no_pyrex = True
+
 import os.path
 
 VERSION = "0.1"
