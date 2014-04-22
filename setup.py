@@ -1,16 +1,22 @@
+import sys
+
 try:
     from setuptools import setup, Extension
 except ImportError:
     from distutils.core import setup, Extension
 
-no_pyrex = False
-try:
-    from Pyrex.Distutils import build_ext
-except:
+if sys.subversion[0] == 'PyPy': 
+    # Even though pypy may have Pyrex or Cython, cython LRU isn't compatible with cpyext
+    no_pyrex = True
+else:
+    no_pyrex = False
     try:
-        from Cython.Distutils import build_ext
+        from Pyrex.Distutils import build_ext
     except:
-        no_pyrex = True
+        try:
+            from Cython.Distutils import build_ext
+        except:
+            no_pyrex = True
 
 import os.path
 
