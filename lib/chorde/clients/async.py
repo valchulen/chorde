@@ -17,16 +17,8 @@ import multiprocessing.dummy
 import multiprocessing.pool
 from chorde.threadpool import ThreadPool
 
-from .base import BaseCacheClient, CacheMissError, NONE
+from .base import BaseCacheClient, CacheMissError, NONE, TimeoutError, CancelledError
 from .inproc import Cache
-
-try:
-    from concurrent.futures import TimeoutError, CancelledError
-except ImportError:
-    class TimeoutError(Exception):
-        pass
-    class CancelledError(Exception):
-        pass
 
 class _NONE:pass
 class _DELETE:pass
@@ -596,37 +588,72 @@ class AsyncWriteCacheClient(BaseCacheClient):
     def __repr__(self):
         return str(self)
 
-class ExceptionWrapper(object):
-    __slots__ = ('value',)
-
-    def __init__(self, value):
-        self.value = value
-
-class Future(object):
-    __slots__ = (
-        '_cb', '_value', '_logger', '_running', '_cancel_pending', '_cancelled', '_done_event', 
-        '_lock', '__weakref__',
-    )
+try:
+    from ._async import ExceptionWrapper, Future
+except ImportError:
+    import warnings
+    warnings.warn("_async extension module not built in, "
+        "using pure-python version which is not atomic and requires"
+        "explicit synchronization. Decreased performance will be noticeable")
+    del warnings
     
-    def __init__(self, logger = None):
-        self._cb = []
-        self._logger = logger
-        self._lock = threading.Lock()
-
-    def _set_nothreads(self, value, hasattr = hasattr, tuple = tuple, getattr = getattr):
-        """
-        Like set(), but assuming no threading is involved. It won't wake waiting threads,
-        nor will it try to be thread-safe. Safe to call when the calling
-        thread is the only one owning references to this future, and much faster.
-        """
-        if hasattr(self, '_value'):
-            # No setting twice
-            return
+    class ExceptionWrapper(object):  # lint:ok
+        __slots__ = ('value',)
+    
+        def __init__(self, value):
+            self.value = value
+    
+    class Future(object):  # lint:ok
+        __slots__ = (
+            '_cb', '_value', '_logger', '_running', '_cancel_pending', '_cancelled', '_done_event', 
+            '_lock', '__weakref__',
+        )
         
-        self._value = value
-
-        if self._cb:
-            for cb in list(self._cb):
+        def __init__(self, logger = None):
+            self._cb = []
+            self._logger = logger
+            self._lock = threading.Lock()
+    
+        def _set_nothreads(self, value, hasattr = hasattr, tuple = tuple, getattr = getattr):
+            """
+            Like set(), but assuming no threading is involved. It won't wake waiting threads,
+            nor will it try to be thread-safe. Safe to call when the calling
+            thread is the only one owning references to this future, and much faster.
+            """
+            if hasattr(self, '_value'):
+                # No setting twice
+                return
+            
+            self._value = value
+    
+            if self._cb:
+                for cb in list(self._cb):
+                    try:
+                        cb(value)
+                    except:
+                        if self._logger is not None:
+                            error = self._logger
+                        else:
+                            error = logging.error
+                        error("Error in async callback", exc_info = True)
+            self._running = False
+        
+        def set(self, value, hasattr = hasattr, tuple = tuple, getattr = getattr):
+            """
+            Set the future's result as either a value, an exception wrappedn in ExceptionWrapper, or
+            a cache miss if given CacheMissError (the class itself)
+            """
+            if hasattr(self, '_value'):
+                # No setting twice
+                return
+            
+            with self._lock:
+                old = getattr(self, '_value', None) # avoid deadlocks due to finalizers
+                cbs = list(self._cb)
+                self._value = value
+            del old
+            
+            for cb in cbs:
                 try:
                     cb(value)
                 except:
@@ -635,292 +662,266 @@ class Future(object):
                     else:
                         error = logging.error
                     error("Error in async callback", exc_info = True)
-        self._running = False
-    
-    def set(self, value, hasattr = hasattr, tuple = tuple, getattr = getattr):
-        """
-        Set the future's result as either a value, an exception wrappedn in ExceptionWrapper, or
-        a cache miss if given CacheMissError (the class itself)
-        """
-        if hasattr(self, '_value'):
-            # No setting twice
-            return
-        
-        with self._lock:
-            old = getattr(self, '_value', None) # avoid deadlocks due to finalizers
-            cbs = list(self._cb)
-            self._value = value
-        del old
-        
-        for cb in cbs:
-            try:
-                cb(value)
-            except:
-                if self._logger is not None:
-                    error = self._logger
-                else:
-                    error = logging.error
-                error("Error in async callback", exc_info = True)
-        self._running = False
-        
-        event = getattr(self, '_done_event', None)
-        if event is not None:
-            # wake up waiting threads
-            event.set()
-
-    set_result = set
-
-    def miss(self):
-        """
-        Shorthand for setting a cache miss result
-        """
-        self.set(CacheMissError)
-
-    def _miss_nothreads(self):
-        """
-        Shorthand for setting a cache miss result without thread safety.
-        See _set_nothreads
-        """
-        self._set_nothreads(CacheMissError)
-
-    def exc(self, exc_info):
-        """
-        Shorthand for setting an exception result from an exc_info tuple
-        as returned by sys.exc_info()
-        """
-        self.set(ExceptionWrapper(exc_info))
-
-    def _exc_nothreads(self, exc_info):
-        """
-        Shorthand for setting an exception result from an exc_info tuple
-        as returned by sys.exc_info(), without thread safety. 
-        See _set_nothreads
-        """
-        self._set_nothreads(ExceptionWrapper(exc_info))
-
-    def set_exception(self, exception):
-        """
-        Set the Future's exception object.
-        """
-        self.exc((type(exception),exception,None))
-
-    def on_value(self, callback):
-        """
-        When and if the operation completes without exception, the callback 
-        will be invoked with its result.
-        """
-        def value_callback(value):
-            if value is not CacheMissError and not isinstance(value, ExceptionWrapper):
-                return callback(value)
-        return self._on_stuff(value_callback)
-
-    def on_miss(self, callback):
-        """
-        If the operation results in a cache miss, the callback will be invoked
-        without arugments.
-        """
-        def miss_callback(value):
-            if value is CacheMissError:
-                return callback()
-        return self._on_stuff(miss_callback)
-
-    def on_exc(self, callback):
-        """
-        If the operation results in an exception, the callback will be invoked
-        with an exc_info tuple as returned by sys.exc_info.
-        """
-        def exc_callback(value):
-            if isinstance(value, ExceptionWrapper):
-                return callback(value.value)
-        return self._on_stuff(exc_callback)
-
-    def on_any(self, on_value = None, on_miss = None, on_exc = None):
-        """
-        Handy method to set callbacks for all kinds of results, and it's actually
-        faster than calling on_X repeatedly. None callbacks will be ignored.
-        """
-        def callback(value):
-            if value is CacheMissError:
-                if on_miss is not None:
-                    return on_miss()
-            elif isinstance(value, ExceptionWrapper):
-                if on_exc is not None:
-                    return on_exc(value.value)
-            else:
-                if on_value is not None:
-                    return on_value(value)
-        return self._on_stuff(callback)
-
-    def on_done(self, callback):
-        """
-        When the operation is done, the callback will be invoked without arguments,
-        regardless of the outcome. If the operation is cancelled, it won't be invoked.
-        """
-        def done_callback(value):
-            return callback()
-        return self._on_stuff(done_callback)
-
-    def chain(self, defer):
-        """
-        Invoke all the callbacks of the other defer
-        """
-        self._on_stuff(defer.set)
-
-    def chain_std(self, defer):
-        """
-        Invoke all the callbacks of the other defer, without assuming the other
-        defer follows our non-standard interface.
-        """
-        return self.on_any(
-            defer.set_result,
-            functools.partial(defer.set_exception, CacheMissError()),
-            lambda value : defer.set_exception(value[1] or value[0])
-        )
-
-    def _on_stuff(self, callback, hasattr=hasattr):
-        cbap = self._cb.append
-        docall = hasattr(self, '_value')
-        if not docall:
-            with self._lock:
-                docall = hasattr(self, '_value')
-                if not docall:
-                    cbap(callback)
-        if docall:
-            callback(self._value)
-        return self
-
-    def add_done_callback(self, callback):
-        """
-        When the operatio is done, the callback will be invoked with the
-        future object as argument.
-        """
-        me = weakref.ref(self)
-        def weak_callback(value):
-            self = me()
-            if self is not None:
-                return callback(self)
-        return self._on_stuff(weak_callback)
-
-    def done(self, hasattr=hasattr, getattr=getattr):
-        """
-        Return True if the operation has finished, in a result or exception or cancelled, and False if not.
-        """
-        return hasattr(self, '_value') or getattr(self, '_cancelled', False)
-
-    def running(self, getattr=getattr):
-        """
-        Return True if the operation is running and cannot be cancelled. False if not running
-        (yet or done).
-        """
-        return getattr(self, '_running', False)
-
-    def cancelled(self, getattr=getattr):
-        """
-        Return True if the operation has been cancelled successfully.
-        """
-        return getattr(self, '_cancelled', False)
-
-    def cancel_pending(self, getattr=getattr):
-        """
-        Return True if cancel was called.
-        """
-        return getattr(self, '_cancel_pending', False)
-
-    def cancel(self, getattr=getattr):
-        """
-        Request cancelling of the operation. If the operation cannot be cancelled,
-        it will return False. Otherwise, it will return True.
-        """
-        if getattr(self, '_cancelled', False):
-            return False
-        else:
-            self._cancel_pending = True
-            return True
-
-    def set_running_or_notify_cancelled(self, getattr=getattr):
-        """
-        To be invoked by executors before executing the operation. If it returns True,
-        the operation may go ahead, and if False, a cancel has been requested and the
-        operation should not be initiated, all threads waiting for the operation will
-        be wakened immediately and the future will be marked as cancelled.
-        """
-        if getattr(self, '_cancel_pending', False):
-            self._cancelled = True
             self._running = False
-
-            # Notify waiters and callbacks
-            self.set_exception(CancelledError()) 
             
-            return False
-        else:
-            self._running = True
-            return True
-
-    def result(self, timeout=None, hasattr=hasattr, getattr=getattr, isinstance=isinstance, norecurse=False):
-        """
-        Return the operation's result, if any. If an exception was the result, re-raise it.
-        If it was cancelled, raises CancelledError, and if timeout is specified and not None,
-        and the specified time elapses without a result available, raises TimeoutError.
-        """
-        if hasattr(self, '_value'):
-            value = self._value
-            if isinstance(value, ExceptionWrapper):
-                raise value.value[0], value.value[1], value.value[2]
-            elif value is CacheMissError:
-                raise CacheMissError
-            else:
-                return self._value
-        elif self.cancelled():
-            raise CancelledError
-        else:
-            if timeout == 0:
-                raise TimeoutError
-            else:
-                # Wait for it
-                event = getattr(self, '_done_event', None)
-                if event is None:
-                    event = self._done_event = threading.Event()
-                # First loop eagerly waits on the recently-created event
-                # Second loop grabs the instance event (which could have been
-                # clobbered by another thread). This is lockless yet safe,
-                # and quick on the most common condition (no contention)
-                for timeout in (0, timeout):
-                    if event.wait(timeout) and not norecurse:
-                        return self.result(0, norecurse=True)
-                    elif self.cancelled():
-                        raise CancelledError
-                    else:
-                        time.sleep(0) # < give other threads a chance
-                        event = self._done_event
+            event = getattr(self, '_done_event', None)
+            if event is not None:
+                # wake up waiting threads
+                event.set()
+    
+        set_result = set
+    
+        def miss(self):
+            """
+            Shorthand for setting a cache miss result
+            """
+            self.set(CacheMissError)
+    
+        def _miss_nothreads(self):
+            """
+            Shorthand for setting a cache miss result without thread safety.
+            See _set_nothreads
+            """
+            self._set_nothreads(CacheMissError)
+    
+        def exc(self, exc_info):
+            """
+            Shorthand for setting an exception result from an exc_info tuple
+            as returned by sys.exc_info()
+            """
+            self.set(ExceptionWrapper(exc_info))
+    
+        def _exc_nothreads(self, exc_info):
+            """
+            Shorthand for setting an exception result from an exc_info tuple
+            as returned by sys.exc_info(), without thread safety. 
+            See _set_nothreads
+            """
+            self._set_nothreads(ExceptionWrapper(exc_info))
+    
+        def set_exception(self, exception):
+            """
+            Set the Future's exception object.
+            """
+            self.exc((type(exception),exception,None))
+    
+        def on_value(self, callback):
+            """
+            When and if the operation completes without exception, the callback 
+            will be invoked with its result.
+            """
+            def value_callback(value):
+                if value is not CacheMissError and not isinstance(value, ExceptionWrapper):
+                    return callback(value)
+            return self._on_stuff(value_callback)
+    
+        def on_miss(self, callback):
+            """
+            If the operation results in a cache miss, the callback will be invoked
+            without arugments.
+            """
+            def miss_callback(value):
+                if value is CacheMissError:
+                    return callback()
+            return self._on_stuff(miss_callback)
+    
+        def on_exc(self, callback):
+            """
+            If the operation results in an exception, the callback will be invoked
+            with an exc_info tuple as returned by sys.exc_info.
+            """
+            def exc_callback(value):
+                if isinstance(value, ExceptionWrapper):
+                    return callback(value.value)
+            return self._on_stuff(exc_callback)
+    
+        def on_any(self, on_value = None, on_miss = None, on_exc = None):
+            """
+            Handy method to set callbacks for all kinds of results, and it's actually
+            faster than calling on_X repeatedly. None callbacks will be ignored.
+            """
+            def callback(value):
+                if value is CacheMissError:
+                    if on_miss is not None:
+                        return on_miss()
+                elif isinstance(value, ExceptionWrapper):
+                    if on_exc is not None:
+                        return on_exc(value.value)
                 else:
-                    raise TimeoutError
-
-    def exception(self, timeout=None):
-        """
-        If the operation resulted in an exception, return the exception object.
-        Otherwise, return None. If the operation has been cancelled, raises CancelledError,
-        and if timeout is specified and not None, and the specified time elapses without 
-        a result available, raises TimeoutError.
-        """
-        if hasattr(self, '_value'):
-            value = self._value
-            if isinstance(value, ExceptionWrapper):
-                return value.value[1] or value.value[0]
-            elif value is CacheMissError:
-                return CacheMissError
+                    if on_value is not None:
+                        return on_value(value)
+            return self._on_stuff(callback)
+    
+        def on_done(self, callback):
+            """
+            When the operation is done, the callback will be invoked without arguments,
+            regardless of the outcome. If the operation is cancelled, it won't be invoked.
+            """
+            def done_callback(value):
+                return callback()
+            return self._on_stuff(done_callback)
+    
+        def chain(self, defer):
+            """
+            Invoke all the callbacks of the other defer
+            """
+            self._on_stuff(defer.set)
+    
+        def chain_std(self, defer):
+            """
+            Invoke all the callbacks of the other defer, without assuming the other
+            defer follows our non-standard interface.
+            """
+            return self.on_any(
+                defer.set_result,
+                functools.partial(defer.set_exception, CacheMissError()),
+                lambda value : defer.set_exception(value[1] or value[0])
+            )
+    
+        def _on_stuff(self, callback, hasattr=hasattr):
+            cbap = self._cb.append
+            docall = hasattr(self, '_value')
+            if not docall:
+                with self._lock:
+                    docall = hasattr(self, '_value')
+                    if not docall:
+                        cbap(callback)
+            if docall:
+                callback(self._value)
+            return self
+    
+        def add_done_callback(self, callback):
+            """
+            When the operatio is done, the callback will be invoked with the
+            future object as argument.
+            """
+            me = weakref.ref(self)
+            def weak_callback(value):
+                self = me()
+                if self is not None:
+                    return callback(self)
+            return self._on_stuff(weak_callback)
+    
+        def done(self, hasattr=hasattr, getattr=getattr):
+            """
+            Return True if the operation has finished, in a result or exception or cancelled, and False if not.
+            """
+            return hasattr(self, '_value') or getattr(self, '_cancelled', False)
+    
+        def running(self, getattr=getattr):
+            """
+            Return True if the operation is running and cannot be cancelled. False if not running
+            (yet or done).
+            """
+            return getattr(self, '_running', False)
+    
+        def cancelled(self, getattr=getattr):
+            """
+            Return True if the operation has been cancelled successfully.
+            """
+            return getattr(self, '_cancelled', False)
+    
+        def cancel_pending(self, getattr=getattr):
+            """
+            Return True if cancel was called.
+            """
+            return getattr(self, '_cancel_pending', False)
+    
+        def cancel(self, getattr=getattr):
+            """
+            Request cancelling of the operation. If the operation cannot be cancelled,
+            it will return False. Otherwise, it will return True.
+            """
+            if getattr(self, '_cancelled', False):
+                return False
             else:
-                return None
-        elif self.cancelled():
-            raise CancelledError
-        else:
-            try:
-                self.result()
-                return None
-            except CancelledError:
-                raise
-            except Exception,e:
-                return e
-        
+                self._cancel_pending = True
+                return True
+    
+        def set_running_or_notify_cancelled(self, getattr=getattr):
+            """
+            To be invoked by executors before executing the operation. If it returns True,
+            the operation may go ahead, and if False, a cancel has been requested and the
+            operation should not be initiated, all threads waiting for the operation will
+            be wakened immediately and the future will be marked as cancelled.
+            """
+            if getattr(self, '_cancel_pending', False):
+                self._cancelled = True
+                self._running = False
+    
+                # Notify waiters and callbacks
+                self.set_exception(CancelledError()) 
+                
+                return False
+            else:
+                self._running = True
+                return True
+    
+        def result(self, timeout=None, hasattr=hasattr, getattr=getattr, isinstance=isinstance, norecurse=False):
+            """
+            Return the operation's result, if any. If an exception was the result, re-raise it.
+            If it was cancelled, raises CancelledError, and if timeout is specified and not None,
+            and the specified time elapses without a result available, raises TimeoutError.
+            """
+            if hasattr(self, '_value'):
+                value = self._value
+                if isinstance(value, ExceptionWrapper):
+                    raise value.value[0], value.value[1], value.value[2]
+                elif value is CacheMissError:
+                    raise CacheMissError
+                else:
+                    return self._value
+            elif self.cancelled():
+                raise CancelledError
+            else:
+                if timeout == 0:
+                    raise TimeoutError
+                else:
+                    # Wait for it
+                    event = getattr(self, '_done_event', None)
+                    if event is None:
+                        event = self._done_event = threading.Event()
+                    # First loop eagerly waits on the recently-created event
+                    # Second loop grabs the instance event (which could have been
+                    # clobbered by another thread). This is lockless yet safe,
+                    # and quick on the most common condition (no contention)
+                    for timeout in (0, timeout):
+                        if event.wait(timeout) and not norecurse:
+                            return self.result(0, norecurse=True)
+                        elif self.cancelled():
+                            raise CancelledError
+                        else:
+                            time.sleep(0) # < give other threads a chance
+                            event = self._done_event
+                    else:
+                        raise TimeoutError
+    
+        def exception(self, timeout=None):
+            """
+            If the operation resulted in an exception, return the exception object.
+            Otherwise, return None. If the operation has been cancelled, raises CancelledError,
+            and if timeout is specified and not None, and the specified time elapses without 
+            a result available, raises TimeoutError.
+            """
+            if hasattr(self, '_value'):
+                value = self._value
+                if isinstance(value, ExceptionWrapper):
+                    return value.value[1] or value.value[0]
+                elif value is CacheMissError:
+                    return CacheMissError
+                else:
+                    return None
+            elif self.cancelled():
+                raise CancelledError
+            else:
+                try:
+                    self.result()
+                    return None
+                except CancelledError:
+                    raise
+                except Exception,e:
+                    return e
+            
 
 def makeFutureWrapper(base):
     """

@@ -37,8 +37,11 @@ if not no_pyrex:
     extra.update(dict(
         ext_modules=[ 
           Extension("chorde.lrucache", ["lib/lrucache/lrucache.pyx"],
-                    extra_compile_args = [ "-O3" ] )
-                    #extra_compile_args = ["-march=pentium4","-mfpmath=sse","-msse2"] )
+                    extra_compile_args = [ "-O3" ] ),
+                    #extra_compile_args = ["-march=pentium4","-mfpmath=sse","-msse2"] ),
+          Extension("chorde.clients._async", ["lib/chorde/clients/_async.pyx"],
+                    extra_compile_args = [ "-O3" ] ),
+                    #extra_compile_args = ["-march=pentium4","-mfpmath=sse","-msse2"] ),
           ],
         cmdclass = {'build_ext': build_ext}
     ))

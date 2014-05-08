@@ -65,7 +65,7 @@ try:
     try:
         import ujson as cjson_
     except ImportError:
-        import cjson as cjson_
+        import cjson as cjson_  # lint:ok
     class cjson:  # lint:ok
         loads = cjson_.decode
         dumps = staticmethod(lambda x, separators=None, encode = cjson_.encode : encode(x))

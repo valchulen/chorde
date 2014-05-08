@@ -6,6 +6,14 @@ from chorde.serialize import serialize_read, serialize_write, serialize
 # Overridden by inproc_cache based on LRUCache availability
 CacheMissError = KeyError
 
+try:
+    from concurrent.futures import TimeoutError, CancelledError
+except ImportError:
+    class TimeoutError(Exception):  # lint:ok
+        pass
+    class CancelledError(Exception):  # lint:ok
+        pass
+
 class NONE: pass
 
 class BaseCacheClient(object):
