@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from chorde import CacheMissError
+from chorde import TimeoutError, CancelledError  # lint:ok
 from chorde.clients.base import SyncAdapter, ReadWriteSyncAdapter, NamespaceWrapper
 
 import time

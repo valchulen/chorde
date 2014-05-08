@@ -4,7 +4,36 @@ import unittest
 import threading
 import functools
 
-from .clientbase import CacheClientTestMixIn, CacheMissError
+from .clientbase import CacheClientTestMixIn, CacheMissError, TimeoutError
+
+class FutureTest(unittest.TestCase):
+    def testTimeout(self):
+        from chorde.clients.async import Future
+        f = Future()
+        self.assertRaises(TimeoutError, f.result, 0.1)
+    
+    def testFastTimeout(self):
+        from chorde.clients.async import Future
+        f = Future()
+        self.assertRaises(TimeoutError, f.result, 0)
+    
+    def testPreSet(self):
+        from chorde.clients.async import Future
+        f = Future()
+        f.set(1)
+        self.assertEqual(f.result(0), 1)
+    
+    def testMiss(self):
+        from chorde.clients.async import Future
+        f = Future()
+        f.miss()
+        self.assertRaises(CacheMissError, f.result, 0)
+    
+    def testExc(self):
+        from chorde.clients.async import Future
+        f = Future()
+        f.exc((RuntimeError,RuntimeError(1),None))
+        self.assertRaises(RuntimeError, f.result, 0)
 
 class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
     # Hard to guarantee LRU logic with an async writing queue

@@ -1,11 +1,18 @@
 import functools
 import weakref
 import threading
+import logging
 
-from chorde.clients.base import CacheMissError
+from chorde.clients import base
+
+cdef object CacheMissError, CancelledError, TimeoutError
+CacheMissError = base.CacheMissError
+CancelledError = base.CancelledError
+TimeoutError = base.TimeoutError
 
 cdef class ExceptionWrapper:
-    cdef object value, __weakref__
+    cdef public object value
+    cdef object __weakref__
 
     def __init__(self, value):
         self.value = value
@@ -21,7 +28,7 @@ cdef class WeakCallback:
         cdef object me
         me = self.me()
         if me is not None:
-            return callback(me)
+            return self.callback(me)
 
 cdef class DeferExceptionCallback:
     cdef object defer, __weakref__
@@ -323,14 +330,14 @@ cdef class Future:
             if isinstance(value, ExceptionWrapper):
                 raise value.value[0], value.value[1], value.value[2]
             elif value is CacheMissError:
-                raise CacheMissError
+                raise CacheMissError()
             else:
                 return value
         elif self._cancelled:
-            raise CancelledError
+            raise CancelledError()
         else:
             if timeout is not None and timeout == 0:
-                raise TimeoutError
+                raise TimeoutError()
             else:
                 # Wait for it
                 if self._done_event is None:
@@ -338,9 +345,9 @@ cdef class Future:
                 if self._done_event.wait(timeout) and not norecurse:
                     return self.result(0, norecurse=True)
                 elif self._cancelled:
-                    raise CancelledError
+                    raise CancelledError()
                 else:
-                    raise TimeoutError
+                    raise TimeoutError()
 
     def exception(self, timeout=None):
         """
@@ -360,7 +367,7 @@ cdef class Future:
             else:
                 return None
         elif self._cancelled:
-            raise CancelledError
+            raise CancelledError()
         else:
             try:
                 self.result()

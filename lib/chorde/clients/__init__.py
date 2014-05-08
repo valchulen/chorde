@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from .inproc import InprocCacheClient # before base, really, it injects CacheMissError
-from .base import BaseCacheClient, ReadWriteSyncAdapter, NONE, CacheMissError
+from .base import BaseCacheClient, ReadWriteSyncAdapter, NONE, CacheMissError, TimeoutError, CancelledError
 from .async import AsyncWriteCacheClient, Defer, AsyncCacheProcessor
 from .tiered import TieredInclusiveClient
 from .files import FilesCacheClient
@@ -8,6 +8,8 @@ from .files import FilesCacheClient
 __all__ = [
     "NONE",
     "CacheMissError",
+    "TimeoutError",
+    "CancelledError",
     "Defer",
     
     "AsyncCacheProcessor",
