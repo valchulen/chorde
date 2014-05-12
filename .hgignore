@@ -1,6 +1,8 @@
 syntax: glob
 
 build
+coverage
+dist
 *.pyc
 *.so
 *.c
