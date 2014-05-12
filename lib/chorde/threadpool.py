@@ -32,7 +32,7 @@ class WorkerThread(threading.Thread):
                 finally:
                     worker._callCleanupHooks()
             except Exception:
-                logging.error("Exception ocurred in worker thread:", exc_info = True)
+                self.logger.error("Exception ocurred in worker thread:", exc_info = True)
 
     def start(self):
         global _nothreads
@@ -82,11 +82,12 @@ class ThreadPool:
     
     Process = WorkerThread
 
-    def __init__(self, workers = None, min_batch = 10, max_batch = 1000, max_slice = None):
+    def __init__(self, workers = None, min_batch = 10, max_batch = 1000, max_slice = None, logger = None):
         if workers is None:
             workers = multiprocessing.cpu_count()
         
         self.workers = workers
+        self.logger = logger if logger is not None else logging.getLogger('chorde')
         self.__workers = None
         self.__pid = os.getpid()
         self.__spawnlock = threading.Lock()
@@ -140,7 +141,7 @@ class ThreadPool:
             try:
                 callback()
             except:
-                logging.error("Error in task cleanup callback", exc_info = True)
+                self.logger.error("Error in task cleanup callback", exc_info = True)
 
     def __swap_queues(self, max=max, min=min, len=len):
         qpop = self.queues.pop
@@ -346,6 +347,10 @@ class ThreadPool:
                 task()
             finally:
                 try:
+                    self._call_cleanup_callbacks()
+                except:
+                    self.logger.error("Error in task cleanup hook", exc_info = True)
+                try:
                     del local.working
                 except:
                     pass
@@ -411,6 +416,7 @@ class ThreadPool:
                 self.__workers = [ self.Process(functools.partial(self.worker, weakref.ref(self)))
                                    for i in xrange(self.workers) ]
                 for w in self.__workers:
+                    w.logger = self.logger
                     w.daemon = True
                     w.start()
                 
