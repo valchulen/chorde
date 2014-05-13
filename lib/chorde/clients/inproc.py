@@ -58,36 +58,35 @@ def cacheClear():
     """
     Clear all @cached caches (use with moderation)
 
-    >>> from decorators import cached, cacheClear
-    >>> @cached(timeout=6000, maxcache=1000)
+    >>> from chorde.decorators import cached
+    >>> from chorde.clients.inproc import cacheClear, InprocCacheClient
+    >>> import itertools
+    >>> random = itertools.cycle(iter((0.9560342718892494, 0.9478274870593494, 2, 3, 4, 5, 6, 7, 8))).next
+    >>> @cached(InprocCacheClient(1000), ttl = 6000)
     ... def f():
-    ...     import random
-    ...     return random.random()
+    ...     return random()
     ...
-    >>> @cached(timeout=6000, maxcache=1000)
+    >>> @cached(InprocCacheClient(1000), ttl = 6000)
     ... def g():
-    ...     import random
-    ...     return random.random()
+    ...     return random()
     ...
-    >>> import random
-    >>> random.seed(2)
     >>> f()
-    0.95603427188924939
+    0.9560342718892494
     >>> g()
-    0.94782748705934938
+    0.9478274870593494
     >>> f()
-    0.95603427188924939
+    0.9560342718892494
     >>> g()
-    0.94782748705934938
+    0.9478274870593494
     >>> cacheClear()
     >>> f()
-    0.056551367726808688
+    2
     >>> g()
-    0.084871995158921631
+    3
     >>> f()
-    0.056551367726808688
+    2
     >>> g()
-    0.084871995158921631
+    3
     """
 
     with _caches_mutex:

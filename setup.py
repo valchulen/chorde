@@ -58,7 +58,7 @@ setup(
   packages = packages,
   package_dir = {'':'lib'},
   
-  tests_require = ['nose'],
+  tests_require = 'nose',
   test_suite = 'tests',
   
   classifiers=[
