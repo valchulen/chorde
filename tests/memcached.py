@@ -133,6 +133,11 @@ class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
         client.put(k, 15, 10)
         self.assertEqual(client.get(k), 15)
 
+    def testNullKey(self):
+        client = self.client
+        client.put(None, 15, 10)
+        self.assertEqual(client.get(None), 15)
+
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
 
@@ -143,6 +148,18 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
         self.rclient.client.flush_all()
 
     testStats = None
+
+@skipIfNoMemcached
+class BuiltinNamespaceMemcacheTest(MemcacheTest):
+    def setUpClient(self):
+        from chorde.clients.memcached import MemcachedClient
+        import threading
+        rv = MemcachedClient([DEFAULT_CLIENT_ADDR], 
+            checksum_key = "test",
+            namespace = "testns",
+            encoding_cache = threading.local() )
+        rv.client.flush_all()
+        return rv
 
 @skipIfNoMemcached
 class FastMemcacheTest(CacheClientTestMixIn, unittest.TestCase):
