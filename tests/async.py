@@ -38,6 +38,9 @@ class FutureTest(unittest.TestCase):
 class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
     # Hard to guarantee LRU logic with an async writing queue
     is_lru = False
+
+    # Capacity is a tuple, and lazy-init makes it not stable, so can't test that
+    meaningful_capacity = False
     
     def setUpClient(self):
         from chorde.clients.inproc import InprocCacheClient
@@ -118,6 +121,9 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
     testLimit = unittest.skip("non-deterministic")(CacheClientTestMixIn.testLimit)
 
 class AsyncCustomPoolTest(AsyncTest):
+    # Capacity is a tuple, and lazy-init makes it not stable, so can't test that
+    meaningful_capacity = False
+    
     def setUpClient(self):
         from chorde.clients.inproc import InprocCacheClient
         from chorde.clients.async import AsyncWriteCacheClient

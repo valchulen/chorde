@@ -40,6 +40,7 @@ else:
 class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
     is_lru = False
     capacity_means_entries = False
+    meaningful_capacity = False # controlled externally so it may not be consistent for testing purposes
     
     def setUpClient(self):
         from chorde.clients.memcached import MemcachedClient
@@ -61,6 +62,11 @@ class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
         val = client.get(4, None)
         self.assertIs(client.get(4, None), val)
 
+    def testStats(self):
+        stats = self.client.stats
+        self.assertIsNotNone(stats)
+        self.assertIsInstance(stats, (dict,list,tuple))
+
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
 
@@ -70,10 +76,13 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
         # Manually clear memcached
         self.rclient.client.flush_all()
 
+    testStats = None
+
 @skipIfNoMemcached
 class FastMemcacheTest(CacheClientTestMixIn, unittest.TestCase):
     is_lru = False
     capacity_means_entries = False
+    meaningful_capacity = False # controlled externally so it may not be consistent for testing purposes
     
     def setUpClient(self):
         from chorde.clients.memcached import FastMemcachedClient
@@ -124,3 +133,5 @@ class NamespaceFastMemcacheTest(NamespaceWrapperTestMixIn, FastMemcacheTest):
     def tearDown(self):
         # Manually clear memcached
         self.rclient.client.flush_all()
+
+    testStats = None

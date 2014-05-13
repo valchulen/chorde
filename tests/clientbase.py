@@ -9,6 +9,7 @@ class CacheClientTestMixIn:
     capacity_means_entries = True
     is_lru = True
     contains_touches = True
+    meaningful_capacity = True
     
     def setUpClient(self):
         raise NotImplementedError
@@ -25,6 +26,23 @@ class CacheClientTestMixIn:
     def tearDown(self):
         # In case it's persistent
         self.client.clear()
+
+    def testUsageAndCapacity(self):
+        client = self.client
+        capacity = client.capacity
+        usage = client.usage
+        client.put(1, 2, 3)
+        capacity2 = client.capacity
+        usage2 = client.usage
+
+        if self.meaningful_capacity:
+            self.assertEqual(capacity, capacity2)
+            self.assertGreater(usage2, usage)
+        else:
+            self.assertIsNotNone(capacity)
+            self.assertIsNotNone(capacity2)
+            self.assertIsNotNone(usage)
+            self.assertIsNotNone(usage2)
 
     def testPut(self):
         client = self.client
