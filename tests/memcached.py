@@ -88,6 +88,32 @@ class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
         client.put(k, "patadecabra2", 10)
         self.assertEqual(client.get(k), "patadecabra2")
 
+    def testUTFStringKey(self):
+        client = self.client
+        k = u"ábracadíbra".encode("utf8")
+        client.put(k, "patadecabra", 10)
+        self.assertEqual(client.get(k), "patadecabra")
+
+    def testLongUTFStringKey(self):
+        client = self.client
+        k = u"ábracadíbra".encode("utf8")
+        k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
+        client.put(k, "patadecabra2", 10)
+        self.assertEqual(client.get(k), "patadecabra2")
+
+    def testUnicodeStringKey(self):
+        client = self.client
+        k = u"ábracadíbra"
+        client.put(k, "patadecabra", 10)
+        self.assertEqual(client.get(k), "patadecabra")
+
+    def testLongUnicodeStringKey(self):
+        client = self.client
+        k = u"ábracadíbra"
+        k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
+        client.put(k, "patadecabra2", 10)
+        self.assertEqual(client.get(k), "patadecabra2")
+
     def testSpacedStringKey(self):
         client = self.client
         k = "abra cadabra"
