@@ -36,6 +36,9 @@ elif not memcachedReachable():
 else:
     skipIfNoMemcached = lambda c : c
 
+class K:
+    pass
+
 @skipIfNoMemcached
 class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
     is_lru = False
@@ -67,6 +70,43 @@ class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
         self.assertIsNotNone(stats)
         self.assertIsInstance(stats, (dict,list,tuple))
 
+    def testTupleKey(self):
+        client = self.client
+        client.put((1,2), 2, 10)
+        self.assertEqual(client.get((1,2)), 2)
+
+    def testStringKey(self):
+        client = self.client
+        k = "abracadabra"
+        client.put(k, "patadecabra", 10)
+        self.assertEqual(client.get(k), "patadecabra")
+
+    def testLongStringKey(self):
+        client = self.client
+        k = "abracadabra" 
+        k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
+        client.put(k, "patadecabra2", 10)
+        self.assertEqual(client.get(k), "patadecabra2")
+
+    def testSpacedStringKey(self):
+        client = self.client
+        k = "abra cadabra"
+        client.put(k, "patadecabra3", 10)
+        self.assertEqual(client.get(k), "patadecabra3")
+
+    def testSpacedLongStringKey(self):
+        client = self.client
+        k = "abra cadabra" 
+        k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
+        client.put(k, "patadecabra4", 10)
+        self.assertEqual(client.get(k), "patadecabra4")
+
+    def testObjectKey(self):
+        client = self.client
+        k = K()
+        client.put(k, 15, 10)
+        self.assertEqual(client.get(k), 15)
+
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
 
@@ -95,6 +135,13 @@ class FastMemcacheTest(CacheClientTestMixIn, unittest.TestCase):
 
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
+
+    # Not supported by the fast client
+    testTupleKey = None
+    testLongStringKey = None
+    testSpacedStringKey = None
+    testSpacedLongStringKey = None
+    testObjectKey = None
 
 @skipIfNoMemcached
 class FastFailFastMemcacheTest(FastMemcacheTest):
