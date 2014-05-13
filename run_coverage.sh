@@ -1,4 +1,7 @@
 #!/bin/sh
-rm ./coverage/*.html ./coverage/*.js ./coverage/*.css ./coverage/keybd_*.png
-nosetests-2.7 -v --with-coverage --cover-erase --cover-html --cover-package=chorde --cover-html-dir=./coverage tests/*.py
+rm -f ./coverage/*.html ./coverage/*.js ./coverage/*.css ./coverage/keybd_*.png ./coverage/status.dat
+rm -f .coverage
+coverage-2.7 run --branch setup.py test
+coverage-2.7 report $(find lib/chorde -name '*.py')
+coverage-2.7 html -d ./coverage $(find lib/chorde -name '*.py')
 
