@@ -23,6 +23,65 @@ class ThreadpoolTest(unittest.TestCase):
     @staticmethod
     def join_continue(pool, timeout):
         pool.join(timeout)
+
+    def testCleanupCallbacks(self):
+        if not hasattr(self.pool, 'register_cleanup_callback'):
+            self.skipTest("Not implemented")
+        called = set()
+        def callback():
+            called.add(None)
+        self.pool.register_cleanup_callback(callback)
+        self.pool.apply(time.time)
+        self.assertTrue(called)
+    
+    def testCleanupCallbackErrors(self):
+        if not hasattr(self.pool, 'register_cleanup_callback'):
+            self.skipTest("Not implemented")
+        def raiser():
+            raise AssertionError
+        self.pool.register_cleanup_callback(raiser)
+        self.pool.apply(time.time, timeout=0.1)
+        time.sleep(0.1)
+        self.pool.apply(time.time, timeout=0.1)
+        # Just not erroring out or blocking
+    
+    def testLazyStart(self):
+        if not hasattr(self.pool, 'check_started'):
+            self.skipTest("Not implemented")
+        self.assertFalse(self.pool.check_started())
+        self.pool.apply(time.time, timeout=0.1)
+        self.assertTrue(self.pool.check_started())
+    
+    def testExplicitStart(self):
+        if not hasattr(self.pool, 'check_started'):
+            self.skipTest("Not implemented")
+        self.assertFalse(self.pool.check_started())
+        self.pool.start()
+        self.assertTrue(self.pool.check_started())
+    
+    def testWorkerRespawnOnFork(self):
+        if not hasattr(self.pool, '_ThreadPool__pid'):
+            self.skipTest("Not implemented")
+        
+        self.pool.start()
+        workers = getattr(self.pool, '_ThreadPool__workers')
+        nworkers = len(workers)
+        self.assertTrue(self.pool.is_started())
+        self.assertTrue(nworkers > 0)
+
+        # Simulate a fork (pid change, workers die)
+        setattr(self.pool, '_ThreadPool__pid', 0)
+        workers[0].terminate(wait=False)
+        self.assertFalse(self.pool.is_started())
+
+        # Make sure it re-starts
+        self.pool.assert_started()
+        self.assertTrue(self.pool.is_started())
+        
+        workers2 = getattr(self.pool, '_ThreadPool__workers')
+        nworkers2 = len(workers2)
+        self.assertEqual(nworkers, nworkers2)
+        self.assertFalse(workers2[0] is workers[0])
     
     def testAsyncLatency(self):
         for i in xrange(100):
@@ -62,6 +121,13 @@ class ThreadpoolTest(unittest.TestCase):
         total_counts = self.pool.apply(sum, (counts.itervalues(),))
         self.assertEqual(total_counts, N*M)
 
+class ThreadpoolSubqueueWrapperTest(ThreadpoolTest):
+    def setUp(self):
+        self.pool = ThreadPool().subqueue("something")
+    
+    def tearDown(self):
+        self.join_close(self.pool.pool, 60)
+
 class ThreadpoolMultiprocessingCompatiblitityTest(ThreadpoolTest):
     def setUp(self):
         self.pool = multiprocessing.pool.ThreadPool()
@@ -86,6 +152,12 @@ class MultiQueueTest(unittest.TestCase):
 
     def tearDown(self):
         self.pool.terminate()
+
+    def testQueuePrio(self):
+        self.pool.set_queueprio(1, "a")
+        self.pool.set_queueprio(5, "b")
+        self.assertEqual(1, self.pool.queueprio("a"))
+        self.assertEqual(5, self.pool.queueprio("b"))
     
     def testFairness(self):
         # Calibrate for low-latency (needed by the test)
