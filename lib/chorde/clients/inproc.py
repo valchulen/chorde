@@ -123,8 +123,10 @@ def startCacheJanitorThread(sleep_interval=3600, purge_timeout=0):
     return thread
 
 class InprocCacheClient(base.BaseCacheClient):
-    def __init__(self, size):
-        self.store = Cache(size)
+    def __init__(self, size, store_class = None):
+        if store_class is None:
+            store_class = Cache
+        self.store = store_class(size)
         _register_inproc(self)
 
     @property
