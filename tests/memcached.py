@@ -150,16 +150,23 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
     testStats = None
 
 @skipIfNoMemcached
-class BuiltinNamespaceMemcacheTest(MemcacheTest):
-    def setUpClient(self):
+class BuiltinNamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
+    def _setUpClient(self):
         from chorde.clients.memcached import MemcachedClient
         import threading
-        rv = MemcachedClient([DEFAULT_CLIENT_ADDR], 
-            checksum_key = "test",
-            namespace = "testns",
+        self.rclient = self.setUpClient()
+        self.rclient.client.flush_all()
+        self.bclient = MemcachedClient([DEFAULT_CLIENT_ADDR], 
+            checksum_key = "test2",
+            namespace = "testns1",
             encoding_cache = threading.local() )
-        rv.client.flush_all()
-        return rv
+        return MemcachedClient([DEFAULT_CLIENT_ADDR], 
+            checksum_key = "test3",
+            namespace = "testns2",
+            encoding_cache = threading.local() )
+
+    # We don't implement clear
+    testNamespaceClear = None
 
 @skipIfNoMemcached
 class FastMemcacheTest(CacheClientTestMixIn, unittest.TestCase):

@@ -203,6 +203,30 @@ class NamespaceWrapperTestMixIn(CacheClientTestMixIn):
         self.assertEqual(self.bclient.get(4), 6)
         self.assertEqual(self.rclient.get(4), 7)
 
+    def testNamespaceClear(self):
+        self.client.put(1, 2, 10)
+        self.bclient.put(2, 3, 10)
+        self.rclient.put(3, 4, 10)
+        self.client.put(4, 5, 10)
+        self.bclient.put(4, 6, 10)
+        self.rclient.put(4, 7, 10)
+        
+        self.assertEqual(self.client.get(1), 2)
+        self.assertRaises(CacheMissError, self.bclient.get, 1)
+        self.assertRaises(CacheMissError, self.rclient.get, 1)
+        
+        self.assertRaises(CacheMissError, self.client.get, 2)
+        self.assertEqual(self.bclient.get(2), 3)
+        self.assertRaises(CacheMissError, self.rclient.get, 2)
+        
+        self.assertRaises(CacheMissError, self.client.get, 3)
+        self.assertRaises(CacheMissError, self.bclient.get, 3)
+        self.assertEqual(self.rclient.get(3), 4)
+        
+        self.assertEqual(self.client.get(4), 5)
+        self.assertEqual(self.bclient.get(4), 6)
+        self.assertEqual(self.rclient.get(4), 7)
+
         self.client.clear()
         self.assertRaises(CacheMissError, self.client.get, 4)
         self.assertEqual(self.bclient.get(4), 6)
