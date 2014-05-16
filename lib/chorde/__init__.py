@@ -1,5 +1,6 @@
 from .sPickle import SecurePickler, SecureUnpickler
 from .clients import *
+from .clients.inproc import Cache as LRUCache
 
 try:
     from .mq import *
