@@ -32,6 +32,7 @@ class ThreadpoolTest(unittest.TestCase):
             called.add(None)
         self.pool.register_cleanup_callback(callback)
         self.pool.apply(time.time)
+        time.sleep(0.01)
         self.assertTrue(called)
     
     def testCleanupCallbackErrors(self):
