@@ -66,7 +66,11 @@ class Defer(object):
     def done(self, getattr=getattr):
         future = getattr(self, 'future', None)
         if future is not None and not future.done():
-            future.set(getattr(self, 'rv', None))
+            rv = getattr(self, 'rv', NONE)
+            if rv is _NONE or rv is NONE:
+                future.exception(CancelledError())
+            else:
+                future.set(rv)
 
 _global_cleanup_tasks = []
 
