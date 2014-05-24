@@ -140,7 +140,11 @@ def cached(client, ttl,
     have a thread-unsafe client you want to make safe, use a (ReadWrite)SyncAdapter. Since synchronization adapters 
     only apply to store manipuation functions, and not the wrapped function, deadlocks cannot occur.
 
-    The decorated function will provide additional behavior through attributes:
+    The decorated function will provide additional behavior through 
+
+    Attributes
+    ----------
+        
         client: the backing cache client. The provided client is never used as-is, and instead is wrapped in a 
             NamespaceWrapper. This is it.
 
@@ -214,7 +218,9 @@ def cached(client, ttl,
             sync_misses and sync_errors are caller-visible misses or exceptions. The difference with 
             misses and errors respectively are the number of caller-invisible misses or errors.
 
-    Params
+    Parameters
+    ----------
+    
         client: the cache store client to be used
 
         ttl: the time, in seconds, during which values remain valid.
