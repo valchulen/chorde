@@ -127,6 +127,7 @@ class InprocCacheClient(base.BaseCacheClient):
         if store_class is None:
             store_class = Cache
         self.store = store_class(size)
+        self.purgecount = 0
         _register_inproc(self)
 
     @property
@@ -216,7 +217,10 @@ class InprocCacheClient(base.BaseCacheClient):
             # (when wrapped inside a ReadWriteSyncAdapter), otherwise weird deadlocks
             # could arise.
             retentions_append(cache_pop(k, None))
-        self.store.defrag()
+        self.purgecount += 1
+        if self.purgecount > 16:
+            self.store.defrag()
+            self.purgecount = 0
 
         # Returning them makes them live at least until the sync-wrapped method ends
         return retentions
