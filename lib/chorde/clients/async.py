@@ -112,6 +112,7 @@ class AsyncCacheWriterPool:
         self.threadset = set()
         self.done_event = threading.Event()
         self.overflow = overflow
+        self._wself = weakref.ref(self)
 
         self.tl = threading.local()
         self.cleanup_tasks = []
@@ -266,7 +267,7 @@ class AsyncCacheWriterPool:
             # Oops, recursive call, bad idea
             # Run inline
             self.queueset[key] = value, ttl
-            self._writer(weakref.ref(self), key)
+            self._writer(self._wself, key)
         else:
             if key not in self.queueset:
                 if self.overflow:
@@ -309,7 +310,7 @@ class AsyncCacheWriterPool:
         if key not in queueset:
             if not hasattr(value, 'undefer') or key not in workset:
                 queueset[key] = value, ttl
-                self.threadpool.apply_async(self._writer, (weakref.ref(self), key))
+                self.threadpool.apply_async(self._writer, (self._wself, key))
             else:
                 # else, bad luck, we assume defers compute, so if two
                 # defers go in concurrently, only the first will be invoked,
@@ -991,6 +992,7 @@ class AsyncCacheProcessor(object):
         self.logger = logging.getLogger("chorde")
         self.workers = workers
         self.maxqueue = maxqueue
+        self._wself = weakref.ref(self)
         if callable(threadpool):
             self._threadpool_factory = threadpool
             self._threadpool = None
@@ -1032,7 +1034,7 @@ class AsyncCacheProcessor(object):
                 cfuture.cancel()
             else:
                 # I'm the one queueing
-                wself = weakref.ref(self)
+                wself = self._wself
                 def wrapped_action():
                     def clean():
                         if coalesce is not None and coalesce_key is not NONE:
