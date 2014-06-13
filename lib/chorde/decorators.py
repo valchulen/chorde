@@ -461,7 +461,7 @@ def cached(client, ttl,
             rv, rvttl = client.getTtl(callkey, __NONE)
 
             if (rv is __NONE or rvttl < eff_async_ttl) and not client.contains(callkey, eff_async_ttl):
-                if renew_time is not None:
+                if renew_time is not None and rv is not __NONE:
                     nclient.renew(callkey, eff_async_ttl + renew_time)
                 # Launch background update
                 _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
@@ -525,7 +525,7 @@ def cached(client, ttl,
                         # If it's stale, though, start an async refresh
                         if value[1] < eff_async_ttl and not nclient.contains(callkey, eff_async_ttl, 
                                 **async_lazy_recheck_kwargs):
-                            if renew_time is not None:
+                            if renew_time is not None and (rv is not __NONE or lazy_kwargs):
                                 nclient.renew(callkey, eff_async_ttl + renew_time)
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_miss():
@@ -545,6 +545,8 @@ def cached(client, ttl,
                         frv._set_nothreads(rv)
                     def on_value(contains):  # lint:ok
                         if not contains:
+                            if renew_time is not None and (rv is not __NONE or lazy_kwargs):
+                                nclient.renew(callkey, eff_async_ttl + renew_time)
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                         else:
                             # just promote
@@ -619,7 +621,7 @@ def cached(client, ttl,
                         # If it's stale, though, start an async refresh
                         if value[1] < eff_async_ttl and not client.contains(callkey, eff_async_ttl, 
                                 **async_lazy_recheck_kwargs):
-                            if renew_time is not None:
+                            if renew_time is not None and (rv is not __NONE or lazy_kwargs):
                                 nclient.renew(callkey, eff_async_ttl + renew_time)
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_miss():
@@ -641,6 +643,8 @@ def cached(client, ttl,
                         frv._set_nothreads(rv)
                     def on_value(contains):  # lint:ok
                         if not contains:
+                            if renew_time is not None and (rv is not __NONE or lazy_kwargs):
+                                nclient.renew(callkey, eff_async_ttl + renew_time)
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                         else:
                             # just promote
@@ -811,7 +815,7 @@ def cached(client, ttl,
                         rv, rvttl = nclient.getTtl(callkey, __NONE, ttl_skip = eff_async_ttl, **async_lazy_recheck_kwargs)
                         if (rv is __NONE or rvttl < eff_async_ttl) and not nclient.contains(callkey, eff_async_ttl, 
                                 **async_lazy_recheck_kwargs):
-                            if renew_time is not None:
+                            if renew_time is not None and (rv is not __NONE or lazy_kwargs):
                                 nclient.renew(callkey, eff_async_ttl + renew_time)
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                         return base.NONE
