@@ -157,6 +157,15 @@ class LRUCache(object):
             del self.emap[key]
             del self.pqueue[-1]
 
+    def cas(self, key, oldvalue, newvalue):
+        if key in self.emap:
+            node = self.emap[key]
+            if node.value is oldvalue:
+                node.value = newvalue
+                self.decrease(node)
+            elif self.touch_on_read:
+                self.decrease(node)
+
     def get(self, key, deflt = None):
         if key not in self.emap:
             return deflt

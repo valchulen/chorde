@@ -513,6 +513,29 @@ class FilesCacheClient(base.BaseCacheClient):
                 # Someone's purging already
                 pass
 
+    def renew(self, key, ttl):
+        key = self.key_pickler(key)
+        kpath = self._mkpath(key)
+
+        targetpath = os.path.join(self.basepath, *kpath)
+        keypath = targetpath + ".key"
+        targetdir = os.path.join(self.basepath, *kpath[:-1])
+
+        if not os.path.exists(targetdir):
+            return
+
+        if os.path.exists(keypath):
+            # Huh... compare
+            if os.path.getsize(keypath) == len(key):
+                with open(keypath) as ekey:
+                    if ekey.read() == key:
+                        # Touch
+                        now = time.time()
+                        kttl = os.path.getmtime(keypath)
+                        nttl = ttl + now
+                        if kttl < nttl:
+                            os.utime(keypath, (now, now + ttl))
+
     def add(self, key, value, ttl):
         rv = self._put(key, value, ttl, False)
         

@@ -69,7 +69,13 @@ class TieredInclusiveClient(BaseCacheClient):
             # Simple case
             for ttl_fraction, client in izip(fractions, clients):
                 client.put(key, value, ttl * ttl_fraction)
-    
+
+    def renew(self, key, ttl):
+        clients = self.clients
+        fractions = self.ttl_fractions
+        for ttl_fraction, client in izip(fractions, clients):
+            client.renew(key, ttl * ttl_fraction)
+
     def add(self, key, value, ttl):
         clients = self.clients
         fractions = self.ttl_fractions

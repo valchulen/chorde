@@ -25,6 +25,7 @@ class _DELETE:pass
 class _EXPIRE:pass
 class _PURGE:pass
 class _CLEAR:pass
+class _RENEW:pass
 
 class Defer(object):
     """
@@ -178,6 +179,12 @@ class AsyncCacheWriterPool:
                     self.client.delete(key)
                 except:
                     self.logger.error("Error deleting key", exc_info=True)
+
+            elif value is _RENEW:
+                try:
+                    self.client.renew(key, ttl)
+                except:
+                    self.logger.error("Error renewing key", exc_info=True)
             
             elif value is _EXPIRE:
                 try:
@@ -413,6 +420,9 @@ class AsyncCacheWriterPool:
     def put(self, key, value, ttl):
         self.enqueue(key, value, ttl)
 
+    def renew(self, key, ttl):
+        self.enqueue(key, _RENEW, ttl)
+
     def delete(self, key):
         self.enqueue(key, _DELETE)
 
@@ -500,6 +510,10 @@ class AsyncWriteCacheClient(BaseCacheClient):
         self.assert_started()
         self.writer.put(key, value, ttl)
     
+    def renew(self, key, ttl):
+        self.assert_started()
+        self.writer.renew(key, ttl)
+    
     def delete(self, key):
         self.assert_started()
         self.writer.delete(key)
@@ -536,6 +550,8 @@ class AsyncWriteCacheClient(BaseCacheClient):
                 elif value is _EXPIRE:
                     # Expiration just sets the TTL
                     ettl = -1
+                elif value is _RENEW:
+                    ettl = ttl
                 elif not hasattr(value, 'undefer'):
                     return value, ttl
             # Yep, _NONE when querying the writer, because we don't want
@@ -1150,6 +1166,9 @@ class AsyncCacheProcessor(object):
     def put(self, key, value, ttl):
         return self._enqueue(functools.partial(self.client.put, key, value, ttl))
 
+    def renew(self, key, ttl):
+        return self._enqueue(functools.partial(self.client.renew, key, ttl))
+
     def add(self, key, value, ttl):
         return self._enqueue(functools.partial(self.client.add, key, value, ttl))
 
@@ -1247,6 +1266,9 @@ class WrappedCacheProcessor(object):
 
     def put(self, key, value, ttl):
         return self.processor.do_async(self.client.put, key, value, ttl)
+
+    def renew(self, key, ttl):
+        return self.processor.do_async(self.client.renew, key, ttl)
 
     def add(self, key, value, ttl):
         return self.processor.do_async(self.client.add, key, value, ttl)

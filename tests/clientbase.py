@@ -64,6 +64,21 @@ class CacheClientTestMixIn:
         self.assertEqual(client.get(3, None), None)
         self.assertEqual(client.get(3, 1), 1)
 
+    def testRenew(self):
+        client = self.client
+        client.put(14, 10, 10)
+        time.sleep(0.01)
+        self.assertEqual(client.get(14, None), 10)
+        self.assertLess(client.getTtl(14, None)[1], 10)
+        client.renew(14, 1)
+        time.sleep(0.01)
+        self.assertEqual(client.get(14, None), 10)
+        self.assertGreater(client.getTtl(14, None)[1], 1)
+        client.renew(14, 20)
+        time.sleep(0.01)
+        self.assertEqual(client.get(14, None), 10)
+        self.assertGreater(client.getTtl(14, None)[1], 10)
+
     def testContains(self):
         client = self.client
         self.assertFalse(client.contains(4))

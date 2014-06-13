@@ -45,6 +45,15 @@ class BaseCacheClient(object):
     def put(self, key, value, ttl):
         raise NotImplementedError
 
+    @abstractmethod
+    def renew(self, key, ttl):
+        """
+        If there is a value for that key in the cache, and if its TTL is lower
+        than the specified value, it will change its TTL in an atomic fashion
+        and extend the life of that value.
+        """
+        raise NotImplementedError
+
     def add(self, key, value, ttl):
         """
         Like put, sets a value, but add only does so if there wasn't a valid
@@ -153,6 +162,10 @@ class ReadWriteSyncAdapter(BaseCacheClient):
         return self.client.put(key, value, ttl)
 
     @serialize_write
+    def renew(self, key, ttl):
+        return self.client.renew(key, ttl)
+
+    @serialize_write
     def add(self, key, value, ttl):
         return self.client.add(key, value, ttl)
 
@@ -210,6 +223,10 @@ class SyncAdapter(BaseCacheClient):
     @serialize
     def put(self, key, value, ttl):
         return self.client.put(key, value, ttl)
+
+    @serialize
+    def renew(self, key, ttl):
+        return self.client.renew(key, ttl)
 
     @serialize
     def add(self, key, value, ttl):
@@ -284,6 +301,11 @@ class DecoratedWrapper(BaseCacheClient):
         if self.value_decorator:
             value = self.value_decorator(value)
         return self.client.put(key, value, ttl)
+
+    def renew(self, key, ttl):
+        if self.key_decorator:
+            key = self.key_decorator(key)
+        return self.client.renew(key, ttl)
 
     def add(self, key, value, ttl):
         if self.key_decorator:

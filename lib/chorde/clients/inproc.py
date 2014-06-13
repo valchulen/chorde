@@ -142,8 +142,16 @@ class InprocCacheClient(base.BaseCacheClient):
     def usage(self):
         return len(self.store)
 
-    def put(self, key, value, ttl):
-        self.store[key] = (value, time.time() + ttl)
+    def put(self, key, value, ttl, time = time.time):
+        self.store[key] = (value, time() + ttl)
+
+    def renew(self, key, ttl, baseNONE = base.NONE, time = time.time):
+        origvalue = self.store.get(key, baseNONE)
+        if origvalue is not baseNONE:
+            value, kttl = origvalue
+            ttl += time()
+            if kttl < ttl:
+                self.store.cas(key, origvalue, (value, ttl))
 
     def add(self, key, value, ttl):
         now = time.time()

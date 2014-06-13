@@ -14,6 +14,8 @@ from threading import Event, Thread, Lock
 from .base import BaseCacheClient, CacheMissError, NONE
 from .inproc import Cache
 
+_RENEW = object()
+
 try:
     import cPickle
 except ImportError:
@@ -430,7 +432,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         
         return value
     
-    def _getTtl(self, key, default, decode = True, ttl_skip = None, short_key = None, pages = None):
+    def _getTtl(self, key, default, decode = True, ttl_skip = None, short_key = None, pages = None, 
+            method = None, multi_method = None,
+            force_all_pages = False):
         now = time.time()
 
         if decode:
@@ -452,8 +456,12 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if short_key is None:
             short_key,exact = self.shorten_key(key)
 
+        if method is None:
+            method = self.client.get
+            multi_method = self.client.get_multi
+
         if pages is None:
-            pages = { 0 : self.client.get(short_key+"|0") }
+            pages = { 0 : method(short_key+"|0") }
         if pages[0] is None or not isinstance(pages[0],tuple) or len(pages[0]) != 5:
             return default, -1
         
@@ -461,6 +469,11 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         npages = pages[0][0]
 
         if not decode:
+            if force_all_pages and npages > 1:
+                if multi_method is not None:
+                    pages.update( multi_method(xrange(1,npages), key_prefix=short_key+"|") )
+                else:
+                    pages.update([ method("%s|%d" % (short_key,i)) for i in xrange(1,npages) ])
             return pages, ttl - now
         elif ttl_skip is not None and ttl < ttl_skip:
             return default, -1
@@ -470,7 +483,10 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             return default, -1
         
         if npages > 1:
-            pages.update( self.client.get_multi(xrange(1,npages), key_prefix=short_key+"|") )
+            if multi_method:
+                pages.update( multi_method(xrange(1,npages), key_prefix=short_key+"|") )
+            else:
+                pages.update([ method("%s|%d" % (short_key,i)) for i in xrange(1,npages) ])
         
         try:
             cached_key, cached_value = self.decode_pages(pages, key)
@@ -501,6 +517,22 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             raise CacheMissError, key
         else:
             return rv
+
+    def renew(self, key, ttl):
+        short_key,exact = self.shorten_key(key)
+        raw_pages, store_ttl = self._getTtl(key, NONE, False, short_key = short_key, 
+            method = self.client.gets)
+        if raw_pages is not NONE and store_ttl < ttl:
+            now = time.time()
+            for i,page in raw_pages.iteritems():
+                new_page = page[:2] + (ttl + now,) + page[3:]
+                success = self.client.cas("%s|%d" % (short_key,i), new_page, ttl)
+                if success:
+                    cached = self._succeedfast_cache.get(key, NONE)
+                    if cached is not NONE:
+                        (value, _), cached_time = cached
+                        ncached = ((value, ttl + now), now)
+                        self._succeedfast_cache.cas(key, cached, ncached)
     
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
@@ -751,6 +783,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             # Deletions are value=NONE
             plan = collections.defaultdict(dict)
             deletions = []
+            renewals = []
             quicknow = time.time()
             for i in xrange(2):
                 # It can explode if a thread lingers, so restart if that happens
@@ -759,10 +792,15 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                         key = self.encode_key(key)
                         if value is NONE:
                             deletions.append(key)
+                        elif value is _RENEW:
+                            renewals.append((key, ttl))
                         else:
                             plan[ttl][key] = self.encode(key, ttl+quicknow, value)
                     break
                 except RuntimeError, e:
+                    del deletions[:]
+                    del renewals[:]
+                    plan.clear()
                     last_error = e
             else:
                 # Um...
@@ -770,7 +808,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                 plan = deletions = None
             last_error = None
 
-            if plan or deletions:
+            if plan or deletions or renewals:
                 if deletions:
                     try:
                         self.client.delete_multi(deletions)
@@ -782,13 +820,22 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                             self.client.set_multi(batch, ttl)
                         except:
                             logging.error("Exception in background writer", exc_info = True)
+                if renewals:
+                    for key, ttl in renewals:
+                        value = self.client.gets(key)
+                        if value is not None:
+                            value, kttl = self.decode(value)
+                            nttl = ttl + quicknow
+                            if kttl < nttl:
+                                value = self.encode(key, nttl, value)
+                                self.client.cas(key, value, ttl)
                 
                 # Let us be suicidal
-                del self, plan, deletions
+                del self, plan, deletions, renewals
                 workset.clear()
                 del workset
             
-            key = value = ttl = batch = None
+            key = value = ttl = kttl = nttl = batch = None
             workev.wait(1)
     
     def encode_key(self, key):
@@ -810,7 +857,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             value = NONE
         else:
             value = self.queueset.get(key, self.workset.get(key, NONE))
-        if value is NONE:
+        if value is NONE or value[0] is _RENEW:
             now = time.time()
             
             # Not in queue, get from memcached, and decode
@@ -868,6 +915,18 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                 del self._failfast_cache[key]
             except:
                 pass
+        
+    def renew(self, key, ttl):
+        # check the work queue
+        value = self.queueset.get(key, NONE)
+        if value is not NONE and value[0] is not NONE:
+            # No need to be atomic, user-visible behavior is unchanged by concurrency
+            value, kttl = value
+            if kttl < ttl:
+                self.queueset[key] = (value[0], ttl)
+        else:
+            # set_multi all pages in one roundtrip
+            self._enqueue_put(key, _RENEW, ttl)
         
     def add(self, key, value, ttl):
         # set_multi all pages in one roundtrip

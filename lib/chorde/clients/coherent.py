@@ -205,6 +205,9 @@ class CoherentWrapperClient(BaseCacheClient):
             if deferred is not None:
                 deferred.done()
     
+    def renew(self, key, ttl):
+        self.client.renew(key, ttl)
+
     def delete(self, key):
         self.client.delete(key)
         

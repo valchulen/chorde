@@ -226,6 +226,17 @@ cdef class LRUCache:
     def __delitem__(LRUCache self not None, key):
         self.c__delitem__(key)
 
+    def cas(LRUCache self not None, object key, object oldvalue, object newvalue):
+        cdef _node node
+        
+        if key in self.emap:
+            node = self.emap[key]
+            if node.value is oldvalue:
+                node.value = newvalue
+                self.c_decrease(node)
+            elif self.touch_on_read:
+                self.c_decrease(node)
+
     def get(LRUCache self not None, object key, object deflt = None):
         cdef _node node
 
