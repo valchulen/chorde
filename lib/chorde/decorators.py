@@ -121,6 +121,7 @@ def cached(client, ttl,
         async_processor = None,
         async_processor_workers = None,
         async_processor_threadpool = None,
+        renew_time = None,
         future_sync_check = None,
         initialize = None,
         decorate = None,
@@ -225,6 +226,10 @@ def cached(client, ttl,
         client: the cache store client to be used
 
         ttl: the time, in seconds, during which values remain valid.
+
+        renew_time: if not None, the time, in seconds, to add to the TTL when an item is scheduled for
+            refresh. This renews the current item at a cost, but prevents concurrent readers from attempting
+            their own refresh in a rather simple way, short of using a coherence protocol.
 
         key: (optional) A key derivation function, that will take the same arguments as the underlying function, 
             and should return a key suitable to the client. If not provided, a default implementation that will
@@ -455,6 +460,8 @@ def cached(client, ttl,
             rv, rvttl = client.getTtl(callkey, __NONE)
 
             if (rv is __NONE or rvttl < eff_async_ttl) and not client.contains(callkey, eff_async_ttl):
+                if renew_time is not None:
+                    nclient.renew(callkey, eff_async_ttl + renew_time)
                 # Launch background update
                 _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
             elif rv is not __NONE:
@@ -517,6 +524,8 @@ def cached(client, ttl,
                         # If it's stale, though, start an async refresh
                         if value[1] < eff_async_ttl and not nclient.contains(callkey, eff_async_ttl, 
                                 **async_lazy_recheck_kwargs):
+                            if renew_time is not None:
+                                nclient.renew(callkey, eff_async_ttl + renew_time)
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_miss():
                         _fput_deferred(frv, client, af, callkey, eff_ttl(), *p, **kw)
@@ -609,6 +618,8 @@ def cached(client, ttl,
                         # If it's stale, though, start an async refresh
                         if value[1] < eff_async_ttl and not client.contains(callkey, eff_async_ttl, 
                                 **async_lazy_recheck_kwargs):
+                            if renew_time is not None:
+                                nclient.renew(callkey, eff_async_ttl + renew_time)
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_miss():
                         # Ok, real miss, report it and start the computation
@@ -799,6 +810,8 @@ def cached(client, ttl,
                         rv, rvttl = nclient.getTtl(callkey, __NONE, ttl_skip = eff_async_ttl, **async_lazy_recheck_kwargs)
                         if (rv is __NONE or rvttl < eff_async_ttl) and not nclient.contains(callkey, eff_async_ttl, 
                                 **async_lazy_recheck_kwargs):
+                            if renew_time is not None:
+                                nclient.renew(callkey, eff_async_ttl + renew_time)
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                         return base.NONE
 
@@ -991,6 +1004,7 @@ if not no_coherence:
             async_processor = None,
             async_processor_workers = None,
             async_processor_threadpool = None,
+            renew_time = None,
             future_sync_check = None,
             initialize = None,
             decorate = None,
@@ -1127,6 +1141,7 @@ if not no_coherence:
                 async_processor = async_processor,
                 async_processor_workers = async_processor_workers,
                 async_processor_threadpool = async_processor_threadpool,
+                renew_time = renew_time,
                 future_sync_check = future_sync_check,
                 ttl_spread = ttl_spread,
                 _eff_async_ttl = eff_async_ttl,
