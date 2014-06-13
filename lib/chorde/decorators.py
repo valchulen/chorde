@@ -229,7 +229,8 @@ def cached(client, ttl,
 
         renew_time: if not None, the time, in seconds, to add to the TTL when an item is scheduled for
             refresh. This renews the current item at a cost, but prevents concurrent readers from attempting
-            their own refresh in a rather simple way, short of using a coherence protocol.
+            their own refresh in a rather simple way, short of using a coherence protocol. Roughly
+            equivalent to the dogpile pattern with a timeout as specified.
 
         key: (optional) A key derivation function, that will take the same arguments as the underlying function, 
             and should return a key suitable to the client. If not provided, a default implementation that will
