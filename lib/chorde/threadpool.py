@@ -100,6 +100,7 @@ class ThreadPool:
         self.local = threading.local()
         self.queues = collections.defaultdict(list)
         self.queue_weights = {}
+        self.completed_tasks = 0
         self.__queue_slices = {}
         self.__worklen = 0
         self.__workset = set()
@@ -345,6 +346,11 @@ class ThreadPool:
             try:
                 local.working = True
                 task()
+
+                # really couldn't care less about thread safety here ;)
+                self.completed_tasks += 1
+                if self.completed_tasks > (1<<30):
+                    self.completed_tasks = 0
             finally:
                 try:
                     self._call_cleanup_callbacks()
