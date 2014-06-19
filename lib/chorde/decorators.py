@@ -556,7 +556,7 @@ def cached(client, ttl,
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
                     clientf.contains(callkey, eff_async_ttl, **async_lazy_recheck_kwargs)\
-                        .on_any(on_value, on_miss, on_exc)
+                        .on_any_once(on_value, on_miss, on_exc)
             else:
                 stats.hits += 1
                 frv._set_nothreads(rv)
@@ -654,7 +654,7 @@ def cached(client, ttl,
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
                     clientf.contains(callkey, eff_async_ttl, **async_lazy_recheck_kwargs)\
-                        .on_any(on_value, on_miss, on_exc)
+                        .on_any_once(on_value, on_miss, on_exc)
             else:
                 stats.hits += 1
                 frv._set_nothreads(rv)

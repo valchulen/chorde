@@ -211,6 +211,13 @@ cdef class Future:
         """
         return self._on_stuff(AnyCallback(on_value, on_miss, on_exc))
 
+    def on_any_once(self, on_value = None, on_miss = None, on_exc = None):
+        """
+        Like on_any, but will only set the callback if no other callback has been set
+        """
+        if self._cb is None:
+            return self._on_stuff(AnyCallback(on_value, on_miss, on_exc))
+
     def on_done(self, callback):
         """
         When the operation is done, the callback will be invoked without arguments,

@@ -772,7 +772,14 @@ except ImportError:
                     if on_value is not None:
                         return on_value(value)
             return self._on_stuff(callback)
-    
+
+        def on_any_once(self, on_value = None, on_miss = None, on_exc = None):
+            """
+            Like on_any, but will only set the callback if no other callback has been set
+            """
+            if not self._cb:
+                self.on_ony(on_value, on_miss, on_exc)
+        
         def on_done(self, callback):
             """
             When the operation is done, the callback will be invoked without arguments,
@@ -1158,8 +1165,10 @@ class AsyncCacheProcessor(object):
     def contains(self, key, *p, **kw):
         if not p and not kw:
             ckey = key
+        elif not kw:
+            ckey = (key, p)
         else:
-            ckey = NONE
+            ckey = (key, p, frozenset(kw.items()))
         return self._enqueue(functools.partial(self.client.contains, key, *p, **kw),
             self.coalesce_contains, ckey)
 
