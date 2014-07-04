@@ -328,10 +328,10 @@ class DecoratedWrapper(BaseCacheClient):
         key_decorator = self.key_decorator
         if key_decorator is not None:
             key = key_decorator(key)
-        rv = self.client.getTtl(key, default, **kw)
+        rv, ttl = self.client.getTtl(key, default, **kw)
         if rv is not default and self.value_undecorator is not None:
             rv = self.value_undecorator(rv)
-        return rv
+        return rv, ttl
 
     def promote(self, key, *p, **kw):
         key_decorator = self.key_decorator
