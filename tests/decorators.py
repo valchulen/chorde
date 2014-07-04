@@ -172,6 +172,17 @@ class CachedDecoratorTest(DecoratorBaseTest):
 class CachedDecoratorFutureTest(DecoratorBaseTest):
     """Tests future functionality for cached decorator"""
 
+    def test_future_invalidate(self):
+        """Should delete cache entry"""
+        key = lambda: 'test_invalidate'
+        @cached(self.client, ttl=10, key=key)
+        def get_random():
+            return random.random()
+        get_random()
+        get_random.future().invalidate().result()
+        time.sleep(0.1)
+        self.assertFalse(get_random.client.contains(key()))
+
     def test_future_sync_check(self):
         """Should wait and return the value"""
         global val
@@ -236,6 +247,39 @@ class CachedDecoratorFutureTest(DecoratorBaseTest):
         time.sleep(0.1)
         rv = get_number.future().lazy()
         self.assertEquals(rv.result(), 8)
+
+    def test_future_lazy_sync_check_value_loaded(self):
+        """Future should return the value instantly"""
+        @cached(self.client, ttl=5, async_ttl=10, future_sync_check=True)
+        def get_random():
+            return random.random()
+        get_random()
+        hits = get_random.stats.hits
+        get_random.future().lazy().result()
+        self.assertEquals(get_random.stats.hits, hits+1)
+
+    def test_future_peek_uncached(self):
+        """Should raise a CacheMissError"""
+        @cached(self.client, ttl=5)
+        def get_random():
+            return random.random()
+        self.assertRaises(CacheMissError, get_random.future().peek().result)
+
+    def test_future_peek_cached_on_value(self):
+        """Should call on_value function and return the value"""
+        @cached(self.client, ttl=5)
+        def get_random():
+            return random.random()
+        val = get_random()
+        self.assertEquals(get_random.future().peek().result(), val)
+
+    def test_future_peek_sync_check(self):
+        """Should return the value directly from the client"""
+        @cached(self.client, ttl=5, future_sync_check=True)
+        def get_random():
+            return random.random()
+        val = get_random()
+        self.assertEquals(get_random.future().peek().result(), val)
 
 
 class CachedDecoratorAsyncTest(DecoratorBaseTest):

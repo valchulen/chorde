@@ -681,7 +681,7 @@ def cached(client, ttl,
 
             if (rv is __NONE or rvttl < eff_async_ttl):
                 # The hard way
-                if rv is __NONE and async_lazy_recheck:
+                if rv is __NONE and (not future_sync_check or async_lazy_recheck):
                     # It was a miss, so wait for setting the value
                     def on_value(value):
                         stats.hits += 1
