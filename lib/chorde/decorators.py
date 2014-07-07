@@ -480,9 +480,7 @@ def cached(client, ttl,
                 if rv is __NONE or rvttl < eff_async_ttl:
                     # FUUUUU
                     rv = f(*p, **kw)
-                else:
-                    stats.sync_misses += 1
-                    stats.misses += 1
+                stats.sync_misses += 1
                 if timings:
                     t1 = time.time()
                     t = t1-t0

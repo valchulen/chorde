@@ -2,11 +2,11 @@
 import time
 import random
 import unittest
-from chorde.decorators import cached, CacheMissError
+from chorde.decorators import cached, coherent_cached, CacheMissError
 from chorde.clients.inproc import InprocCacheClient
 from chorde.clients.async import AsyncWriteCacheClient
 
-class DecoratorBaseTest(unittest.TestCase):
+class DecoratorTestCase(unittest.TestCase):
     """Base test class"""
 
     @classmethod
@@ -17,7 +17,7 @@ class DecoratorBaseTest(unittest.TestCase):
         self.client.clear()
 
 
-class CachedDecoratorTest(DecoratorBaseTest):
+class CachedDecoratorTest(DecoratorTestCase):
     """Basic tests for cached decorator"""
 
     def test_cached(self):
@@ -169,7 +169,7 @@ class CachedDecoratorTest(DecoratorBaseTest):
         self.assertEquals(get_random.peek(), val)
 
 
-class CachedDecoratorFutureTest(DecoratorBaseTest):
+class CachedDecoratorFutureTest(DecoratorTestCase):
     """Tests future functionality for cached decorator"""
 
     def test_future_invalidate(self):
@@ -281,13 +281,22 @@ class CachedDecoratorFutureTest(DecoratorBaseTest):
         val = get_random()
         self.assertEquals(get_random.future().peek().result(), val)
 
+    def test_future_refresh(self):
+        """Should refresh the cache value"""
+        @cached(self.client, ttl=10)
+        def get_random():
+            return random.random()
+        val1 = get_random()
+        val2 = get_random.future().refresh().result()
+        self.assertNotEquals(val1, val2)
 
-class CachedDecoratorAsyncTest(DecoratorBaseTest):
+
+class CachedDecoratorAsyncTest(DecoratorTestCase):
     """Tests async functionality for cached decorator"""
 
     @classmethod
-    def setUpClient(cls):
-        super(CachedDecoratorAsyncTest, cls).setUpClient()
+    def setUpClass(cls):
+        super(CachedDecoratorAsyncTest, cls).setUpClass()
         cls.client = AsyncWriteCacheClient(cls.client, 100)
 
     def test_lazy_async(self):
@@ -301,3 +310,66 @@ class CachedDecoratorAsyncTest(DecoratorBaseTest):
         time.sleep(0.1)
         self.assertEquals(get_number_async.lazy(), 4)
             
+    def test_recalculate_async_on_lower_ttl(self):
+        """When the value is expired it's recalculated"""
+        key = lambda: 'test_async_ttl'
+        @cached(self.client, ttl=5, async_ttl=8, key=key)
+        def get_random():
+            return random.random()
+        val = get_random.async()()
+        self.assertNotEquals(val, get_random.async()())
+
+    def test_cached_async(self):
+        """Puts a random number in cache and checks the value in the client"""
+        key = lambda: 'test_async_cached'
+        @cached(self.client, ttl=5, key=key)
+        def get_random():
+            return random.random()
+        self.assertEquals(get_random, get_random.async())
+        val = get_random()
+        self.assertEquals(val, get_random())
+            
+    def test_put_async(self):
+        """Should change the cached value"""
+        key = lambda: 'test_put_async'
+        @cached(self.client, ttl=10, key=key)
+        def get_number():
+            return 1
+        val = get_number()
+        get_number.put(_cache_put=val+2)
+        self.assertEquals(get_number(), val+2)
+
+    def test_lazy_cached_async(self):
+        """Should raise a CacheMissError and call the function in background"""
+        key = lambda: 'test_async_lazy_cached'
+        global val
+        @cached(self.client, ttl=5, key=key)
+        def get_random():
+            time.sleep(0.1)
+            global val
+            val = random.random()
+            return val
+        self.assertRaises(CacheMissError, get_random.async().lazy)
+        time.sleep(0.2)
+        self.assertEquals(val, get_random.async().lazy())
+            
+    def test_lazy_recheck_async(self):
+        """Should touch the key with async_lazy_recheck"""
+        key = lambda: 'test_async_lazy_recheck'
+        @cached(self.client, ttl=5, key=key, async_lazy_recheck=True)
+        def get_random():
+            time.sleep(0.1)
+            return random.random()
+        self.assertRaises(CacheMissError, get_random.async().lazy)
+        self.assertTrue(get_random.client.contains(key()))
+        time.sleep(0.2)
+            
+    def test_refresh_async(self):
+        """Should refresh the cache value"""
+        @cached(self.client, ttl=10)
+        def get_random():
+            return random.random()
+        val1 = get_random.async()
+        val2 = get_random.async().refresh()
+        self.assertNotEquals(val1, val2)
+

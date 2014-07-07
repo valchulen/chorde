@@ -386,6 +386,8 @@ class AsyncCacheWriterPool:
                 ev = self.workset.get(key)
                 if ev is not None:
                     ev = ev[2]
+                elif self.contains(key):
+                    ev = self.done_event
                 if ev is not None:
                     ev.wait(1.0)
                 else:
@@ -396,6 +398,8 @@ class AsyncCacheWriterPool:
                 ev = self.workset.get(key)
                 if ev is not None:
                     ev = ev[2]
+                elif self.contains(key):
+                    ev = self.done_event
                 if ev is not None:
                     ev.wait(min(1.0, timeout))
                 else:
