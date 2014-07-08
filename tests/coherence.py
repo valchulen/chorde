@@ -5,6 +5,10 @@ import unittest
 import logging
 
 skipIfUnsupported = lambda c : c
+zmq = None
+ipsub = None
+coherence = None
+inproc = None
 
 try:
     import zmq
@@ -282,3 +286,5 @@ class CoherenceProtocolTest(unittest.TestCase):
 @skipIfUnsupported
 class CoherenceQuickProtocolTest(CoherenceProtocolTest):
     coherence_kwargs = {'quick_refresh':True}
+
+

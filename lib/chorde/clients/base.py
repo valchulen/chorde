@@ -299,8 +299,21 @@ class DecoratedWrapper(BaseCacheClient):
         if self.key_decorator:
             key = self.key_decorator(key)
         if self.value_decorator:
-            value = self.value_decorator(value)
+            if hasattr(value, 'undefer'):
+                value_decorator = self.value_decorator
+                callable_ = value.callable_
+                value.callable_ = lambda *p, **kw: value_decorator(callable_(*p, **kw))
+            else:
+                value = self.value_decorator(value)
         return self.client.put(key, value, ttl)
+
+    def put_coherently(self, key, ttl, expired, future, callable_):
+        if self.key_decorator:
+            key = self.key_decorator(key)
+        if self.value_decorator:
+            value_decorator = self.value_decorator
+            callable_ = lambda *p, **kw: value_decorator(callable_(*p, **kw))
+        return self.client.put_coherently(key, ttl, expired, future, callable_)
 
     def renew(self, key, ttl):
         if self.key_decorator:
