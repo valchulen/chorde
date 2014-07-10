@@ -318,120 +318,131 @@ class SharedCounterGenericBase(object):
     def __del__(self):
         self.close()
 
+    @property
+    def _value(self):
+        return self.slots.sum()
+
+
+class SharedCounterBaseNumpypy(SharedCounterGenericBase):
+    btype = numpy.bool8
+    bitmap_item_size = btype().itemsize
+
+    def __init__(self, slots, buf, offset = 0, locked = False):
+        assert ctypes.sizeof(ctypes.c_bool()) == self.bitmap_item_size
+        assert ctypes.sizeof(self.cdtype()) == self.slots_item_size
+
+        timestamp = ctypes.c_uint64.from_buffer(buf, offset)
+        offset += ctypes.sizeof(timestamp)
+        
+        # Slow, read-write bitmap
+        bitmap = (ctypes.c_bool * slots).from_buffer(buf, offset)
+
+        # Fast, read-only counters
+        counters = numpy.frombuffer(buf, self.dtype, slots, 
+            offset + self.bitmap_item_size * slots)
+        super(SharedCounterBase, self).__init__(slots, bitmap, counters, locked)
+
+        # Fast read-only bitmap ]:-]
+        self.bitmap = numpy.frombuffer(buf, numpy.bool8, slots, offset)
+
+        # Map my slot as a single item, it makes += atomic
+        self.myslot = self.cdtype.from_buffer(buf, 
+            offset + ctypes.sizeof(bitmap) + self.slots_item_size * self.slot)
+
+        # Map timestamp
+        self.timestamp = timestamp
+
+class SharedCounter32Numpypy(SharedCounterBaseNumpypy):
+    dtype = numpy.int32
+    cdtype = ctypes.c_int32
+    slots_item_size = dtype().itemsize
+class SharedCounter64Numpypy(SharedCounterBaseNumpypy):
+    dtype = numpy.int64
+    cdtype = ctypes.c_int64
+    slots_item_size = dtype().itemsize
+
+
+class SharedCounterBaseNumpy(SharedCounterGenericBase):
+    btype = numpy.bool
+    bitmap_item_size = numpy.dtype(btype).itemsize
+
+    def __init__(self, slots, fileobj, offset = 0, locked = False):
+        ts_mmap = numpy.memmap(fileobj, numpy.uint64, 'r+', offset)
+        timestamp = Slot(ts_mmap, offset)
+        offset += numpy.dtype(numpy.uint64).itemsize
+
+        bitmap = numpy.memmap(fileobj, self.btype, 'r+', offset, slots)
+        offset += numpy.dtype(self.btype).itemsize * slots
+        
+        counters = numpy.memmap(fileobj, self.dtype, 'r+', offset, slots)
+        offset += numpy.dtype(self.dtype).itemsize * slots
+        super(SharedCounterBase, self).__init__(slots, bitmap, counters, locked)
+
+        self.myslot = Slot(counters, self.slot)
+
+        self.timestamp = timestamp
+
+    @classmethod
+    def from_fileno(cls, slots, fileno, offset = 0):
+        fd = os.dup(fileno)
+        fileobj =  os.fdopen(fd)
+        return cls.from_file(slots, fileobj, offset)
+    
+    @classmethod
+    def from_file(cls, slots, fileobj, offset = 0):
+        return cls(slots, fileobj, offset)
+
+class SharedCounter32Numpy(SharedCounterBaseNumpy):
+    dtype = numpy.int32
+    slots_item_size = numpy.dtype(dtype).itemsize
+class SharedCounter64Numpy(SharedCounterBaseNumpy):
+    dtype = numpy.int64
+    slots_item_size = numpy.dtype(dtype).itemsize
+
+
+class SharedCounterBaseCtypes(SharedCounterGenericBase):  # lint:ok
+    btype = ctypes.c_bool
+    bitmap_item_size = ctypes.sizeof(btype())
+    
+    def __init__(self, slots, buf, offset = 0, locked = False):
+        timestamp = ctypes.c_uint64.from_buffer(buf, offset)
+        offset += ctypes.sizeof(timestamp)
+        
+        bitmap = (ctypes.c_bool * slots).from_buffer(buf, offset)
+        counters = (self.dtype * slots).from_buffer(buf, offset + ctypes.sizeof(bitmap))
+        super(SharedCounterBase, self).__init__(slots, bitmap, counters, locked)
+
+        # Map my slot as a single item, it makes += atomic
+        self.myslot = self.dtype.from_buffer(buf, 
+            offset + ctypes.sizeof(bitmap) + self.slots_item_size * self.slot)
+
+        # Map timestamp
+        self.timestamp = timestamp
+
+class SharedCounter32Ctypes(SharedCounterBaseCtypes):
+    dtype = ctypes.c_int32
+    slots_item_size = ctypes.sizeof(dtype())
+class SharedCounter64Ctypes(SharedCounterBaseCtypes):
+    dtype = ctypes.c_int64
+    slots_item_size = ctypes.sizeof(dtype())
+
+
 if numpy is not None:
     # Numpy-accelerated shared objects
-    
     if numpy.frombuffer is not None: # PyPy
-
-        class SharedCounterBase(SharedCounterGenericBase):
-            btype = numpy.bool8
-            bitmap_item_size = btype().itemsize
-
-            def __init__(self, slots, buf, offset = 0, locked = False):
-                assert ctypes.sizeof(ctypes.c_bool()) == self.bitmap_item_size
-                assert ctypes.sizeof(self.cdtype()) == self.slots_item_size
-
-                timestamp = ctypes.c_uint64.from_buffer(buf, offset)
-                offset += ctypes.sizeof(timestamp)
-                
-                # Slow, read-write bitmap
-                bitmap = (ctypes.c_bool * slots).from_buffer(buf, offset)
-
-                # Fast, read-only counters
-                counters = numpy.frombuffer(buf, self.dtype, slots, 
-                    offset + self.bitmap_item_size * slots)
-                super(SharedCounterBase, self).__init__(slots, bitmap, counters, locked)
-
-                # Fast read-only bitmap ]:-]
-                self.bitmap = numpy.frombuffer(buf, numpy.bool8, slots, offset)
-
-                # Map my slot as a single item, it makes += atomic
-                self.myslot = self.cdtype.from_buffer(buf, 
-                    offset + ctypes.sizeof(bitmap) + self.slots_item_size * self.slot)
-
-                # Map timestamp
-                self.timestamp = timestamp
-
-            @property
-            def _value(self):
-                return self.slots.sum()
-
-        class SharedCounter32(SharedCounterBase):
-            dtype = numpy.int32
-            cdtype = ctypes.c_int32
-            slots_item_size = dtype().itemsize
-        class SharedCounter64(SharedCounterBase):
-            dtype = numpy.int64
-            cdtype = ctypes.c_int64
-            slots_item_size = dtype().itemsize
+        SharedCounterBase = SharedCounterBaseNumpypy
+        SharedCounter32 = SharedCounter32Numpypy
+        SharedCounter64 = SharedCounter64Numpypy
     else:
-
-        class SharedCounterBase(SharedCounterGenericBase):
-            btype = numpy.bool
-            bitmap_item_size = numpy.dtype(btype).itemsize
-
-            def __init__(self, slots, fileobj, offset = 0, locked = False):
-                ts_mmap = numpy.memmap(fileobj, numpy.uint64, 'r+', offset)
-                timestamp = Slot(ts_mmap, offset)
-                offset += numpy.dtype(numpy.uint64).itemsize
-
-                bitmap = numpy.memmap(fileobj, self.btype, 'r+', offset, slots)
-                offset += numpy.dtype(self.btype).itemsize * slots
-                
-                counters = numpy.memmap(fileobj, self.dtype, 'r+', offset, slots)
-                offset += numpy.dtype(self.dtype).itemsize * slots
-                super(SharedCounterBase, self).__init__(slots, bitmap, counters, locked)
-
-                self.myslot = Slot(counters, self.slot)
-
-                self.timestamp = timestamp
-
-            @classmethod
-            def from_fileno(cls, slots, fileno, offset = 0):
-                fd = os.dup(fileno)
-                fileobj =  os.fdopen(fd)
-                return cls.from_file(slots, fileobj, offset)
-            
-            @classmethod
-            def from_file(cls, slots, fileobj, offset = 0):
-                return cls(slots, fileobj, offset)
-
-
-        class SharedCounter32(SharedCounterBase):
-            dtype = numpy.int32
-            slots_item_size = numpy.dtype(dtype).itemsize
-        class SharedCounter64(SharedCounterBase):
-            dtype = numpy.int64
-            slots_item_size = numpy.dtype(dtype).itemsize
-
+        SharedCounterBase = SharedCounterBaseNumpy
+        SharedCounter32 = SharedCounter32Numpy
+        SharedCounter64 = SharedCounter64Numpy
 else:
     if not hasattr(ctypes.c_uint64, 'from_buffer'):
         raise Exception('ctypes has not frombuffer method in PyPy. Try installing numpy')
 
     # Slow, but portable shared objects (based on ctypes)
+    SharedCounterBase = SharedCounterBaseCtypes
+    SharedCounter32 = SharedCounter32Ctypes
+    SharedCounter64 = SharedCounter64Ctypes
 
-    class SharedCounterBase(SharedCounterGenericBase):  # lint:ok
-        btype = ctypes.c_bool
-        bitmap_item_size = ctypes.sizeof(btype())
-        
-        def __init__(self, slots, buf, offset = 0, locked = False):
-            timestamp = ctypes.c_uint64.from_buffer(buf, offset)
-            offset += ctypes.sizeof(timestamp)
-            
-            bitmap = (ctypes.c_bool * slots).from_buffer(buf, offset)
-            counters = (self.dtype * slots).from_buffer(buf, offset + ctypes.sizeof(bitmap))
-            super(SharedCounterBase, self).__init__(slots, bitmap, counters, locked)
-
-            # Map my slot as a single item, it makes += atomic
-            self.myslot = self.dtype.from_buffer(buf, 
-                offset + ctypes.sizeof(bitmap) + self.slots_item_size * self.slot)
-
-            # Map timestamp
-            self.timestamp = timestamp
-
-    class SharedCounter32(SharedCounterBase):
-        dtype = ctypes.c_int32
-        slots_item_size = ctypes.sizeof(dtype())
-    class SharedCounter64(SharedCounterBase):
-        dtype = ctypes.c_int64
-        slots_item_size = ctypes.sizeof(dtype())
