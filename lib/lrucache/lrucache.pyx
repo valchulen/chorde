@@ -298,8 +298,8 @@ cdef class LRUCache:
         cdef object opqueue, oemap
         opqueue = self.pqueue
         oemap = self.emap
-        pqueue = list(self.pqueue)
-        emap = self.emap.copy()
+        pqueue = list(opqueue)
+        emap = oemap.copy()
         self.pqueue = pqueue
         self.emap = emap
 
