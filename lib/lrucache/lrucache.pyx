@@ -300,6 +300,12 @@ cdef class LRUCache:
         oemap = self.emap
         pqueue = list(opqueue)
         emap = oemap.copy()
+
+        # Check consistency (previous copy was not atomic)
+        if len(emap) != len(pqueue):
+            return
+        
+        # swap
         self.pqueue = pqueue
         self.emap = emap
 
