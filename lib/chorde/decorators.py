@@ -499,7 +499,7 @@ def cached(client, ttl,
                 # Bummer
                 logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
-                raise CacheMissError
+                return fclient[0].do_async(f, *p, **kw)
 
             client = aclient[0]
             clientf = fclient[0]

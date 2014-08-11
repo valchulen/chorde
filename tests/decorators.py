@@ -246,6 +246,18 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         r = get_random.future()().result()
         self.assertEquals(r, val[0])
     
+    def test_future_on_value_bad_key(self):
+        """Should return the value using on_value function, even when given a bad callkey callable"""
+        # To-do: validate bad key logged
+        val = []
+        @cached(self.client, ttl=5, key = lambda : None)
+        def get_random(k):
+            val[:] = [random.random()]
+            return val[0]
+        get_random(set())
+        r = get_random.future()(set()).result()
+        self.assertEquals(r, val[0])
+    
     def test_future_lazy(self):
         """Should start calculating the value in background"""
         @cached(self.client, ttl=5)
