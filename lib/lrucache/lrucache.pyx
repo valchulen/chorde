@@ -157,6 +157,7 @@ cdef class LRUCache:
     cdef int c__setitem__(LRUCache self, object key, object val) except -1:
         cdef _node node
         cdef object oldkey, oldval
+        cdef unsigned int cur_prio
 
         if key in self.emap:
             node = self.emap[key]
@@ -174,17 +175,18 @@ cdef class LRUCache:
             self.emap[key] = node
             self.c_decrease(node)
 
-            # Notify eviction
+            # Notify eviction, atomic barrier
             if self.eviction_callback is not None:
                 self.eviction_callback(oldkey, oldval)
         else:
-            node = _node(self.next_prio, len(self.pqueue), key, val)
-            self.emap[key] = node
-            self.pqueue.append(node)
+            cur_prio = self.next_prio
             self.next_prio = self.next_prio + 1
             if self.next_prio == 0:
                 self.c_rehash()
-        
+            node = _node(self.next_prio, 0, key, val) # atomic barrier (might release GIL)
+            node.index = len(self.pqueue) # from now on, atomic
+            self.pqueue.append(node)
+            self.emap[key] = node
         return 0
 
     def __setitem__(LRUCache self not None, object key, object val):
@@ -263,14 +265,16 @@ cdef class LRUCache:
 
     def setdefault(LRUCache self not None, object key, object deflt = None):
         cdef _node node
+        cdef object rv
 
         if key not in self.emap:
             self.c__setitem__(key, deflt)
             return deflt
         else:
             node = self.emap[key]
+            rv = node.value
             self.c_decrease(node)
-            return node.value
+            return rv
 
     def update(LRUCache self not None, object iterOrDict):
         if isinstance(iterOrDict, dict) or isinstance(iterOrDict, LRUCache):
