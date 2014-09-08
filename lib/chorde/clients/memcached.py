@@ -16,6 +16,8 @@ from .inproc import Cache
 
 _RENEW = object()
 
+STATS_CACHE_TIME = 1
+
 try:
     import cPickle
 except ImportError:
@@ -286,7 +288,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                         stats[k] += v
                     except:
                         pass
-            self._stats = (stats, time.time() + 1)
+            self._stats = (stats, time.time() + STATS_CACHE_TIME)
         else:
             stats = stats[0]
         return stats
@@ -727,7 +729,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                         stats[k] += v
                     except:
                         pass
-            self._stats = (stats, time.time() + 1)
+            self._stats = (stats, time.time() + STATS_CACHE_TIME)
         else:
             stats = stats[0]
         return stats
