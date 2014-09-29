@@ -34,6 +34,37 @@ class FutureTest(unittest.TestCase):
         f = Future()
         f.exc((RuntimeError,RuntimeError(1),None))
         self.assertRaises(RuntimeError, f.result, 0)
+    
+    def testAny(self):
+        from chorde.clients.async import Future
+        rv = []
+        def exc(exc):
+            rv.append("exc")
+        def value(val):
+            rv.append("val")
+        def miss():
+            rv.append("miss")
+        f = Future()
+        f.on_any(value,miss,exc)
+        f.exc((RuntimeError,RuntimeError(1),None))
+        self.assertEquals(["exc"], rv)
+    
+    def testAnyOnce(self):
+        from chorde.clients.async import Future
+        rv = []
+        def exc(exc):
+            rv.append("exc")
+        def value(val):
+            rv.append("val")
+        def miss():
+            rv.append("miss")
+        def badcall():
+            rv.append("bad")
+        f = Future()
+        f.on_any_once(value,miss,exc)
+        f.on_any_once(badcall,badcall,badcall)
+        f.set(3)
+        self.assertEquals(["val"], rv)
 
 class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
     # Hard to guarantee LRU logic with an async writing queue
