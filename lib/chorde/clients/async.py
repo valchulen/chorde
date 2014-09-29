@@ -782,7 +782,7 @@ except ImportError:
             Like on_any, but will only set the callback if no other callback has been set
             """
             if not self._cb:
-                self.on_ony(on_value, on_miss, on_exc)
+                self.on_any(on_value, on_miss, on_exc)
         
         def on_done(self, callback):
             """
