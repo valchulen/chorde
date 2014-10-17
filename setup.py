@@ -71,6 +71,7 @@ setup(
             "Topic :: Software Development :: Libraries",
             "Operating System :: OS Independent",
             ],
+  zip_safe = False,
   **extra
 )
 
