@@ -174,6 +174,10 @@ def cached(client, ttl,
         peek(...): mimicking the underlying function's signature, it will query the cache without ever invoking
             the underlying function. If the cache doesn't contain the key, a CacheMissError will be raised.
 
+        get_ttl(...): mimicking the underlying function's signature, it will query the cache without ever invoking
+            the underlying function, and return both the result and the ttl. Misses return NONE as value and
+            a negative ttl, instead of raising a CacheMissError.
+
         lazy(...): mimicking the underlying function's signature, it will behave just like a cached function call,
             except that if there is no value, instead of waiting for one to be computed, it will just raise
             a CacheMissError. If the access is async, it will start a background computation. Otherwise, it will
@@ -447,6 +451,25 @@ def cached(client, ttl,
             cached_f = decorate(cached_f)
         
         @wraps(f)
+        def get_ttl_f(*p, **kw):
+            _initialize()
+            try:
+                callkey = key(*p, **kw)
+            except:
+                # Bummer
+                logging.error("Error evaluating callkey", exc_info = True)
+                stats.errors += 1
+                return f(*p, **kw)
+            rv = nclient.getTtl(callkey)
+            if rv[1] < 0:
+                stats.misses += 1
+            else:
+                stats.hits += 1
+            return rv
+        if decorate is not None:
+            get_ttl_f = decorate(get_ttl_f)
+        
+        @wraps(f)
         def async_cached_f(*p, **kw):
             _initialize()
             try:
@@ -707,6 +730,23 @@ def cached(client, ttl,
             future_peek_cached_f = decorate(future_peek_cached_f)
 
         @wraps(f)
+        def future_get_ttl_f(*p, **kw):
+            _initialize()
+            try:
+                callkey = key(*p, **kw)
+            except:
+                # Bummer
+                logging.error("Error evaluating callkey", exc_info = True)
+                stats.errors += 1
+                raise CacheMissError
+
+            # To-Do: intercept hits/misses and update stats?
+            #   (involves considerable overhead...)
+            return fclient[0].getTtl(callkey)
+        if decorate is not None:
+            future_get_ttl_f = decorate(future_get_ttl_f)
+
+        @wraps(f)
         def invalidate_f(*p, **kw):
             _initialize()
             try:
@@ -927,6 +967,7 @@ def cached(client, ttl,
             async_cached_f.ttl = ttl
             async_cached_f.async_ttl = async_ttl
             async_cached_f.stats = stats
+            async_cached_f.get_ttl = get_ttl_f
             cached_f.async = async_f
             cached_f.lazy = lazy_cached_f
             cached_f.refresh = refresh_f
@@ -949,6 +990,7 @@ def cached(client, ttl,
         cached_f.async_ttl = async_ttl or ttl
         cached_f.stats = stats
         cached_f.uncached = of
+        cached_f.get_ttl = get_ttl_f
         
         future_cached_f.clear = lambda : fclient[0].clear()
         future_cached_f.client = None
@@ -962,6 +1004,7 @@ def cached(client, ttl,
         future_cached_f.async_ttl = async_ttl
         future_cached_f.stats = stats
         future_cached_f.uncached = of
+        future_cached_f.get_ttl = future_get_ttl_f
 
         decorated_functions.add(cached_f)
         return cached_f
