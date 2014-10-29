@@ -27,7 +27,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.decorator = functools.partial(cached, self.client)
 
     def test_cached(self):
-        """Puts a random number in cache and checks the value in the client"""
+        # Puts a random number in cache and checks the value in the client
         key = lambda: 'test_cached'
         @self.decorator(5, key=key)
         def get_random():
@@ -37,7 +37,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertEquals(val, get_random())
 
     def test_get_ttl(self):
-        """Puts a random number in cache and checks the value in the client"""
+        # Puts a random number in cache and checks the value in the client
         key = lambda: 'test_cached'
         @self.decorator(5, key=key)
         def get_random():
@@ -48,7 +48,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertLess(0, get_random.get_ttl()[1])
 
     def test_ttl(self):
-        """The client shouldn't contains the function key"""
+        # The client shouldn't contains the function key
         key = lambda: 'test_ttl'
         @self.decorator(1, key=key)
         def get_random():
@@ -58,7 +58,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertFalse(get_random.client.contains(key()))
 
     def test_namespace(self):
-        """If a namespace is provided, should create the key with that"""
+        # If a namespace is provided, should create the key with that
         namespace = 'my_namespace'
         @self.decorator(5, namespace=namespace)
         def get_random():
@@ -66,7 +66,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertEquals(get_random.client.namespace, namespace)
 
     def test_no_namespace(self):
-        """Without namespace, should create one with the function name"""
+        # Without namespace, should create one with the function name
         @self.decorator(5)
         def get_random():
             return random.random()
@@ -74,7 +74,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertTrue(namespace.startswith(get_random.__module__))
 
     def test_serialization_function(self):
-        """Should apply the a function the returned value"""
+        # Should apply the a function the returned value
         f = lambda x: x+1
         val = []
         @self.decorator(5, value_serialization_function=f)
@@ -85,7 +85,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertEquals(get_random(), f(val[0]))
 
     def test_deserialization_function(self):
-        """Should apply the a function the returned value"""
+        # Should apply the a function the returned value
         f = lambda x: x+3
         val = []
         @self.decorator(5, value_deserialization_function=f)
@@ -96,7 +96,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertEquals(get_random(), f(val[0]))
 
     def test_renew(self):
-        """Should add the renew time to the ttl"""
+        # Should add the renew time to the ttl
         key = lambda x=0: 'test_renew'
         renew = 1
         @self.decorator(ttl=2, async_ttl=-0.1, key=key, renew_time=renew)
@@ -112,7 +112,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertLess(abs(renew - diff), 0.2) # Almost equal
 
     def test_initialize(self):
-        """Should call initialize once"""
+        # Should call initialize once
         global count
         count = 0
         def init():
@@ -129,7 +129,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         del count
 
     def test_decorate(self):
-        """Should apply a decorator to the decorated function"""
+        # Should apply a decorator to the decorated function
         def wrapped(f):
             return lambda: True
         @self.decorator(ttl=5, decorate=wrapped)
@@ -138,7 +138,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertTrue(test())
 
     def test_uncached(self):
-        """Should always call the function"""
+        # Should always call the function
         @self.decorator(ttl=10)
         def get_random():
             return random.random()
@@ -146,7 +146,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertNotEquals(val, get_random.uncached())
 
     def test_invalidate(self):
-        """Should delete cache entry"""
+        # Should delete cache entry
         key = lambda: 'test_invalidate'
         @self.decorator(ttl=10, key=key)
         def get_random():
@@ -157,7 +157,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertFalse(get_random.client.contains(key()))
 
     def test_refresh(self):
-        """Should refresh the cache value"""
+        # Should refresh the cache value
         @self.decorator(ttl=10)
         def get_random():
             return random.random()
@@ -166,7 +166,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertNotEquals(val1, val2)
 
     def test_put(self):
-        """Should change the cached value"""
+        # Should change the cached value
         key = lambda: 'test_put'
         @self.decorator(ttl=10, key=key)
         def get_number():
@@ -176,14 +176,14 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertEquals(get_number(), val+2)
 
     def test_peek_not_cached(self):
-        """Should raise a CacheMissError"""
+        # Should raise a CacheMissError
         @self.decorator(ttl=5)
         def not_cached():
             return random.random()
         self.assertRaises(CacheMissError, not_cached.peek)
 
     def test_peek_cached(self):
-        """Shouldn't raise a CacheMissError"""
+        # Shouldn't raise a CacheMissError
         @self.decorator(ttl=5)
         def get_random():
             return random.random()
@@ -195,7 +195,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
     """Tests future functionality for cached decorator"""
 
     def test_future_invalidate(self):
-        """Should delete cache entry"""
+        # Should delete cache entry
         key = lambda: 'test_invalidate'
         @cached(self.client, ttl=10, key=key)
         def get_random():
@@ -206,7 +206,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         self.assertFalse(get_random.client.contains(key()))
 
     def test_future_sync_check(self):
-        """Should wait and return the value"""
+        # Should wait and return the value
         val = []
         @cached(self.client, ttl=5, future_sync_check=True)
         def get_random():
@@ -217,7 +217,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         self.assertEquals(r, val[0])
 
     def test_future_no_sync_check(self):
-        """Shouldn't wait for the value"""
+        # Shouldn't wait for the value
         @cached(self.client, ttl=5, future_sync_check=False)
         def get_random():
             time.sleep(4)
@@ -226,7 +226,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         self.assertFalse(f.done())
 
     def test_future_sync_check_on_value(self):
-        """Should return the value using on_value function with sync check"""
+        # Should return the value using on_value function with sync check
         val = []
         @cached(self.client, ttl=5, async_ttl=10, future_sync_check=True)
         def get_random():
@@ -237,7 +237,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         self.assertEquals(r, val[0])
 
     def test_future_sync_check_value_loaded(self):
-        """Future should return the value instantly"""
+        # Future should return the value instantly
         @cached(self.client, ttl=5, future_sync_check=True)
         def get_random():
             return random.random()
@@ -247,7 +247,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         self.assertEquals(get_random.stats.hits, hits+1)
 
     def test_future_on_value(self):
-        """Should return the value using on_value function"""
+        # Should return the value using on_value function
         val = []
         @cached(self.client, ttl=5)
         def get_random():
@@ -258,7 +258,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         self.assertEquals(r, val[0])
     
     def test_future_on_value_bad_key(self):
-        """Should return the value using on_value function, even when given a bad callkey callable"""
+        # Should return the value using on_value function, even when given a bad callkey callable
         # To-do: validate bad key logged
         val = []
         @cached(self.client, ttl=5, key = lambda : None)
@@ -270,7 +270,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         self.assertEquals(r, val[0])
     
     def test_future_lazy(self):
-        """Should start calculating the value in background"""
+        # Should start calculating the value in background
         @cached(self.client, ttl=5)
         def get_number():
             return 8
@@ -281,7 +281,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         self.assertEquals(rv.result(), 8)
 
     def test_future_lazy_sync_check_value_loaded(self):
-        """Future should return the value instantly"""
+        # Future should return the value instantly
         @cached(self.client, ttl=5, async_ttl=10, future_sync_check=True)
         def get_random():
             return random.random()
@@ -291,14 +291,14 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         self.assertEquals(get_random.stats.hits, hits+1)
 
     def test_future_peek_uncached(self):
-        """Should raise a CacheMissError"""
+        # Should raise a CacheMissError
         @cached(self.client, ttl=5)
         def get_random():
             return random.random()
         self.assertRaises(CacheMissError, get_random.future().peek().result)
 
     def test_future_peek_cached_on_value(self):
-        """Should call on_value function and return the value"""
+        # Should call on_value function and return the value
         @cached(self.client, ttl=5)
         def get_random():
             return random.random()
@@ -306,7 +306,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         self.assertEquals(get_random.future().peek().result(), val)
 
     def test_future_peek_sync_check(self):
-        """Should return the value directly from the client"""
+        # Should return the value directly from the client
         @cached(self.client, ttl=5, future_sync_check=True)
         def get_random():
             return random.random()
@@ -314,7 +314,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         self.assertEquals(get_random.future().peek().result(), val)
 
     def test_future_refresh(self):
-        """Should refresh the cache value"""
+        # Should refresh the cache value
         @cached(self.client, ttl=10)
         def get_random():
             return random.random()
@@ -331,7 +331,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.client = AsyncWriteCacheClient(self.client, 100)
 
     def test_lazy_async(self):
-        """Should raise a CacheMissError and start calculating the value"""
+        # Should raise a CacheMissError and start calculating the value
         key = lambda: 'test_lazy_async'
         @cached(self.client, ttl=10, key=key)
         def get_number():
@@ -342,7 +342,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.assertEquals(get_number_async.lazy(), 4)
             
     def test_recalculate_async_on_lower_ttl(self):
-        """When the value is expired it's recalculated"""
+        # When the value is expired it's recalculated
         key = lambda: 'test_async_ttl'
         @cached(self.client, ttl=5, async_ttl=8, key=key)
         def get_random():
@@ -351,7 +351,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.assertNotEquals(val, get_random.async()())
 
     def test_cached_async(self):
-        """Puts a random number in cache and checks the value in the client"""
+        # Puts a random number in cache and checks the value in the client
         key = lambda: 'test_async_cached'
         @cached(self.client, ttl=5, key=key)
         def get_random():
@@ -361,7 +361,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.assertEquals(val, get_random())
             
     def test_put_async(self):
-        """Should change the cached value"""
+        # Should change the cached value
         key = lambda: 'test_put_async'
         @cached(self.client, ttl=10, key=key)
         def get_number():
@@ -371,7 +371,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.assertEquals(get_number(), val+2)
 
     def test_lazy_cached_async(self):
-        """Should raise a CacheMissError and call the function in background"""
+        # Should raise a CacheMissError and call the function in background
         key = lambda: 'test_async_lazy_cached'
         val = []
         @cached(self.client, ttl=5, key=key)
@@ -384,7 +384,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.assertEquals(val[0], get_random.async().lazy())
             
     def test_lazy_recheck_async(self):
-        """Should touch the key with async_lazy_recheck"""
+        # Should touch the key with async_lazy_recheck
         key = lambda: 'test_async_lazy_recheck'
         @cached(self.client, ttl=5, key=key, async_lazy_recheck=True)
         def get_random():
@@ -395,7 +395,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         time.sleep(0.2)
             
     def test_refresh_async(self):
-        """Should refresh the cache value"""
+        # Should refresh the cache value
         @cached(self.client, ttl=10)
         def get_random():
             return random.random()
@@ -404,7 +404,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.assertNotEquals(val1, val2)
 
     def test_serialization_function(self):
-        """Should apply the a function the returned value"""
+        # Should apply the a function the returned value
         f = lambda x: x+1
         val = []
         @cached(self.client, 5, value_serialization_function=f)
@@ -415,7 +415,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.assertEquals(get_random(), f(val[0]))
 
     def test_deserialization_function(self):
-        """Should apply the a function the returned value"""
+        # Should apply the a function the returned value
         f = lambda x: x+3
         val = []
         @cached(self.client, 5, value_deserialization_function=f)
@@ -469,7 +469,7 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         del cls.ipsub, cls.ipsub_thread
 
     def test_serialization_function(self):
-        """Should apply the a function the returned value"""
+        # Should apply the a function the returned value
         f = lambda x: x+1
         val = []
         @cached(self.client, 5, value_serialization_function=f)
@@ -480,7 +480,7 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         self.assertEquals(get_random(), f(val[0]))
 
     def test_deserialization_function(self):
-        """Should apply the a function the returned value"""
+        # Should apply the a function the returned value
         f = lambda x: x+3
         val = []
         @cached(self.client, 5, value_deserialization_function=f)
@@ -491,7 +491,7 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         self.assertEquals(get_random(), f(val[0]))
 
     def test_namespace(self):
-        """If a namespace is provided, should create the key with that"""
+        # If a namespace is provided, should create the key with that
         namespace = 'my_namespace'
         @self.decorator(5, namespace=namespace)
         def get_random():
@@ -499,7 +499,7 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         self.assertEquals(get_random.client.client.namespace, namespace)
 
     def test_no_namespace(self):
-        """Without namespace, should create one with the function name"""
+        # Without namespace, should create one with the function name
         @self.decorator(5)
         def get_random():
             return random.random()
