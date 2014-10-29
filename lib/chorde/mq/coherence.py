@@ -439,7 +439,7 @@ class CoherenceManager(object):
             optimistic_lock: Request the broker to mark the key as pending if
                 there is noone currently computing, atomically.
         """
-        if self.ipsub.is_broker:
+        if self.ipsub.is_broker or not self.ipsub.is_running:
             # Easy peachy
             return self._query_pending_locally(key, expired, timeout, optimistic_lock)
 
