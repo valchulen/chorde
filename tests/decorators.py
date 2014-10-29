@@ -113,20 +113,18 @@ class CachedDecoratorTest(DecoratorTestCase):
 
     def test_initialize(self):
         # Should call initialize once
-        global count
-        count = 0
+        count = [0]
         def init():
-            global count
-            count += 1
+            count[0] += 1
             return True
         @self.decorator(ttl=5, initialize=init)
         def test():
             return False
+        self.assertEquals(count[0], 0)
         test()
-        self.assertEquals(count, 1)
+        self.assertEquals(count[0], 1)
         test()
-        self.assertEquals(count, 1)
-        del count
+        self.assertEquals(count[0], 1)
 
     def test_decorate(self):
         # Should apply a decorator to the decorated function
