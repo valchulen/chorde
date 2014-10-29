@@ -36,6 +36,17 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertTrue(get_random.client.contains(key()))
         self.assertEquals(val, get_random())
 
+    def test_get_ttl(self):
+        """Puts a random number in cache and checks the value in the client"""
+        key = lambda: 'test_cached'
+        @self.decorator(5, key=key)
+        def get_random():
+            return random.random()
+        val = get_random()
+        self.assertTrue(get_random.client.contains(key()))
+        self.assertEquals(val, get_random.get_ttl()[0])
+        self.assertLess(0, get_random.get_ttl()[1])
+
     def test_ttl(self):
         """The client shouldn't contains the function key"""
         key = lambda: 'test_ttl'
