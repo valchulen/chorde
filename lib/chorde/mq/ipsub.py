@@ -116,14 +116,15 @@ class IPSub(object):
         class State(object):
             __metaclass__ = ABCMeta
 
-            def __init__(self, owner):
+            def __init__(self, owner, logger = None):
                 self._owner = weakref.ref(owner)
+                self.logger = getattr(owner, 'logger', logging.getLogger('chorde.ipsub')) if logger is None else logger
 
             def transition(self, newstate):
-                logging.debug("IPSub.FSM: LEAVE %s", self.__class__.__name__)
+                self.logger.debug("IPSub.FSM: LEAVE %s", self.__class__.__name__)
                 self.leave()
                 self.__class__ = newstate
-                logging.debug("IPSub.FSM: ENTER %s", self.__class__.__name__)
+                self.logger.debug("IPSub.FSM: ENTER %s", self.__class__.__name__)
                 self.enter()
 
             @abstractmethod
@@ -155,8 +156,8 @@ class IPSub(object):
                             # Not a transient error, shortcut to listener
                             return self.transition(IPSub.FSM.Listener)
                     except Exception as e:
-                        logging.info("Got %s connecting", e)
-                        logging.debug("Got %s connecting", e, exc_info = True)
+                        self.logger.info("Got %s connecting", e)
+                        self.logger.debug("Got %s connecting", e, exc_info = True)
                         time.sleep(0.2)
                 else:
                     try:
@@ -226,19 +227,19 @@ class IPSub(object):
                             # Try to send a heartbeat
                             if not listener_req.poll(hb_timeout, POLLOUT):
                                 # Must be mute... dead broker?
-                                logging.warn("Mute req socket: dead broker? bootstrapping")
+                                self.logger.warn("Mute req socket: dead broker? bootstrapping")
                                 raise BootstrapNow
                             else:
                                 listener_req.send(HEARTBEAT_)
                                 if not listener_req.poll(hb_timeout):
                                     # Dead again
-                                    logging.warn("No reply to heartbeat: dead broker? bootstrapping")
+                                    self.logger.warn("No reply to heartbeat: dead broker? bootstrapping")
                                     raise BootstrapNow
                                 else:
                                     # Alive... lets validate the heartbeat pong and move on
                                     if listener_req.recv() != HEARTBEAT_:
                                         # Bad bad bad
-                                        logging.error("IPSub: bad heartbeat")
+                                        self.logger.error("IPSub: bad heartbeat")
                             owner._idle()
                             break
                         tic_count -= 1
@@ -265,11 +266,11 @@ class IPSub(object):
                             elif socket is listener_sub and what & POLLIN:
                                 recv_update(listener_sub)
                 except Queue.Full:
-                    logging.error("While handling IPSub FSM pipe: Queue full, update lost")
+                    self.logger.error("While handling IPSub FSM pipe: Queue full, update lost")
                 except BootstrapNow:
                     self.transition(IPSub.FSM.Bootstrap)
                 except:
-                    logging.error("Exception in IPSub listener, re-bootstrapping in a sec", exc_info = True)
+                    self.logger.error("Exception in IPSub listener, re-bootstrapping in a sec", exc_info = True)
                     time.sleep(1)
                     self.transition(IPSub.FSM.Bootstrap)
             
@@ -351,11 +352,11 @@ class IPSub(object):
                                 else:
                                     poller_unregister(broker_pub)
                 except Queue.Full:
-                    logging.error("While handling IPSub FSM pipe: Queue full, update lost")
+                    self.logger.error("While handling IPSub FSM pipe: Queue full, update lost")
                 except BootstrapNow:
                     self.transition(IPSub.FSM.Bootstrap)
                 except:
-                    logging.error("Exception in IPSub broker, re-bootstrapping in a sec", exc_info = True)
+                    self.logger.error("Exception in IPSub broker, re-bootstrapping in a sec", exc_info = True)
                     time.sleep(1)
                     self.transition(IPSub.FSM.Bootstrap)
     
@@ -376,6 +377,8 @@ class IPSub(object):
         self.local = threading.local()
         self._ndebug = None
         self._needs_subscriptions = True
+
+        self.logger = logging.getLogger('chorde.ipsub')
         
         self.subscriptions = set(subscriptions)
         self.subscriptions.add(FRAME_HEARTBEAT)
@@ -552,11 +555,11 @@ class IPSub(object):
     def _send_update(self, socket, noreply = False):
         if self.current_update is not None:
             # Waiting for a reply
-            logging.error("IPSub FSM error: cannot send update when waiting for a reply, rebootstrapping")
+            self.logger.error("IPSub FSM error: cannot send update when waiting for a reply, rebootstrapping")
             try:
                 self.updates.put_nowait(self.current_update)
             except Queue.Full:
-                logging.error("While handling IPSub FSM error: Queue full, update lost")
+                self.logger.error("While handling IPSub FSM error: Queue full, update lost")
             raise BootstrapNow
         
         try:
@@ -736,13 +739,13 @@ class IPSub(object):
             try:
                 self.updates.put_nowait(parts)
             except Queue.Full:
-                logging.error("While handling re-entrant IPSub publication: Queue full, update lost")
+                self.logger.error("While handling re-entrant IPSub publication: Queue full, update lost")
         else:
             push = self._pushsocket()
             if push.poll(self.heartbeat_push_timeout, zmq.POLLOUT):
                 push.send_multipart(parts, copy = copy)
             else:
-                logging.error("While handling IPSub publication: Push socket timeout, update lost")
+                self.logger.error("While handling IPSub publication: Push socket timeout, update lost")
 
     def wake(self):
         if self.__context is not None:
@@ -826,7 +829,7 @@ class IPSub(object):
             identity = None
 
         if self._ndebug is None:
-            self._ndebug = not logging.getLogger().isEnabledFor(logging.DEBUG)
+            self._ndebug = not self.logger.isEnabledFor(logging.DEBUG)
 
         if not self._ndebug:
             if identity is None and event != EVENT_UPDATE_SENT:
@@ -836,9 +839,9 @@ class IPSub(object):
             else:
                 prefix = bbytes(fbuffer(update[0], 0, MAX_PREFIX))
             if identity is None or identity == self.identity:
-                logging.debug("IPSub: (from %r) %s (prefix %r)", self.identity, EVENT_NAMES[event], prefix)
+                self.logger.debug("IPSub: (from %r) %s (prefix %r)", self.identity, EVENT_NAMES[event], prefix)
             else:
-                logging.debug("IPSub: (from %r) %s (prefix %r)", identity, EVENT_NAMES[event], prefix)
+                self.logger.debug("IPSub: (from %r) %s (prefix %r)", identity, EVENT_NAMES[event], prefix)
 
         if identity is not None and identity == self.identity:
             # Ehm... identified roundtrip -> ignore
@@ -866,7 +869,7 @@ class IPSub(object):
                             else:
                                 called.add(callback)
                         except:
-                            logging.error("Exception in handler", exc_info = True)
+                            self.logger.error("Exception in handler", exc_info = True)
                             byebye.add(callback)
                     for callback in byebye:
                         self.unlisten(cb_prefix, event, callback)
