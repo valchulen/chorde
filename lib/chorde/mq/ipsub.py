@@ -420,14 +420,24 @@ class IPSub(object):
         self.context
 
         self.stop = False
-        try:
-            self.fsm_thread_id = thread.get_ident()
-            self.fsm.enter()
-            while not self.stop:
-                self.fsm.stay()
-            self.fsm.leave()
-        finally:
-            self.fsm_thread_id = None
+        while not self.stop:
+            try:
+                self.fsm_thread_id = thread.get_ident()
+                self.fsm.enter()
+                try:
+                    while not self.stop:
+                        self.fsm.stay()
+                finally:
+                    try:
+                        self.fsm.leave()
+                    except:
+                        self.logger.error("Error cleaing up IPSub runner state", exc_info = True)
+            except:
+                if not self.stop:
+                    self.logger.error("Uncaught exception in IPSub runner, resetting and relaunching", exc_info = True)
+                self.reset()
+            finally:
+                self.fsm_thread_id = None
 
     def terminate(self):
         self.stop = True
