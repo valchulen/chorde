@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
-from functools import wraps, partial
+from functools import wraps as _wraps
+from functools import partial
 import weakref
 import md5
 import time
 import logging
 import random
+import pydoc
 
 from .clients import base, async, tiered
 
@@ -30,6 +32,16 @@ except ImportError:
         @staticmethod
         def cpu_count():
             return 1
+
+def wraps(wrapped):
+    w = _wraps(wrapped)
+    def decor(wrapper):
+        wrapper = w(wrapper)
+        wrapper.__doc__ = "\n".join(
+            pydoc.render_doc(wrapped, 'cached %s:').split('\n', 4)[:3] 
+            + filter(bool, [wrapper.__doc__]))
+        return wrapper
+    return decor
 
 def _make_namespace(f):
     fname = getattr(f, '__name__', None)
@@ -391,7 +403,7 @@ def cached(client, ttl,
         # Wrap and track misses and timings
         if timings:
             of = f
-            @wraps(f)
+            @wraps(of)
             def af(*p, **kw):
                 stats.misses += 1
                 try:
@@ -414,13 +426,13 @@ def cached(client, ttl,
                 except:
                     stats.errors += 1
                     raise
-            @wraps(f)
+            @wraps(of)
             def f(*p, **kw):
                 stats.sync_misses += 1
                 return af(*p, **kw)
         else:
             of = f
-            @wraps(f)
+            @wraps(of)
             def af(*p, **kw):  # lint:ok
                 stats.misses += 1
                 try:
@@ -428,12 +440,12 @@ def cached(client, ttl,
                 except:
                     stats.errors += 1
                     raise
-            @wraps(f)
+            @wraps(of)
             def f(*p, **kw):  # lint:ok
                 stats.sync_misses += 1
                 return af(*p, **kw)
 
-        @wraps(f)
+        @wraps(of)
         def cached_f(*p, **kw):
             if _initialize:
                 _initialize[0]()
@@ -455,7 +467,7 @@ def cached(client, ttl,
         if decorate is not None:
             cached_f = decorate(cached_f)
         
-        @wraps(f)
+        @wraps(of)
         def get_ttl_f(*p, **kw):
             if _initialize:
                 _initialize[0]()
@@ -475,7 +487,7 @@ def cached(client, ttl,
         if decorate is not None:
             get_ttl_f = decorate(get_ttl_f)
         
-        @wraps(f)
+        @wraps(of)
         def async_cached_f(*p, **kw):
             if _initialize:
                 _initialize[0]()
@@ -520,7 +532,7 @@ def cached(client, ttl,
         if decorate is not None:
             async_cached_f = decorate(async_cached_f)
         
-        @wraps(f)
+        @wraps(of)
         def future_cached_f(*p, **kw):
             try:
                 callkey = key(*p, **kw)
@@ -587,7 +599,7 @@ def cached(client, ttl,
         if decorate is not None:
             future_cached_f = decorate(future_cached_f)
 
-        @wraps(f)
+        @wraps(of)
         def lazy_cached_f(*p, **kw):
             if _initialize:
                 _initialize[0]()
@@ -610,7 +622,7 @@ def cached(client, ttl,
             lazy_cached_f = decorate(lazy_cached_f)
         peek_cached_f = lazy_cached_f
         
-        @wraps(f)
+        @wraps(of)
         def future_lazy_cached_f(*p, **kw):
             try:
                 callkey = key(*p, **kw)
@@ -683,7 +695,7 @@ def cached(client, ttl,
         if decorate is not None:
             future_lazy_cached_f = decorate(future_lazy_cached_f)
 
-        @wraps(f)
+        @wraps(of)
         def future_peek_cached_f(*p, **kw):
             try:
                 callkey = key(*p, **kw)
@@ -734,7 +746,7 @@ def cached(client, ttl,
         if decorate is not None:
             future_peek_cached_f = decorate(future_peek_cached_f)
 
-        @wraps(f)
+        @wraps(of)
         def future_get_ttl_f(*p, **kw):
             try:
                 callkey = key(*p, **kw)
@@ -750,7 +762,7 @@ def cached(client, ttl,
         if decorate is not None:
             future_get_ttl_f = decorate(future_get_ttl_f)
 
-        @wraps(f)
+        @wraps(of)
         def invalidate_f(*p, **kw):
             if _initialize:
                 _initialize[0]()
@@ -764,7 +776,7 @@ def cached(client, ttl,
         if decorate is not None:
             invalidate_f = decorate(invalidate_f)
         
-        @wraps(f)
+        @wraps(of)
         def future_invalidate_f(*p, **kw):
             try:
                 callkey = key(*p, **kw)
@@ -776,7 +788,7 @@ def cached(client, ttl,
         if decorate is not None:
             future_invalidate_f = decorate(future_invalidate_f)
         
-        @wraps(f)
+        @wraps(of)
         def put_f(*p, **kw):
             value = kw.pop('_cache_put')
             if _initialize:
@@ -791,7 +803,7 @@ def cached(client, ttl,
         if decorate is not None:
             put_f = decorate(put_f)
         
-        @wraps(f)
+        @wraps(of)
         def async_put_f(*p, **kw):
             if _initialize:
                 _initialize[0]()
@@ -806,7 +818,7 @@ def cached(client, ttl,
         if decorate is not None:
             async_put_f = decorate(async_put_f)
         
-        @wraps(f)
+        @wraps(of)
         def future_put_f(*p, **kw):
             value = kw.pop('_cache_put')
             try:
@@ -819,7 +831,7 @@ def cached(client, ttl,
         if decorate is not None:
             future_put_f = decorate(future_put_f)
         
-        @wraps(f)
+        @wraps(of)
         def async_lazy_cached_f(*p, **kw):
             if _initialize:
                 _initialize[0]()
@@ -871,7 +883,7 @@ def cached(client, ttl,
         if decorate is not None:
             async_lazy_cached_f = decorate(async_lazy_cached_f)
 
-        @wraps(f)
+        @wraps(of)
         def refresh_f(*p, **kw):
             if _initialize:
                 _initialize[0]()
@@ -889,7 +901,7 @@ def cached(client, ttl,
         if decorate is not None:
             refresh_f = decorate(refresh_f)
 
-        @wraps(f)
+        @wraps(of)
         def async_refresh_f(*p, **kw):
             if _initialize:
                 _initialize[0]()
@@ -907,7 +919,7 @@ def cached(client, ttl,
         if decorate is not None:
             async_refresh_f = decorate(async_refresh_f)
 
-        @wraps(f)
+        @wraps(of)
         def future_refresh_f(*p, **kw):
             try:
                 callkey = key(*p, **kw)
