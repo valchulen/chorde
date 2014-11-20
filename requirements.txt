@@ -1,0 +1,6 @@
+numpy
+python-memcached
+pyzmq
+dnspython
+cython
+nose
