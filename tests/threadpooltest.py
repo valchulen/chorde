@@ -85,6 +85,9 @@ class ThreadpoolTest(unittest.TestCase):
         self.assertFalse(workers2[0] is workers[0])
     
     def testAsyncLatency(self):
+        # Warm up the pool
+        self.pool.apply(lambda:None)
+        
         for i in xrange(100):
             t0 = time.time()
             ev = Event()
@@ -94,6 +97,9 @@ class ThreadpoolTest(unittest.TestCase):
             self.assertLess(t1-t0, 0.05)
 
     def testSyncLatency(self):
+        # Warm up the pool
+        self.pool.apply(lambda:None)
+        
         for i in xrange(100):
             t0 = time.time()
             t1 = self.pool.apply(time.time)
