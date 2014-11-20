@@ -2,5 +2,5 @@ numpy
 python-memcached
 pyzmq
 dnspython
-cython
+pyrex
 nose
