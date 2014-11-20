@@ -570,7 +570,8 @@ class FilesCacheClient(base.BaseCacheClient):
         # Touch all files, invalidating them immediately
         for suffix in ('.file','.raw','.ser','.key'):
             try:
-                os.utime(targetpath+suffix, None)
+                now = time.time()
+                os.utime(targetpath+suffix, (now,now))
             except:
                 pass
 
