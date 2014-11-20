@@ -15,6 +15,8 @@ import worker
 
 class TimeoutError(Exception):
     pass
+class TerminateWorker(Exception):
+    pass
 
 class WorkerThread(threading.Thread):
     def __init__(self,target,*args,**kwargs):
@@ -31,6 +33,9 @@ class WorkerThread(threading.Thread):
                     self.target(*self.args,**self.kwargs)
                 finally:
                     worker._callCleanupHooks()
+            except TerminateWorker:
+                self.logger.info("Worker terminated")
+                self.terminate(False)
             except Exception:
                 self.logger.error("Exception ocurred in worker thread:", exc_info = True)
 
@@ -340,8 +345,7 @@ class ThreadPool:
     def worker(self):
         self = self()
         if self is None:
-            self.terminate(False)
-            return
+            raise TerminateWorker
 
         task = self._dequeue()
         local = self.local
