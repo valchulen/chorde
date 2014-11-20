@@ -339,6 +339,9 @@ class ThreadPool:
     @staticmethod
     def worker(self):
         self = self()
+        if self is None:
+            self.terminate(False)
+            return
 
         task = self._dequeue()
         local = self.local
