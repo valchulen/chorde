@@ -406,7 +406,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if raw_pages is not NONE and store_ttl < ttl:
             now = time.time()
             for i,page in raw_pages.iteritems():
-                new_page = page[:2] + (ttl + now,) + page[3:]
+                new_page = page[:2] + (max(ttl + now, page[2]),) + page[3:]
                 success = self.client.cas("%s|%d" % (short_key,i), new_page, ttl)
                 if success:
                     cached = self._succeedfast_cache.get(key, NONE)

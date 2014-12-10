@@ -425,7 +425,10 @@ class AsyncCacheWriterPool:
         self.enqueue(key, value, ttl)
 
     def renew(self, key, ttl):
-        self.enqueue(key, _RENEW, ttl)
+        # Don't schedule a renew if another thing is queued on the key
+        # It causes... issues
+        if key not in self.queueset and key not in self.workset:
+            self.enqueue(key, _RENEW, ttl)
 
     def delete(self, key):
         self.enqueue(key, _DELETE)
