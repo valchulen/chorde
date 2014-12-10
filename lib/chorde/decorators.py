@@ -242,6 +242,8 @@ def cached(client, ttl,
 
         ttl: the time, in seconds, during which values remain valid.
 
+        callkey: the given key-computing callable
+
         renew_time: if not None, the time, in seconds, to add to the TTL when an item is scheduled for
             refresh. This renews the current item at a cost, but prevents concurrent readers from attempting
             their own refresh in a rather simple way, short of using a coherence protocol. Roughly
@@ -987,6 +989,7 @@ def cached(client, ttl,
             async_cached_f.put = async_put_f
             async_cached_f.ttl = ttl
             async_cached_f.async_ttl = async_ttl
+            async_cached_f.callkey = key
             async_cached_f.stats = stats
             async_cached_f.get_ttl = get_ttl_f
             cached_f.async = async_f
@@ -1009,6 +1012,7 @@ def cached(client, ttl,
         cached_f.client = nclient
         cached_f.ttl = ttl
         cached_f.async_ttl = async_ttl or ttl
+        cached_f.callkey = key
         cached_f.stats = stats
         cached_f.uncached = of
         cached_f.get_ttl = get_ttl_f
@@ -1023,6 +1027,7 @@ def cached(client, ttl,
         future_cached_f.put = future_put_f
         future_cached_f.ttl = ttl
         future_cached_f.async_ttl = async_ttl
+        future_cached_f.callkey = key
         future_cached_f.stats = stats
         future_cached_f.uncached = of
         future_cached_f.get_ttl = future_get_ttl_f
