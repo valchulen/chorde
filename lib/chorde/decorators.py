@@ -414,8 +414,10 @@ def cached(client, ttl,
                     t1 = time.time()
                     t = t1-t0
                     try:
-                        stats.max_miss_time = max(stats.max_miss_time, t)
-                        stats.min_miss_time = t if stats.min_miss_time is None else min(stats.min_miss_time, t)
+                        if t > stats.max_miss_time:
+                            stats.max_miss_time = t
+                        if stats.min_miss_time is None or stats.min_miss_time > t:
+                            stats.min_miss_time = t
                         stats.sum_miss_time += t
                         stats.sum_miss_time_sq += t*t
                         if stats.miss_time_histogram:
