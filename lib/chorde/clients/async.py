@@ -269,8 +269,8 @@ class AsyncCacheWriterPool:
         return rv
 
     def enqueue(self, key, value, ttl=None):
-        if ( (hasattr(self.threadpool, 'in_worker') and self.threadpool.in_worker()) 
-                 or (self.threadset and thread.get_ident() in self.threadset) ):
+        if (thread.get_ident() in self.threadset 
+                 or (hasattr(self.threadpool, 'in_worker') and self.threadpool.in_worker()) ):
             # Oops, recursive call, bad idea
             # Run inline
             self.queueset[key] = value, ttl
