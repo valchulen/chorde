@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import threading
+import multiprocessing
 import time
 import unittest
 import logging
@@ -176,4 +177,48 @@ class IPSubTest(unittest.TestCase):
         self.assertEqual(len(updates), 2)
         self.assertEqual(len(replies), 2)
         self.assertEqual([r[-1].bytes for r in replies], updates)
+
+
+def _check_start_ipsub(port1, port2):
+    import os
+    ctx = zmq.Context()
+    ipsub_obj = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)], ctx=ctx)
+    ipsub_thread = threading.Thread(target=ipsub_obj.run)
+    ipsub_thread.daemon = True
+    ipsub_thread.start()
+    for _ in xrange(50):
+        time.sleep(0.1)
+        if ipsub_obj.is_running:
+            break
+    if not ipsub_obj.is_running:
+        os.exit(1)
+
+@skipIfUnsupported
+class IPSubConcurrencyTest(unittest.TestCase):
+    def setUp(self):
+        ipsub.IPSub.register_default_pyobj()
+        
+        ctx = zmq.Context.instance()
+        s1 = ctx.socket(zmq.REQ)
+        s2 = ctx.socket(zmq.REQ)
+        port1 = s1.bind_to_random_port("tcp://127.0.0.1")
+        port2 = s2.bind_to_random_port("tcp://127.0.0.1")
+        s1.close()
+        s2.close()
+        del s1,s2
+        logging.debug("ipsub1 ports: %d, %d", port1, port2)
+        self.port1 = port1
+        self.port2 = port2
+
+    def test_concurrent_fork(self):
+        processes = []
+        for i in xrange(16):
+            p = multiprocessing.Process(
+                target=_check_start_ipsub, 
+                args=(self.port1, self.port2))
+            p.start()
+            processes.append(p)
+        for p in processes:
+            p.join(6)
+            self.assertEqual(0, p.exitcode)
 
