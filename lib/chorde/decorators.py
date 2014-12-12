@@ -1002,7 +1002,7 @@ def cached(client, ttl,
             cached_f.put = put_f
         else:
             aclient = [nclient]
-            cached_f.async = weakref.ref(cached_f)
+            cached_f.async = async_f = weakref.ref(cached_f)
             cached_f.lazy = async_lazy_cached_f
             cached_f.refresh = async_refresh_f
             cached_f.peek = peek_cached_f
