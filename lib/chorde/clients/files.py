@@ -684,6 +684,7 @@ class FilesCacheClient(base.BaseCacheClient):
             del filenames[:]
         
         # Must reset counter now
+        self.size.close()
         self.size = self._make_counter()
         self._failfast_cache.clear()
 
