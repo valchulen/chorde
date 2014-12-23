@@ -136,7 +136,8 @@ class SharedCounterGenericBase(object):
         rand = self.__rnd
         if self.cached_timestamp is not None:
             uint = type(self.cached_timestamp)
-            self.cached_timestamp = self.cached_timestamp + uint(rand) & 0xffffffffffffffff
+            mask = uint(0x7fffffffffffffff)
+            self.cached_timestamp = (self.cached_timestamp & mask) + (uint(rand) & mask)
         ts.value += rand
 
     @property
@@ -340,7 +341,7 @@ class SharedCounterBaseNumpypy(SharedCounterGenericBase):
         # Fast, read-only counters
         counters = numpy.frombuffer(buf, self.dtype, slots, 
             offset + self.bitmap_item_size * slots)
-        super(SharedCounterBase, self).__init__(slots, bitmap, counters, locked)
+        super(SharedCounterBaseNumpypy, self).__init__(slots, bitmap, counters, locked)
 
         # Fast read-only bitmap ]:-]
         self.bitmap = numpy.frombuffer(buf, numpy.bool8, slots, offset)
@@ -363,20 +364,20 @@ class SharedCounter64Numpypy(SharedCounterBaseNumpypy):
 
 
 class SharedCounterBaseNumpy(SharedCounterGenericBase):
-    btype = numpy.bool
-    bitmap_item_size = numpy.dtype(btype).itemsize
+    btype = numpy.bool8
+    bitmap_item_size = btype().itemsize
 
     def __init__(self, slots, fileobj, offset = 0, locked = False):
         ts_mmap = numpy.memmap(fileobj, numpy.uint64, 'r+', offset)
         timestamp = Slot(ts_mmap, offset)
-        offset += numpy.dtype(numpy.uint64).itemsize
+        offset += numpy.uint64().itemsize
 
         bitmap = numpy.memmap(fileobj, self.btype, 'r+', offset, slots)
-        offset += numpy.dtype(self.btype).itemsize * slots
+        offset += self.btype().itemsize * slots
         
         counters = numpy.memmap(fileobj, self.dtype, 'r+', offset, slots)
-        offset += numpy.dtype(self.dtype).itemsize * slots
-        super(SharedCounterBase, self).__init__(slots, bitmap, counters, locked)
+        offset += self.dtype().itemsize * slots
+        super(SharedCounterBaseNumpy, self).__init__(slots, bitmap, counters, locked)
 
         self.myslot = Slot(counters, self.slot)
 
@@ -410,7 +411,7 @@ class SharedCounterBaseCtypes(SharedCounterGenericBase):  # lint:ok
         
         bitmap = (ctypes.c_bool * slots).from_buffer(buf, offset)
         counters = (self.dtype * slots).from_buffer(buf, offset + ctypes.sizeof(bitmap))
-        super(SharedCounterBase, self).__init__(slots, bitmap, counters, locked)
+        super(SharedCounterBaseCtypes, self).__init__(slots, bitmap, counters, locked)
 
         # Map my slot as a single item, it makes += atomic
         self.myslot = self.dtype.from_buffer(buf, 
