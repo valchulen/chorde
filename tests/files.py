@@ -8,7 +8,6 @@ import mmap
 import os.path
 
 from .clientbase import CacheClientTestMixIn, NamespaceWrapperTestMixIn
-import chorde.clients.files
 
 SIZE = 1 << 20
 
@@ -19,6 +18,12 @@ elif os.name == 'nt':
     TIME_RESOLUTION = 1
 else:
     TIME_RESOLUTION = 0.5
+
+try:
+    import chorde.clients.files
+    skipIfNoFiles = lambda c : c
+except:
+    skipIfNoFiles = unittest.skip("Files support not built in (missing dependencies for shmemutils)")
 
 class WithTempdir:
     @classmethod
@@ -34,6 +39,7 @@ class WithTempdir:
         self._super().tearDown(self)
         shutil.rmtree(self.tempdir)
 
+@skipIfNoFiles
 class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
     capacity_means_entries = False
     
