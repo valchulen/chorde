@@ -136,8 +136,7 @@ class SharedCounterGenericBase(object):
         rand = self.__rnd
         if self.cached_timestamp is not None:
             uint = type(self.cached_timestamp)
-            mask = uint(0x7fffffffffffffff)
-            self.cached_timestamp = (self.cached_timestamp & mask) + (uint(rand) & mask)
+            self.cached_timestamp = uint(int(self.cached_timestamp) + int(rand) & 0x7fffffffffffffff)
         ts.value += rand
 
     @property
@@ -386,7 +385,7 @@ class SharedCounterBaseNumpy(SharedCounterGenericBase):
     @classmethod
     def from_fileno(cls, slots, fileno, offset = 0):
         fd = os.dup(fileno)
-        fileobj =  os.fdopen(fd)
+        fileobj =  os.fdopen(fd, 'r+')
         return cls.from_file(slots, fileobj, offset)
     
     @classmethod
