@@ -368,8 +368,8 @@ class SharedCounterBaseNumpy(SharedCounterGenericBase):
     bitmap_item_size = btype().itemsize
 
     def __init__(self, slots, fileobj, offset = 0, locked = False):
-        ts_mmap = numpy.memmap(fileobj, numpy.uint64, 'r+', offset)
-        timestamp = Slot(ts_mmap, offset)
+        ts_mmap = numpy.memmap(fileobj, numpy.uint64, 'r+', offset, 1)
+        timestamp = Slot(ts_mmap, 0)
         offset += numpy.uint64().itemsize
 
         bitmap = numpy.memmap(fileobj, self.btype, 'r+', offset, slots)
