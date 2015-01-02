@@ -101,6 +101,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             succeedfast_time = 0.25,
             pickler = None,
             namespace = None,
+            compress = True,
             checksum_key = None, # CHANGE IT!
             encoding_cache = None, # should be able to contain attributes
             **client_args):
@@ -122,6 +123,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         self.failfast_time = failfast_time
         self.succeedfast_time = succeedfast_time
         self.encoding_cache = encoding_cache
+        self.compress = compress
         
         if self.namespace:
             self.max_backing_key_length -= len(self.namespace)+1
@@ -183,21 +185,29 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     def shorten_key(self, key):
         # keys cannot be anything other than strings
         exact = True
+        zpfx = 'z#'
         if not isinstance(key, basestring):
             try:
                 # Try JSON
                 key = "J#"+json.dumps(key, separators=JSON_SEPARATORS)
+                zpfx = 'z'
             except:
                 # Try pickling
                 key = "P#"+self.pickler.dumps(key,2).encode("base64").replace("\n","")
+                zpfx = 'z'
         elif isinstance(key, unicode):
             key = "U#" + key.encode("utf-8")
+            zpfx = 'z'
 
         # keys cannot contain control characters or spaces
         for c in itertools.imap(ord,key):
             if c < 33 or c == 127:
                 key = "B#" + key.encode("base64").replace("\n","")
+                zpfx = 'z'
                 break
+
+        if self.compress:
+            key = zpfx + key
         
         if len(key) > self.max_backing_key_length:
             # keys cannot be too long, accept the possibility of collision,
@@ -254,11 +264,15 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             # Note: compress with very little effort (level=1), 
             #   otherwise it's too expensive and not worth it
             sio = StringIO()
-            with ZlibFile(sio, 1) as zio:
-                self.pickler.dump((key,value),zio,2)
+            if self.compress:
+                with ZlibFile(sio, 1) as zio:
+                    self.pickler.dump((key,value),zio,2)
+                del zio
+            else:
+                self.pickler.dump((key,value),sio,2)
             encoded = sio.getvalue()
             sio.close()
-            del sio,zio
+            del sio
 
             if self.encoding_cache is not None:
                 self.encoding_cache.cache = (value, encoded)
@@ -304,8 +318,11 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             if cached is not None and cached[1] == data:
                 return (key,cached[0])
             del cached
-        
-        value = zlib.decompress(data)
+
+        if self.compress:
+            value = zlib.decompress(data)
+        else:
+            value = data
         value = self.pickler.loads(value)
 
         if self.encoding_cache is not None and isinstance(value, tuple) and len(value) > 1:

@@ -45,12 +45,13 @@ class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
     capacity_means_entries = False
     meaningful_capacity = False # controlled externally so it may not be consistent for testing purposes
     
-    def setUpClient(self):
+    def setUpClient(self, **kwargs):
         from chorde.clients.memcached import MemcachedClient
         import threading
         rv = MemcachedClient([DEFAULT_CLIENT_ADDR], 
             checksum_key = "test",
-            encoding_cache = threading.local() )
+            encoding_cache = threading.local(),
+            **kwargs )
         rv.client.flush_all()
         return rv
     def tearDown(self):
@@ -148,6 +149,12 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
         self.rclient.client.flush_all()
 
     testStats = None
+
+@skipIfNoMemcached
+class UncompressedMemcacheTest(MemcacheTest):
+    def setUpClient(self):
+        return super(UncompressedMemcacheTest, self).setUpClient(
+            compress = False)
 
 @skipIfNoMemcached
 class BuiltinNamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
