@@ -89,9 +89,7 @@ class DynamicResolvingClient(object):
                                     addrs = list(dnsquery(host, 'A'))
                                 except:
                                     addrs = []
-                                if len(addrs) == 1:
-                                    # normal A record, forget to mark static
-                                    addrs = []
+                                addrs = self.check_static(addrs)
                             if addrs:
                                 # sort to maintain consistent hashing
                                 addrs = sorted(addrs)
@@ -150,3 +148,9 @@ class DynamicResolvingClient(object):
             return "%s:%s" % (host, entry.split(':')[1])
         else:
             return None
+
+    def check_static(self, addrs):
+        if len(addrs) == 1:
+            # normal A record, forget to mark static
+            addrs = []
+        return addrs
