@@ -96,6 +96,18 @@ class ThreadpoolTest(unittest.TestCase):
             t1 = time.time()
             self.assertLess(t1-t0, 0.05)
 
+    def testAsyncBlocking(self):
+        # Warm up the pool
+        self.pool.apply(lambda:None)
+        
+        for i in xrange(100):
+            t0 = time.time()
+            ev = Event()
+            self.pool.apply_async(ev.set)
+            t1 = time.time()
+            ev.wait()
+            self.assertLess(t1-t0, 0.05)
+
     def testSyncLatency(self):
         # Warm up the pool
         self.pool.apply(lambda:None)

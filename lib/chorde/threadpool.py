@@ -281,6 +281,14 @@ class ThreadPool:
             # until now, pushing threads didn't set the weakeup call event.
             # So, before actually sleeping, try again
             self.__swap_queues()
+        elif self.__not_empty.isSet():
+            # Try again
+            # Someone may have sneaked in while we were in the above case
+            self.__not_empty.clear()
+            self.__worklen = 0
+            self.__busyfactors = {}
+            self.__dequeue = self.__exhausted
+            self.__swap_queues()
         else:
             # Still empty, give up
             self.__not_empty.clear()
