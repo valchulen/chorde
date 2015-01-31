@@ -205,52 +205,38 @@ class MultiQueueTest(unittest.TestCase):
         self.assertLess(t1-t0, 0.025)
 
     def testWeighting(self):
-        terminate = []
+        # Calibrate for maximum fairness accuracy (needed by test)
+        self.pool.max_batch = 100
+        self.pool.min_batch = 1
+        
         counts = collections.defaultdict(int)
         def accounting(i):
             counts[i] += 1
-        def killit(q):
-            while not terminate:
-                self.pool.apply_async(accounting, (q,), queue=q)
-                time.sleep(0) # needed to avoid GIL issues that skew test results
-        threads = [ 
-            Thread(target=killit, args=("mean",)),
-            Thread(target=killit, args=("simple",)),
-        ]
         self.pool.set_queueprio(3,"mean")
         self.pool.set_queueprio(1,"simple")
-        for t in threads:
-            t.start()
-        time.sleep(1) # let it fill up
-        countsnap = counts.copy()
-        terminate.append(None)
-        for t in threads:
-            t.join()
+        qsequence = ["mean", "simple"]
+        for i in xrange(10000):
+            for q in qsequence:
+                self.pool.apply_async(accounting, (q,), queue=q)
+        countsnap = self.pool.apply(counts.copy, queue = "mean")
         self.pool.join(60)
         self.assertLess(countsnap["simple"]*2, countsnap["mean"])
 
     def testWrapper(self):
-        terminate = []
+        # Calibrate for maximum fairness accuracy (needed by test)
+        self.pool.max_batch = 100
+        self.pool.min_batch = 1
+        
         counts = collections.defaultdict(int)
         simple = self.pool.subqueue("simple", 1)
         mean = self.pool.subqueue("mean", 3)
         def accounting(i):
             counts[i] += 1
-        def killit(q):
-            while not terminate:
-                q.apply_async(accounting, (q.queue,))
-                time.sleep(0) # needed to avoid GIL issues that skew test results
-        threads = [ 
-            Thread(target=killit, args=(mean,)),
-            Thread(target=killit, args=(simple,)),
-        ]
-        for t in threads:
-            t.start()
-        time.sleep(1) # let it fill up
-        countsnap = counts.copy()
-        terminate.append(None)
-        for t in threads:
-            t.join()
+        qsequence = [(mean,"mean"), (simple,"simple")]
+        for i in xrange(10000):
+            for q,qname in qsequence:
+                q.apply_async(accounting, (qname,))
+        countsnap = mean.apply(counts.copy)
         self.pool.join(60)
         self.assertLess(countsnap["simple"]*2, countsnap["mean"])
 
