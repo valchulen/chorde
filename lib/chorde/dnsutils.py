@@ -1,6 +1,66 @@
 # -*- coding: utf-8 -*-
+import os
+import os.path
 import time
 import socket
+
+def is_ip4(x):
+    try:
+        socket.inet_aton(x)
+        return True
+    except:
+        return False
+try:
+    # supports ipv4 and ipv6
+    import ipaddr
+    def is_ip(x):
+        try:
+            ipaddr.IPAddress(x)
+            return True
+        except ValueError:
+            return False
+    def is_ip6(x):
+        try:
+            ipaddr.IPv6Address(x)
+            return True
+        except ValueError:
+            return False
+except ImportError:
+    import re  
+    def is_ip6(x, ip6match = re.compile(r'^[0-9a-fA-F:]{6,32}$').match): # lint:ok
+        return bool(ip6match(x))
+    def is_ip(x):  # lint:ok
+        return is_ip4(x) or is_ip6(x)
+
+def basic_dnsquery(host, typ):
+    if typ == 'A':
+        expiration = time.time() + 60 # token expiration, the OS knows
+        for addrinfo in socket.getaddrinfo(host, 0, socket.AF_INET, socket.SOCK_STREAM):
+            ip = addrinfo[-1][0]
+            yield ip, expiration
+    else:
+        raise NotImplementedError
+
+def hosts_dnsquery(host, typ, hostsfile = "/etc/hosts"):
+    if typ not in ('A', 'AAAA'):
+        return
+    if os.path.isfile(hostsfile) and os.access(hostsfile, os.R_OK):
+        with open(hostsfile, "r") as f:
+            for l in f:
+                if host in l:
+                    if '#' in l:
+                        l = l.split('#',1)[0]
+                    l = l.strip()
+                    if l:
+                        parts = filter(bool, [ x.strip() for x in l.split() ])
+                        if host in parts:
+                            if typ == 'A':
+                                if is_ip4(parts[0]):
+                                    yield (parts[0], time.time() + 60)
+                            elif typ == 'AAAA':
+                                if is_ip6(parts[0]):
+                                    yield (parts[0], time.time() + 60)
+
 try:
     import dns.resolver
     resolver = None
@@ -18,15 +78,19 @@ except ImportError:
     warnings.warn("dnspython missing, will not support dynamic CNAME server lists")
     
     # basic fallback that serves to dected round-robin dns at least
-    def dnsquery(host, typ):  # lint:ok
-        if typ == 'A':
-            expiration = time.time() + 60 # token expiration, the OS knows
-            for addrinfo in socket.getaddrinfo(host, 0, socket.AF_INET, socket.SOCK_STREAM):
-                ip = addrinfo[-1][0]
-                yield ip, expiration
-        else:
-            raise NotImplementedError
+    dnsquery = basic_dnsquery
 
+def dnsquery_if_hostname(host, typ):
+    if is_ip(host):
+        return host
+    else:
+        # Try hostfile first
+        hresults = list(hosts_dnsquery(host, typ))
+        if hresults:
+            return hresults
+        else:
+            # Then real DNS
+            return dnsquery(host, typ)
 
 class DynamicResolvingClient(object):
     def __init__(self, client_class, client_addresses, client_args={}):
@@ -78,15 +142,19 @@ class DynamicResolvingClient(object):
                         host = self.extract_host(entry)
     
                         if entry and host is not None:
-                            # Check CNAME indirection
-                            try:
-                                addrs = list(dnsquery(host, 'CNAME'))
-                            except:
+                            if list(hosts_dnsquery(host, 'A')):
+                                # Locally defined host, don't check CNAME
                                 addrs = []
+                            else:
+                                # Check CNAME indirection
+                                try:
+                                    addrs = list(dnsquery_if_hostname(host, 'CNAME'))
+                                except:
+                                    addrs = []
                             if not addrs:
                                 # Check dns round-robin
                                 try:
-                                    addrs = list(dnsquery(host, 'A'))
+                                    addrs = list(dnsquery_if_hostname(host, 'A'))
                                 except:
                                     addrs = []
                                 addrs = self.check_static(addrs)
