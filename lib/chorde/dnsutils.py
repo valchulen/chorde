@@ -82,7 +82,7 @@ except ImportError:
 
 def dnsquery_if_hostname(host, typ):
     if is_ip(host):
-        return host
+        return [(host, time.time() + 86400)]
     else:
         # Try hostfile first
         hresults = list(hosts_dnsquery(host, typ))
