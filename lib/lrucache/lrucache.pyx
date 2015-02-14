@@ -3,9 +3,9 @@
 cdef extern from "Python.h":
     int PySequence_SetItem(object o, Py_ssize_t i, object v) except -1
     object PySequence_GetItem(object o, Py_ssize_t i)
-    void PyList_SET_ITEM(object o, Py_ssize_t i, void* v)
-    void* PyList_GET_ITEM(object o, Py_ssize_t i)
-    Py_ssize_t PyList_GET_SIZE(object o)
+    void PyList_SET_ITEM(void *o, Py_ssize_t i, void* v)
+    void* PyList_GET_ITEM(void *o, Py_ssize_t i)
+    Py_ssize_t PyList_GET_SIZE(void *o)
 
 cdef extern from *:
     # Note: the C name below is extracted from the generated code. As such,
@@ -86,9 +86,9 @@ cdef class LRUCache:
         cdef unsigned int bprio
 
         bprio = self.pqueue[0].prio
-        sz = <unsigned int>PyList_GET_SIZE(self.pqueue)
+        sz = <unsigned int>PyList_GET_SIZE(<void*>self.pqueue)
         for i from 0 <= i < sz:
-            node = <_borrowed_node*>PyList_GET_ITEM(self.pqueue, i)
+            node = <_borrowed_node*>PyList_GET_ITEM(<void*>self.pqueue, i)
             node.prio = node.prio - bprio
         self.next_prio = self.next_prio - bprio
 
@@ -106,17 +106,17 @@ cdef class LRUCache:
         # This is possible since we're only shuffling items, in 
         # reference-neutral way, atomically, within a GIL-protected opcode
         bnode = <_borrowed_node*><void*>node
-        sz = <unsigned int>PyList_GET_SIZE(self.pqueue)
+        sz = <unsigned int>PyList_GET_SIZE(<void*>self.pqueue)
         while 1:
             ix = bnode.index
             l  = 2 * ix + 1
             r  = 2 * ix + 2
 
             if r < sz:
-                ln = <_borrowed_node*>PyList_GET_ITEM(self.pqueue,l)
-                rn = <_borrowed_node*>PyList_GET_ITEM(self.pqueue,r)
+                ln = <_borrowed_node*>PyList_GET_ITEM(<void*>self.pqueue,l)
+                rn = <_borrowed_node*>PyList_GET_ITEM(<void*>self.pqueue,r)
             elif l < sz:
-                ln = <_borrowed_node*>PyList_GET_ITEM(self.pqueue,l)
+                ln = <_borrowed_node*>PyList_GET_ITEM(<void*>self.pqueue,l)
 
             if r < sz and rn.prio < ln.prio:
                 sw = r
@@ -128,8 +128,8 @@ cdef class LRUCache:
                 break
 
             # This is reference-neutral, so we can use the SET_ITEM macro
-            PyList_SET_ITEM(self.pqueue, sw, <void*>bnode)
-            PyList_SET_ITEM(self.pqueue, ix, <void*>swn)
+            PyList_SET_ITEM(<void*>self.pqueue, sw, <void*>bnode)
+            PyList_SET_ITEM(<void*>self.pqueue, ix, <void*>swn)
             bnode.index = sw
             swn.index = ix
 
