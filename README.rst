@@ -47,6 +47,12 @@ example, a local memcached listening on localhost port 11211. Multiple clients
 can be given, and a consistent hash on the key will be used to spread the load
 among them.
 
+If a hostname is given, and the hostname points to multiple IP addresses, the
+same effect will be obtained, and the distribution will be dynamically updated
+according to the TTL specified on the DNS entry. This, for example, makes the
+client work seamlessly with Amazon ElastiCache's "configuration endpoint", 
+which is a DNS entry that points to all the cache nodes.
+
 Do beware that the key used against the memcached isn't the key given, since
 the client supports any hashable object as key, whereas memcached only supports
 a subset of string keys. MemcachedClient has none of memcached's limitations
