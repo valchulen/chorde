@@ -65,15 +65,15 @@ cdef class LRUCache:
     cdef list pqueue
     cdef dict emap
     cdef object eviction_callback
-    
-    def __init__(LRUCache self, unsigned int size, unsigned int touch_on_read = 1, object eviction_callback = None):
+
+    def __cinit__(LRUCache self, unsigned int size, unsigned int touch_on_read = 1, object eviction_callback = None):
         self.size = size
         self.touch_on_read = touch_on_read
         self.pqueue = []
         self.emap = {}
         self.next_prio = 0
         self.eviction_callback = eviction_callback
-
+    
     def __len__(LRUCache self not None):
         return len(self.pqueue)
     
@@ -85,8 +85,11 @@ cdef class LRUCache:
         cdef unsigned int i, sz
         cdef unsigned int bprio
 
-        bprio = self.pqueue[0].prio
         sz = <unsigned int>PyList_GET_SIZE(<void*>self.pqueue)
+        if sz:
+            bprio = (<_borrowed_node*>PyList_GET_ITEM(<void*>self.pqueue, 0)).prio
+        else:
+            bprio = self.next_prio
         for i from 0 <= i < sz:
             node = <_borrowed_node*>PyList_GET_ITEM(<void*>self.pqueue, i)
             node.prio = node.prio - bprio
@@ -165,11 +168,11 @@ cdef class LRUCache:
             oldval = node.value 
             node.value = val
             self.c_decrease(node)
-        elif len(self.pqueue) >= self.size:
-            node = PySequence_GetItem(self.pqueue, 0)
+        elif <unsigned int>PyList_GET_SIZE(<void*>self.pqueue) >= self.size:
+            node = <_node>PyList_GET_ITEM(<void*>self.pqueue, 0) # borrow pqueue, but new ref for node
             oldkey = node.key   # delay collection of old key/value, to avoid
             oldval = node.value # firing python code and thus releasing the GIL
-            del self.emap[node.key]
+            del self.emap[oldkey]
             node.key = key
             node.value = val
             self.emap[key] = node
@@ -184,7 +187,7 @@ cdef class LRUCache:
             if self.next_prio == 0:
                 self.c_rehash()
             node = _node(self.next_prio, 0, key, val) # atomic barrier (might release GIL)
-            node.index = len(self.pqueue) # from now on, atomic
+            node.index = <unsigned int>PyList_GET_SIZE(<void*>self.pqueue) # from now on, atomic
             self.pqueue.append(node)
             self.emap[key] = node
         return 0
