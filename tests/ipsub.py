@@ -102,7 +102,7 @@ class IPSubTest(unittest.TestCase):
         self.ipsub.publish_pyobj('msg2',None)
         time.sleep(0.1)
         self.ipsub.terminate()
-        self.ipsub_thread.join()
+        self.ipsub_thread.join(5.0)
         time.sleep(0.1)
         self._make_ipsub()
         time.sleep(0.1)
