@@ -253,7 +253,8 @@ class IPSub(object):
                                     # ^ else Wakeup call, ignore
                                     put_nowait(pack)
                                 elif fbuffer_(pack[0]) == buffer_("tic"):
-                                    tic_count = 0
+                                    owner._tic()
+                                    tic_count = 100
                                 del pack
                             elif socket is listener_req:
                                 if what & POLLOUT:
@@ -342,7 +343,8 @@ class IPSub(object):
                                     # ^ else Wakeup call, ignore
                                     put_nowait(pack)
                                 elif fbuffer_(pack[0]) == buffer_("tic"):
-                                    tic_count = 0
+                                    owner._tic()
+                                    tic_count = 100
                                 del pack
                             elif socket is broker_rep and what & POLLIN:
                                 owner._handle_update_request(broker_rep)
@@ -606,6 +608,7 @@ class IPSub(object):
 
     def request_tic(self):
         try:
+            self.last_tic = time.time() - TIC_PERIOD
             self._pushsocket().send("tic")
         except zmq.ZMQError:
             # Shit happens, probably not connected
