@@ -294,8 +294,7 @@ class CoherenceManager(object):
             self.bound_abort )
         self.encoded_pending_query = ipsub_.listen_decode(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.bound_pending_query )
-        self.encoded_pending_query = ipsub_.listen('', ipsub.EVENT_TIC, 
-            self.bound_tic )
+        ipsub_.listen('', ipsub.EVENT_TIC, self.bound_tic)
         ipsub_.publish_encode(self.listpendqprefix, self.encoding, None)
         return True
 
@@ -310,8 +309,7 @@ class CoherenceManager(object):
             self.encoded_abort )
         ipsub_.unlisten(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
             self.encoded_pending_query )
-        ipsub_.unlisten('', ipsub.EVENT_TIC, 
-            self.bound_tic )
+        ipsub_.unlisten('', ipsub.EVENT_TIC, self.bound_tic)
         return True
 
     @_weak_callback
