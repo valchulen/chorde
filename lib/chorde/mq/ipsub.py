@@ -206,6 +206,7 @@ class IPSub(object):
                 recv_update_reply = owner._recv_update_reply
                 int_ = int
                 len_ = len
+                dict_ = dict
                 random_ = random.random
                 tic_count = 100
                 buffer_ = buffer
@@ -246,7 +247,19 @@ class IPSub(object):
                         if tic_count < 0:
                             owner._tic()
                             tic_count = 100
-                        for socket, what in activity:
+                        # First send all sendable, empty the queue before trying to fill it
+                        activity = dict_(activity)
+                        if listener_req in activity:
+                            what = activity.pop(listener_req)
+                            if what & POLLOUT:
+                                if not no_updates():
+                                    send_update(listener_req)
+                                else:
+                                    poller_register(listener_req, POLLIN)
+                            if what & POLLIN:
+                                recv_update_reply(listener_req)
+                        # Then put incoming stuff on the queue
+                        for socket, what in activity.iteritems():
                             if socket is pull:
                                 pack = pull_recv_multipart(copy = F)
                                 if len_(pack) > 1:
@@ -256,14 +269,6 @@ class IPSub(object):
                                     owner._tic()
                                     tic_count = 100
                                 del pack
-                            elif socket is listener_req:
-                                if what & POLLOUT:
-                                    if not no_updates():
-                                        send_update(listener_req)
-                                    else:
-                                        poller_register(listener_req, POLLIN)
-                                if what & POLLIN:
-                                    recv_update_reply(listener_req)
                             elif socket is listener_sub and what & POLLIN:
                                 recv_update(listener_sub)
                 except Queue.Full:
@@ -315,6 +320,7 @@ class IPSub(object):
                 send_update = owner._send_update
                 int_ = int
                 len_ = len
+                dict_ = dict
                 random_ = random.random
                 tic_count = 100
                 buffer_ = buffer
@@ -336,7 +342,17 @@ class IPSub(object):
                         if tic_count < 0:
                             owner._tic()
                             tic_count = 100
-                        for socket, what in activity:
+                        # First send all sendable, empty the queue before trying to fill it
+                        activity = dict_(activity)
+                        if broker_pub in activity:
+                            what = activity.pop(broker_pub)
+                            if what & POLLOUT:
+                                if not no_updates():
+                                    send_update(broker_pub, noreply = T)
+                                else:
+                                    poller_unregister(broker_pub)
+                        # Then put incoming stuff on the queue
+                        for socket, what in activity.iteritems():
                             if socket is pull:
                                 pack = pull_recv_multipart(copy = F)
                                 if len_(pack) > 1:
@@ -348,11 +364,6 @@ class IPSub(object):
                                 del pack
                             elif socket is broker_rep and what & POLLIN:
                                 owner._handle_update_request(broker_rep)
-                            elif socket is broker_pub and what & POLLOUT:
-                                if not no_updates():
-                                    send_update(broker_pub, noreply = T)
-                                else:
-                                    poller_unregister(broker_pub)
                 except Queue.Full:
                     self.logger.error("While handling IPSub FSM pipe: Queue full, update lost")
                 except BootstrapNow:
