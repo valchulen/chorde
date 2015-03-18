@@ -38,7 +38,9 @@ class TieredInclusiveClient(BaseCacheClient):
         deferred = value
         try:
             value = value.undefer()
-            if value is not NONE and value is not async._NONE:
+            if value is async.REGET:
+                deferred.set(self.get(key))
+            elif value is not NONE and value is not async._NONE:
                 for fraction, client in islice(izip(fractions,clients), 1, None):
                     try:
                         client.put(key, value, ttl * fraction)
@@ -63,7 +65,6 @@ class TieredInclusiveClient(BaseCacheClient):
                 if hasattr(value, 'future'):
                     # Transfer the original deferred's future to this new one-shot deferred
                     deferred.future = value.future
-                    del value.future
                 clients[0].put(key, deferred, ttl * fractions[0])
             else:
                 # Cannot undefer here, it might create deadlocks.

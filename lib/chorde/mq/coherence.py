@@ -463,7 +463,7 @@ class CoherenceManager(object):
                     return False
                 else:
                     return True
-            ipsub_.listen('', ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
+            ipsub_.listen(self.namespace, ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
             ipsub_.publish(self.pendqprefix, req)
             for i in xrange(3):
                 if waiter.poll(timeout/4):
@@ -475,7 +475,14 @@ class CoherenceManager(object):
             else:
                 waiter.poll(timeout/4)
             if waiter.poll(1):
-                rv = json.load(cStringIO.StringIO(fbuffer(waiter.recv(copy=False))))
+                try:
+                    rv = json.load(cStringIO.StringIO(fbuffer(waiter.recv(copy=False))))
+                except ValueError:
+                    # It happens here that the IPSub returns its OK reply, when
+                    # there are no registered brokers on our namespace. Means it's up to us.
+                    # Enter broker mode and answer our caller locally
+                    self._on_enter_broker(weakref.ref(self), None, ipsub.EVENT_ENTER_BROKER, None)
+                    return self._query_pending_locally(key, expired, timeout, optimistic_lock)
                 if rv is not None:
                     rv = rv[-1]
                 elif not expired():
@@ -484,7 +491,7 @@ class CoherenceManager(object):
                 rv = None
             else:
                 rv = OOB_UPDATE
-            ipsub_.unlisten('', ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
+            ipsub_.unlisten(self.namespace, ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
         finally:
             waiter.close()
         

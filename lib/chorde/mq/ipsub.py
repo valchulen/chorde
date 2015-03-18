@@ -870,7 +870,7 @@ class IPSub(object):
         if identity is not None and identity == self.identity:
             # Ehm... identified roundtrip -> ignore
             return
-        
+
         if listeners:
             if identity is None:
                 prefix = None
@@ -879,7 +879,7 @@ class IPSub(object):
             else:
                 prefix = bbytes(fbuffer(update[0], 0, MAX_PREFIX))
             called = set()
-            rv = None
+            rrv = rv = None
             for cb_prefix, callbacks in listeners.items():
                 if prefix is None or prefix.startswith(cb_prefix):
                     byebye = set()
@@ -892,11 +892,13 @@ class IPSub(object):
                                 byebye.add(callback)
                             else:
                                 called.add(callback)
+                                if isinstance(rv, BrokerReply):
+                                    rrv = rv
                         except:
                             self.logger.error("Exception in handler", exc_info = True)
                             byebye.add(callback)
                     for callback in byebye:
                         self.unlisten(cb_prefix, event, callback)
-            return rv
+            return rrv or rv
 
 

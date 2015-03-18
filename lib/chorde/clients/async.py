@@ -26,6 +26,7 @@ class _EXPIRE:pass
 class _PURGE:pass
 class _CLEAR:pass
 class _RENEW:pass
+class REGET:pass
 
 class Defer(object):
     """
@@ -63,6 +64,9 @@ class Defer(object):
             if future is not None and not future.done():
                 future.exception(CancelledError())
             return _NONE
+
+    def set(self, value):
+        self.rv = value
 
     def done(self, getattr=getattr):
         future = getattr(self, 'future', None)
@@ -161,6 +165,8 @@ class AsyncCacheWriterPool:
                 deferred = value
                 try:
                     value = value.undefer()
+                    if value is REGET:
+                        deferred.set(self.client.get(key))
                 except CacheMissError:
                     # It's ok, accepted pattern to cancel computation in a transparent way
                     value = _NONE

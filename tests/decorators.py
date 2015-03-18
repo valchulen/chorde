@@ -454,27 +454,43 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         cls.ipsub_thread = threading.Thread(target=cls.ipsub.run)
         cls.ipsub_thread.daemon = True
 
+        cls.ipsub2 = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, 
+            pub="tcp://127.0.0.1:%d" % port2)], ctx=ctx)
+        cls.ipsub2_thread = threading.Thread(target=cls.ipsub2.run)
+        cls.ipsub2_thread.daemon = True
+
         cls.private = InprocCacheClient(100)
+        cls.private2 = InprocCacheClient(100)
         cls.shared = InprocCacheClient(100)
 
         time.sleep(0.1)
         
         cls.ipsub_thread.start()
+        cls.ipsub2_thread.start()
         
+        for i in xrange(11):
+            time.sleep(0.1)
+            if cls.ipsub2.is_running and cls.ipsub.is_running:
+                break
         time.sleep(0.1)
 
     def setUp(self):
         super(CoherentCachedDecoratorTest, self).setUp()
         self.decorator = functools.partial(coherent_cached, self.private, 
                 self.shared, self.ipsub)
+        self.decorator2 = functools.partial(coherent_cached, self.private2, 
+                self.shared, self.ipsub2)
 
     @classmethod
     def tearDownClass(cls):
         cls.ipsub.terminate()
+        cls.ipsub2.terminate()
         cls.ipsub.wake()
-        del cls.private, cls.shared
+        cls.ipsub2.wake()
+        del cls.private, cls.private2, cls.shared
         cls.ipsub_thread.join(5000)
-        del cls.ipsub, cls.ipsub_thread
+        cls.ipsub2_thread.join(5000)
+        del cls.ipsub, cls.ipsub2, cls.ipsub_thread
 
     def test_serialization_function(self):
         # Should apply the a function the returned value
@@ -524,3 +540,36 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         refval = futures[0].result(0.25)
         for f in futures[1:]:
             self.assertEqual(f.result(0.1), refval)
+
+    def test_listener_no_broker_mode(self):
+        # Without namespace, should create one with the function name
+        @self.decorator(60)
+        def get_random():
+            time.sleep(0.1)
+            return random.random()
+        @self.decorator2(60)
+        def get_random2():
+            time.sleep(0.1)
+            return random.random()
+        futures = [ get_random.future()() for _ in xrange(10) ]
+        futures2 = [ get_random2.future()() for _ in xrange(10) ]
+        retval = futures[0].result(0.5)
+        retval2 = futures2[0].result(0.5)
+        for f in futures[1:]:
+            self.assertEqual(f.result(0.1), retval)
+        for f in futures2[1:]:
+            self.assertEqual(f.result(0.1), retval2)
+
+    def test_oob_update(self):
+        # Without namespace, should create one with the function name
+        @self.decorator(5)
+        def get_random():
+            time.sleep(0.1)
+            return random.random()
+        get_random2 = self.decorator2(5)(get_random.uncached)
+        futures = [ get_random.future()() for _ in xrange(10) ]
+        futures2 = [ get_random2.future()() for _ in xrange(10) ]
+        retval = futures[0].result(0.25)
+        futures2[0].result(5)
+        for f in futures[1:] + futures2[1:]:
+            self.assertEqual(f.result(0.1), retval)

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import time
 
-from .async import Defer
+from .async import Defer, REGET, CancelledError
 from .base import BaseCacheClient, NONE
 
 from chorde.mq import coherence
@@ -43,6 +43,7 @@ class CoherentDefer(Defer):
         """
         self.manager = kwargs.pop('manager')
         self.expired = kwargs.pop('expired')
+        self.fetch = kwargs.pop('fetch', None)
         self.key = kwargs.pop('key')
         self.timeout = kwargs.pop('timeout', None)
         if self.timeout is None:
@@ -55,7 +56,10 @@ class CoherentDefer(Defer):
     def undefer(self):
         while True:
             if not self.expired():
-                return NONE
+                if hasattr(self, 'future'):
+                    return REGET
+                else:
+                    return NONE
             else:
                 computer = self.manager.query_pending(self.key, self.expired, self.timeout, True)
                 if computer is None:
@@ -70,14 +74,24 @@ class CoherentDefer(Defer):
                     return rv
                 elif computer is coherence.OOB_UPDATE and not self.expired():
                     # Skip, tiered caches will read it from the shared cache and push it downstream
-                    return NONE
+                    if hasattr(self, 'future'):
+                        return REGET
+                    else:
+                        return NONE
                 elif self.wait_time != 0:
                     if self.manager.wait_done(self.key, timeout = self.wait_time):
-                        return NONE
+                        if hasattr(self, 'future'):
+                            return REGET
+                        else:
+                            return NONE
                     else:
                         # retry
                         continue
                 else:
+                    if hasattr(self, 'future'):
+                        # Must cancel it if we're not going to wait
+                        self.future.cancel()
+                        self.future.set_exception(CancelledError())
                     return NONE
 
     def done(self):
