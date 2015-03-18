@@ -504,3 +504,13 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         namespace = get_random.client.client.namespace
         self.assertTrue(namespace.startswith(get_random.__module__))
 
+    def test_write_coalesce(self):
+        # Without namespace, should create one with the function name
+        @self.decorator(5)
+        def get_random():
+            time.sleep(0.1)
+            return random.random()
+        futures = [ get_random.future()() for _ in xrange(10) ]
+        refval = futures[0].result(0.25)
+        for f in futures[1:]:
+            self.assertEqual(f.result(0.1), refval)
