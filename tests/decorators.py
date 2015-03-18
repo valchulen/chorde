@@ -320,6 +320,16 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         val2 = get_random.future().refresh().result()
         self.assertNotEquals(val1, val2)
 
+    def test_write_coalesce(self):
+        # Without namespace, should create one with the function name
+        @cached(self.client, ttl=5)
+        def get_random():
+            time.sleep(0.1)
+            return random.random()
+        futures = [ get_random.future()() for _ in xrange(10) ]
+        refval = futures[0].result(0.25)
+        for f in futures[1:]:
+            self.assertEqual(f.result(0.1), refval)
 
 class CachedDecoratorAsyncTest(DecoratorTestCase):
     """Tests async functionality for cached decorator"""
