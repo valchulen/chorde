@@ -60,6 +60,10 @@ class TieredInclusiveClient(BaseCacheClient):
                     self.__putnext, 
                     clients, fractions, 
                     key, value, ttl)
+                if hasattr(value, 'future'):
+                    # Transfer the original deferred's future to this new one-shot deferred
+                    deferred.future = value.future
+                    del value.future
                 clients[0].put(key, deferred, ttl * fractions[0])
             else:
                 # Cannot undefer here, it might create deadlocks.
