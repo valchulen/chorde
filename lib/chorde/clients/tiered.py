@@ -39,7 +39,8 @@ class TieredInclusiveClient(BaseCacheClient):
         try:
             value = value.undefer()
             if value is async.REGET:
-                deferred.set(self.get(key))
+                value = self.get(key)
+                deferred.set(value)
             elif value is not NONE and value is not async._NONE:
                 for fraction, client in islice(izip(fractions,clients), 1, None):
                     try:
