@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import time
+import logging
 
 from .async import Defer, REGET, CancelledError
 from .base import BaseCacheClient, NONE
@@ -54,8 +55,10 @@ class CoherentDefer(Defer):
         super(CoherentDefer, self).__init__(callable_, *args, **kwargs)
 
     def undefer(self):
+        logger = logging.getLogger('chorde.coherence')
         while True:
             if not self.expired():
+                logger.debug("Not computing because already fresh, key=%r", self.key)
                 if hasattr(self, 'future'):
                     return REGET
                 else:
@@ -64,32 +67,41 @@ class CoherentDefer(Defer):
                 computer = self.manager.query_pending(self.key, self.expired, self.timeout, True)
                 if computer is None:
                     # My turn
+                    logger.debug("Acquired computer duty on key=%r", self.key)
                     try:
                         rv = super(CoherentDefer, self).undefer()
                         if rv is not NONE:
+                            logger.debug("Computing done on key=%r", self.key)
                             self.computed = True
                         else:
+                            logger.debug("Computing skipped on key=%r", self.key)
                             self.aborted = True
                     except:
+                        logger.debug("Computing aborted on key=%r due to exception", self.key, exc_info=True)
                         self.aborted = True
                         raise
                     return rv
                 elif computer is coherence.OOB_UPDATE and not self.expired():
                     # Skip, tiered caches will read it from the shared cache and push it downstream
+                    logger.debug("Fresh value available OOB on key=%r", self.key)
                     if hasattr(self, 'future'):
                         return REGET
                     else:
                         return NONE
                 elif self.wait_time != 0:
+                    logger.debug("Waiting for computation on node %r on key=%r", computer, self.key)
                     if self.manager.wait_done(self.key, timeout = self.wait_time):
+                        logger.debug("Computation done (was waiting on node %r) on key=%r", computer, self.key)
                         if hasattr(self, 'future'):
                             return REGET
                         else:
                             return NONE
                     else:
                         # retry
+                        logger.debug("Computation still in progress (waiting on node %r) on key=%r", computer, self.key)
                         continue
                 else:
+                    logger.debug("Computation in progress on node %r key=%r, not waiting", computer, self.key)
                     if hasattr(self, 'future'):
                         # Must cancel it if we're not going to wait
                         self.future.cancel()
