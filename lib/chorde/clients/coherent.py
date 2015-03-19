@@ -68,6 +68,8 @@ class CoherentDefer(Defer):
                         rv = super(CoherentDefer, self).undefer()
                         if rv is not NONE:
                             self.computed = True
+                        else:
+                            self.aborted = True
                     except:
                         self.aborted = True
                         raise
