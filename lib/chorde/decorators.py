@@ -1066,6 +1066,7 @@ if not no_coherence:
             decorate = None,
             tiered_opts = None,
             ttl_spread = True,
+            wait_time = None,
             **coherence_kwargs ):
         """
         This decorator provides cacheability to suitable functions, in a way that maintains coherency across
@@ -1109,6 +1110,10 @@ if not no_coherence:
             coherence_timeout: (optional) Time (in ms) of peer silence that will be considered abnormal. Default
                 is 2000ms, which is sensible given the IPSub protocol. You may want to increase it if node load
                 creates longer hiccups.
+
+            wait_time: (optional) Time (in ms) a call that is being computed externally will wait blocking for
+                a result. Waiting forever (None, the default) could block the writer threadpool, so it's best to 
+                specify a reasonably adequate (for the application) timeout.
     
             Any extra argument are passed verbatim to CoherenceManager's constructor.
         """
@@ -1202,7 +1207,7 @@ if not no_coherence:
                 ttl_spread = ttl_spread,
                 _eff_async_ttl = eff_async_ttl,
                 _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl, None),
-                _fput_deferred = partial(_coherent_put_deferred, nshared, async_ttl, wait_time=None) )(f)
+                _fput_deferred = partial(_coherent_put_deferred, nshared, async_ttl, wait_time=wait_time) )(f)
             rv.coherence = coherence_manager
             rv.ipsub = ipsub
             return rv
