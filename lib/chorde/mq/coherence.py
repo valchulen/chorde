@@ -700,6 +700,12 @@ class CoherenceManager(object):
             self._sub_selfdone(ssignaler)
             success = False
             while timeout is None or timeout > 0:
+                # Check for recent self-notifications
+                recent = self.recent_done.get(key)
+                if recent is not None and (time.time() - recent) < (poll_interval * 0.001):
+                    # don't wait then
+                    success = True
+                    break
                 if waiter.poll(min(poll_interval, timeout or poll_interval)):
                     success = True
                     break
