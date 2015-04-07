@@ -47,11 +47,13 @@ def cacheStats():
             
         return rv
 
-def cachePurge(timeout = 0):
+def cachePurge(timeout = 0, sleeptime = None):
     with _caches_mutex:
         caches = _caches.keys()
     
     for cache in caches:
+        if sleeptime is not None:
+            time.sleep(sleeptime)
         cache.purge(timeout)
 
 def cacheClear():
@@ -110,7 +112,7 @@ class CacheJanitorThread(threading.Thread):
         while True:
             time.sleep(self.sleep_interval)
             try:
-                cachePurge(self.purge_timeout)
+                cachePurge(self.purge_timeout, sleeptime = 0.01)
             except:
                 if self.logger is None:
                     pass
