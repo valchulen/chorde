@@ -44,6 +44,7 @@ def wraps(wrapped):
     return decor
 
 def _make_namespace(f):
+    f = getattr(f, 'im_func', f)
     fname = getattr(f, '__name__', None)
     if fname is None:
         fname = getattr(f, 'func_name', None)
