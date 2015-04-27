@@ -1152,7 +1152,8 @@ if not no_coherence:
             if not private.async:
                 nprivate = async.AsyncWriteCacheClient(private, 
                     async_writer_queue_size, 
-                    async_writer_workers)
+                    async_writer_workers,
+                    threadpool = async_writer_threadpool)
             else:
                 nprivate = private
 
