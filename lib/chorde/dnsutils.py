@@ -72,7 +72,7 @@ try:
             resolver.lifetime = min(resolver.lifetime, 1)
         ans = resolver.query(host, typ)
         for rdata in ans:
-            yield str(rdata), ans.expiration
+            yield str(rdata).rstrip('.'), ans.expiration
 except ImportError:
     import warnings
     warnings.warn("dnspython missing, will not support dynamic CNAME server lists")

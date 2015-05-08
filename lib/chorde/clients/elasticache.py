@@ -27,7 +27,7 @@ class ElastiCacheStoreClient(memcache.Client):
         else:
             cluster_nodes = cluster_description[1:]
             return [ 
-                "%s:%d" % (host, int(port)) 
+                "%s:%d" % (host.rstrip('.'), int(port)) 
                 for host, ip, port in [ node.split('|',2) for node in cluster_nodes ] 
             ]
     
