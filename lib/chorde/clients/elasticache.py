@@ -16,7 +16,9 @@ class ElastiCacheStoreClient(memcache.Client):
     @classmethod
     def get_cluster_from_config_entrypoint(cls, entrypoint):
         c = cls([entrypoint])
-        cluster_description = c.get_config("cluster")
+        cluster_description = c.get("AmazonElastiCache:cluster")
+        if not cluster_description:
+            cluster_description = c.get_config("cluster")
         if cluster_description:
             cluster_description = cluster_description.split()
         if not cluster_description or len(cluster_description) <= 1:
