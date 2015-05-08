@@ -66,6 +66,48 @@ class Slot(object):
     def __index__(self):
         return int(self.value)
 
+class SlowSlot(object):
+    def __init__(self, raw_mmap, raw_offset, slot_mmap, offset, dtype, ctype):
+        self._dtype = dtype
+        self._ctype = ctype
+        self._offset = offset
+        self._mmap = slot_mmap
+        self._raw_slice = slice(raw_offset, raw_offset+ctypes.sizeof(ctype()))
+        self._raw_mmap = raw_mmap
+
+    @property
+    def value(self):
+        return self._mmap[self._offset]
+
+    @value.setter
+    def value(self, val):
+        self._raw_mmap[self._raw_slice] = bytes(buffer(self._ctype(val or 0)))
+
+    @property
+    def flat(self):
+        return self._mmap
+
+    def __iadd__(self, val):
+        self.value = self._mmap[self._offset] + val
+
+    def __isub__(self, val):
+        self.value = self._mmap[self._offset] - val
+
+    def __add__(self, val):
+        return self._mmap[self._offset] + val
+
+    def __sub__(self, val):
+        return self._mmap[self._offset] + val
+
+    def __ne__(self, val):
+        return self._mmap[self._offset] != val.value
+
+    def __eq__(self, val):
+        return self._mmap[self._offset] == val.value
+
+    def __index__(self):
+        return int(self.value)
+
 
 class SharedCounterGenericBase(object):
     """
@@ -96,7 +138,7 @@ class SharedCounterGenericBase(object):
     slots_item_size = None # make sizeof(dtype)
     bitmap_item_size = None # make sizeof(btype)
 
-    def __init__(self, slots, bitmap, counters, locked):
+    def __init__(self, slots, bitmap, counters, locked, bitmap_slot):
         self.bitmap = None
         self.slots = None
         self.slot = None
@@ -120,8 +162,9 @@ class SharedCounterGenericBase(object):
                 else:
                     raise AssertionError, "All slots occupied"
 
-        bitmap[slot] = True
         self.bitmap = bitmap
+        self.bitmap_slot = bitmap_slot(slot)
+        bitmap_slot.value = True
         self.slots = counters
         self.slot = slot
         self.__rnd = random.getrandbits(62) + self.slot
@@ -304,14 +347,16 @@ class SharedCounterGenericBase(object):
         return self
 
     def close(self):
-        if self.bitmap is not None:
+        bitmap = getattr(self, 'bitmap', None)
+        if bitmap is not None:
             # Release slot
-            self.bitmap[self.slot] = False
+            self.bitmap_slot.value = False
 
         # Release possibly fd-holding resources
-        if self.basemap is not None:
-            self.basemap.flush()
-            self.basemap.close()
+        basemap = getattr(self, 'basemap', None)
+        if basemap is not None:
+            basemap.flush()
+            basemap.close()
         self.bitmap = None
         self.slots = None
         self.basemap = None
@@ -351,11 +396,12 @@ class SharedCounterBaseNumpyCtypes(SharedCounterGenericBase):
         
         # Slow, read-write bitmap
         bitmap = (ctypes.c_bool * slots).from_buffer(buf, offset)
+        bitmap_slot = lambda slot : ctypes.c_bool.from_buffer(buf, offset + self.bitmap_item_size * slot)
 
         # Fast, read-only counters
         counters = numpy.frombuffer(buf, self.dtype, slots, 
             offset + self.bitmap_item_size * slots)
-        super(SharedCounterBaseNumpyCtypes, self).__init__(slots, bitmap, counters, locked)
+        super(SharedCounterBaseNumpyCtypes, self).__init__(slots, bitmap, counters, locked, bitmap_slot)
 
         # Fast read-only bitmap ]:-]
         self.bitmap = numpy.frombuffer(buf, numpy.bool8, slots, offset)
@@ -401,11 +447,12 @@ class SharedCounterBaseNumpy(SharedCounterGenericBase):
         offset += numpy.uint64().itemsize
 
         bitmap = numpy.memmap(fileobj, self.btype, 'r+', offset, slots)
+        bitmap_slot = lambda slot : Slot(bitmap, slot, self.btype)
         offset += self.btype().itemsize * slots
         
         counters = numpy.memmap(fileobj, self.dtype, 'r+', offset, slots)
         offset += self.dtype().itemsize * slots
-        super(SharedCounterBaseNumpy, self).__init__(slots, bitmap, counters, locked)
+        super(SharedCounterBaseNumpy, self).__init__(slots, bitmap, counters, locked, bitmap_slot)
 
         self.myslot = Slot(counters, self.slot, self.dtype)
 
@@ -435,6 +482,78 @@ class SharedCounter64Numpy(SharedCounterBaseNumpy):
     slots_item_size = numpy.dtype(dtype).itemsize
 
 
+class SharedCounterBaseReadOnlyNumpy(SharedCounterGenericBase):
+    btype = numpy.bool8
+    cbtype = ctypes.c_bool
+    bitmap_item_size = btype().itemsize
+
+    @staticmethod
+    def is_supported():
+        if numpy is not None and getattr(numpy, 'memmap', None) is not None:
+            try:
+                import tempfile
+                with tempfile.NamedTemporaryFile() as temp:
+                    ts_mmap = numpy.memmap(temp, numpy.uint64, 'r+', 0, 1)
+                    raw_mmap = mmap.mmap(temp.fileno(), numpy.uint64().itemsize)
+                    SlowSlot(raw_mmap, 0, ts_mmap, 0, numpy.uint64, ctypes.c_uint64).value = 3
+                    ok = ts_mmap[0] == 3
+                return ok
+            except:
+                return False
+        else:
+            return False
+
+    def __init__(self, slots, fileobj, offset = 0, locked = False):
+        assert ctypes.sizeof(ctypes.c_bool()) == self.bitmap_item_size
+        assert ctypes.sizeof(self.cdtype()) == self.slots_item_size
+        
+        ts_mmap = numpy.memmap(fileobj, numpy.uint64, 'r+', offset, 1)
+        if getattr(self, 'basemap', None) is not None:
+            raw_mmap = self.basemap
+        else:
+            raw_mmap = self.basemap = mmap.mmap(fileobj.fileno(), self.size(slots), offset = offset)
+        timestamp = SlowSlot(raw_mmap, offset, ts_mmap, 0, numpy.uint64, ctypes.c_uint64)
+        offset += numpy.uint64().itemsize
+
+        bitmap = numpy.memmap(fileobj, self.btype, 'r+', offset, slots)
+        bitmap_slot = lambda slot : SlowSlot(raw_mmap, offset + slot, bitmap, slot, self.btype, self.cbtype)
+        offset += self.btype().itemsize * slots
+        
+        counters = numpy.memmap(fileobj, self.dtype, 'r+', offset, slots)
+        super(SharedCounterBaseReadOnlyNumpy, self).__init__(slots, bitmap, counters, locked, 
+            bitmap_slot = bitmap_slot)
+
+        self.myslot = SlowSlot(raw_mmap, offset + self.dtype().itemsize * self.slot, counters, 
+            self.slot, self.dtype, self.cdtype)
+
+        self.timestamp = timestamp
+
+    @classmethod
+    def from_fileno(cls, slots, fileno, offset = 0):
+        fd = os.dup(fileno)
+        fileobj =  os.fdopen(fd, 'r+')
+        return cls.from_file(slots, fileobj, offset)
+    
+    @classmethod
+    def from_file(cls, slots, fileobj, offset = 0):
+        base_offset = offset - (offset % mmap.ALLOCATIONGRANULARITY)
+        remnant_offset = offset - base_offset
+        size = cls.size(slots)
+
+        rv = cls(slots, fileobj, offset)
+        rv.basemap = mmap.mmap(fileobj.fileno(), size + remnant_offset, offset = base_offset)
+        return rv
+
+class SharedCounter32ReadOnlyNumpy(SharedCounterBaseReadOnlyNumpy):
+    dtype = numpy.int32
+    cdtype = ctypes.c_int32
+    slots_item_size = numpy.dtype(dtype).itemsize
+class SharedCounter64ReadOnlyNumpy(SharedCounterBaseReadOnlyNumpy):
+    dtype = numpy.int64
+    cdtype = ctypes.c_int64
+    slots_item_size = numpy.dtype(dtype).itemsize
+
+
 class SharedCounterBaseCtypes(SharedCounterGenericBase):  # lint:ok
     btype = ctypes.c_bool
     bitmap_item_size = ctypes.sizeof(btype())
@@ -457,8 +576,9 @@ class SharedCounterBaseCtypes(SharedCounterGenericBase):  # lint:ok
         offset += ctypes.sizeof(timestamp)
         
         bitmap = (ctypes.c_bool * slots).from_buffer(buf, offset)
+        bitmap_slot = lambda slot : ctypes.c_bool.from_buffer(buf, offset + self.bitmap_item_size * slot)
         counters = (self.dtype * slots).from_buffer(buf, offset + ctypes.sizeof(bitmap))
-        super(SharedCounterBaseCtypes, self).__init__(slots, bitmap, counters, locked)
+        super(SharedCounterBaseCtypes, self).__init__(slots, bitmap, counters, locked, bitmap_slot)
 
         # Map my slot as a single item, it makes += atomic
         self.myslot = self.dtype.from_buffer(buf, 
@@ -479,6 +599,7 @@ _implementations = (
     ( SharedCounterBaseNumpyCtypes, SharedCounter32NumpyCtypes, SharedCounter64NumpyCtypes ),
     ( SharedCounterBaseNumpy, SharedCounter32Numpy, SharedCounter64Numpy ),
     ( SharedCounterBaseCtypes, SharedCounter32Ctypes, SharedCounter64Ctypes ),
+    ( SharedCounterBaseReadOnlyNumpy, SharedCounter32ReadOnlyNumpy, SharedCounter64ReadOnlyNumpy ),
 )
 
 for sbase, s32, s64 in _implementations:
