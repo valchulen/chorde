@@ -44,7 +44,7 @@ class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
     is_lru = False
     capacity_means_entries = False
     meaningful_capacity = False # controlled externally so it may not be consistent for testing purposes
-    
+
     def setUpClient(self, **kwargs):
         from chorde.clients.memcached import MemcachedClient
         import threading
@@ -143,6 +143,18 @@ class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
 
 @skipIfNoMemcached
+class ElastiCacheTest(MemcacheTest):
+    def setUpClient(self, **kwargs):
+        from chorde.clients.elasticache import ElastiCacheClient
+        import threading
+        rv = ElastiCacheClient([DEFAULT_CLIENT_ADDR],
+            checksum_key = "test",
+            encoding_cache = threading.local(),
+            **kwargs)
+        rv.client.flush_all()
+        return rv
+
+@skipIfNoMemcached
 class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
     def tearDown(self):
         # Manually clear memcached
@@ -199,6 +211,14 @@ class FastMemcacheTest(CacheClientTestMixIn, unittest.TestCase):
     testSpacedStringKey = None
     testSpacedLongStringKey = None
     testObjectKey = None
+
+@skipIfNoMemcached
+class FastElastiCacheTest(FastMemcacheTest):
+    def setUpClient(self):
+        from chorde.clients.elasticache import FastElastiCacheClient
+        rv = FastElastiCacheClient([DEFAULT_CLIENT_ADDR])
+        rv.client.flush_all()
+        return rv
 
 @skipIfNoMemcached
 class FastFailFastMemcacheTest(FastMemcacheTest):

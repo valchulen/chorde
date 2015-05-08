@@ -51,7 +51,10 @@ If a hostname is given, and the hostname points to multiple IP addresses, the
 same effect will be obtained, and the distribution will be dynamically updated
 according to the TTL specified on the DNS entry. This, for example, makes the
 client work seamlessly with Amazon ElastiCache's "configuration endpoint", 
-which is a DNS entry that points to all the cache nodes.
+which is a DNS entry that points to one of the cache nodes. But it only works
+like that with single-node clusters. For multi-node clusters, use
+``chorde.clients.elasticache.ElastiCacheClient``, which goes a step further
+and queries this configuration endpoint for all the other nodes.
 
 Do beware that the key used against the memcached isn't the key given, since
 the client supports any hashable object as key, whereas memcached only supports

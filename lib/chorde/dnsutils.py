@@ -135,7 +135,7 @@ class DynamicResolvingClient(object):
                         sentries = entry()
                         dynamic = True
                     else:
-                        sentries = (entry,)
+                        sentries = self.expand_entry(entry)
                         dynamic = False
 
                     for entry in sentries:
@@ -196,7 +196,7 @@ class DynamicResolvingClient(object):
     def client(self):
         if self._client is None or self._client_servers != self.servers:
             self._client_servers = servers = self.servers
-            self._client = self._client_class(servers, **self._client_args)
+            self._client = self._client_class(sorted(servers), **self._client_args)
         return self._client
 
     @client.deleter
@@ -204,6 +204,9 @@ class DynamicResolvingClient(object):
         self._client = None
         self._dynamic_client_addresses = None
         self._dynamic_client_checktime = None
+
+    def expand_entry(self, entry):
+        return (entry,)
 
     def extract_host(self, entry):
         if ':' in entry:

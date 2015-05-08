@@ -86,9 +86,9 @@ class ZlibFile:
         self.close()
 
 class DynamicResolvingMemcachedClient(BaseCacheClient, DynamicResolvingClient):
-    def __init__(self, client_addresses, client_args):
+    def __init__(self, client_class, client_addresses, client_args):
         super(DynamicResolvingMemcachedClient, self).__init__(
-                memcache.Client, client_addresses, client_args)
+                client_class, client_addresses, client_args)
 
 class MemcachedClient(DynamicResolvingMemcachedClient):
     def __init__(self, 
@@ -104,6 +104,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             compress = True,
             checksum_key = None, # CHANGE IT!
             encoding_cache = None, # should be able to contain attributes
+            client_class = memcache.Client,
             **client_args):
         if checksum_key is None:
             raise ValueError, "MemcachedClient requires a checksum key for security checks"
@@ -145,7 +146,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         self._failfast_cache = Cache(failfast_size)
         self._succeedfast_cache = Cache(succeedfast_size)
 
-        super(MemcachedClient, self).__init__(client_addresses, client_args)
+        super(MemcachedClient, self).__init__(client_class, client_addresses, client_args)
 
     @property
     def async(self):
@@ -579,6 +580,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             namespace = None,
             failfast_time = None,
             failfast_size = 100,
+            client_class = memcache.Client,
             **client_args):
         
         max_backing_key_length = min(
@@ -604,7 +606,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         self.failfast_time = failfast_time
         self._failfast_cache = Cache(failfast_size) if failfast_time else None
 
-        super(FastMemcachedClient, self).__init__(client_addresses, client_args)
+        super(FastMemcachedClient, self).__init__(client_class, client_addresses, client_args)
 
         self._bgwriter_thread = None
         self._spawning_lock = Lock()
