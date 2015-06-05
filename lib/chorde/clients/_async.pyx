@@ -304,6 +304,7 @@ cdef class Future:
             return False
         else:
             self._cancel_pending = 1
+            return True
 
     def set_running_or_notify_cancelled(self):
         """
