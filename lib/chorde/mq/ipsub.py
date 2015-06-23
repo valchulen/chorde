@@ -686,20 +686,20 @@ class IPSub(object):
                 socket.send(FRAME_UPDATE_OK)
 
 
-    def publish_json(self, prefix, payload, copy = False):
-        self.publish(prefix, ['json',ENCODINGS['json'](payload)], copy)
+    def publish_json(self, prefix, payload, copy = False, timeout = None):
+        self.publish(prefix, ['json',ENCODINGS['json'](payload)], copy, timeout)
 
-    def publish_pyobj(self, prefix, payload, copy = False):
-        self.publish(prefix, ['pyobj',ENCODINGS['pyobj'](payload)], copy)
+    def publish_pyobj(self, prefix, payload, copy = False, timeout = None):
+        self.publish(prefix, ['pyobj',ENCODINGS['pyobj'](payload)], copy, timeout)
 
-    def publish_bytes(self, prefix, payload, copy = False):
-        self.publish(prefix, ['bytes',ENCODINGS['bytes'](payload)], copy)
+    def publish_bytes(self, prefix, payload, copy = False, timeout = None):
+        self.publish(prefix, ['bytes',ENCODINGS['bytes'](payload)], copy, timeout)
 
-    def publish_unicode(self, prefix, payload, copy = False):
-        self.publish(prefix, ['utf8',ENCODINGS['utf8'](payload)], copy)
+    def publish_unicode(self, prefix, payload, copy = False, timeout = None):
+        self.publish(prefix, ['utf8',ENCODINGS['utf8'](payload)], copy, timeout)
 
-    def publish_encode(self, prefix, encoding, payload, copy = False):
-        self.publish(prefix, self.encode_payload(encoding, payload), copy)
+    def publish_encode(self, prefix, encoding, payload, copy = False, timeout = None):
+        self.publish(prefix, self.encode_payload(encoding, payload), copy, timeout)
 
     @staticmethod
     def register_encoding(name, encoder, decoder, stream_decoder):
@@ -757,7 +757,7 @@ class IPSub(object):
         payload = cStringIO.StringIO(fbuffer(payload))
         return STREAMDECODINGS[encoding](payload)
 
-    def publish(self, prefix, payload, copy = False, _ident = thread.get_ident):
+    def publish(self, prefix, payload, copy = False, timeout = None, _ident = thread.get_ident):
         parts = [ prefix, self.identity ] + payload
         if _ident() == self.fsm_thread_id:
             try:
@@ -766,7 +766,9 @@ class IPSub(object):
                 self.logger.error("While handling re-entrant IPSub publication: Queue full, update lost")
         else:
             push = self._pushsocket()
-            if push.poll(self.heartbeat_push_timeout, zmq.POLLOUT):
+            if timeout is None:
+                timeout = self.heartbeat_push_timeout
+            if push.poll(timeout, zmq.POLLOUT):
                 push.send_multipart(parts, copy = copy)
             else:
                 self.logger.error("While handling IPSub publication: Push socket timeout, update lost")

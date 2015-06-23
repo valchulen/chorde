@@ -255,7 +255,7 @@ class CoherenceManager(object):
         return self._txid.next()
 
     @_swallow_connrefused(_noop)
-    def fire_deletion(self, key):
+    def fire_deletion(self, key, timeout = None):
         txid = self.txid
         waiter = self.waiter(self, txid) # subscribe before publishing, or we'll miss it
         if key is CLEAR:
@@ -263,7 +263,7 @@ class CoherenceManager(object):
             encoding = 'pyobj'
         else:
             encoding = self.encoding
-        self.ipsub.publish_encode(self.delprefix, encoding, (txid, key))
+        self.ipsub.publish_encode(self.delprefix, encoding, (txid, key), timeout = timeout)
         return waiter
 
     @_weak_callback
@@ -611,38 +611,40 @@ class CoherenceManager(object):
         except KeyError:
             pass
 
-    def mark_done(self, key):
+    def mark_done(self, key, timeout = None):
         txid = self.pending.pop(key, self.group_pending.pop(key, (None,))[0])
         self.recent_done[key] = time.time()
         if txid is not None:
-            self.fire_done([key], txid)
+            self.fire_done([key], txid, timeout = timeout)
         self._fire_selfdone(key)
 
-    def mark_aborted(self, key):
+    def mark_aborted(self, key, timeout = None):
         txid = self.pending.pop(key, self.group_pending.pop(key, (None,))[0])
         self.recent_done[key] = time.time()
         if txid is not None:
-            self.fire_aborted([key], txid)
+            self.fire_aborted([key], txid, timeout = timeout)
         self._fire_selfdone(key)
 
     @_swallow_connrefused(_noop)
-    def fire_done(self, keys, txid = None):
+    def fire_done(self, keys, txid = None, timeout = None):
         if keys:
             if txid is None:
                 txid = self.txid
             first_key = iter(keys).next()
             self.ipsub.publish_encode(self.doneprefix+str(self.stable_hash(first_key)), self.encoding, 
-                (txid, keys, self.p2p_pub_binds))
+                (txid, keys, self.p2p_pub_binds),
+                timeout = timeout)
         return NoopWaiter()
 
     @_swallow_connrefused(_noop)
-    def fire_aborted(self, keys, txid = None):
+    def fire_aborted(self, keys, txid = None, timeout = None):
         if keys:
             if txid is None:
                 txid = self.txid
             first_key = iter(keys).next()
             self.ipsub.publish_encode(self.abortprefix+str(self.stable_hash(first_key)), self.encoding, 
-                (txid, keys, self.p2p_pub_binds))
+                (txid, keys, self.p2p_pub_binds),
+                timeout = timeout)
         return NoopWaiter()
 
     @_swallow_connrefused(_noop)

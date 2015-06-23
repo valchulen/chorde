@@ -167,7 +167,7 @@ class CoherentWrapperClient(BaseCacheClient):
             timeout = None
         self.manager.wait_done(key, timeout=timeout)
     
-    def put(self, key, value, ttl):
+    def put(self, key, value, ttl, coherence_timeout = None):
         manager = self.manager
         if manager.quick_refresh:
             # In quick refresh mode, we publish all puts
@@ -182,7 +182,7 @@ class CoherentWrapperClient(BaseCacheClient):
                 self.client.put(key, value, ttl)
             else:
                 self.client.put(key, value, ttl)
-                manager.fire_done([key])
+                manager.fire_done([key], timeout = coherence_timeout)
         else:
             self.client.put(key, value, ttl)
 
@@ -236,20 +236,20 @@ class CoherentWrapperClient(BaseCacheClient):
     def renew(self, key, ttl):
         self.client.renew(key, ttl)
 
-    def delete(self, key):
+    def delete(self, key, coherence_timeout = None):
         self.client.delete(key)
         
         # Warn others
-        self.manager.fire_deletion(key)
+        self.manager.fire_deletion(key, timeout = coherence_timeout)
 
     def expire(self, key):
         self.client.expire(key)
 
-    def clear(self):
+    def clear(self, coherence_timeout = None):
         self.client.clear()
 
         # Warn others
-        self.manager.fire_deletion(coherence.CLEAR)
+        self.manager.fire_deletion(coherence.CLEAR, timeout = coherence_timeout)
 
     def purge(self, *p, **kw):
         self.client.purge(*p, **kw)
