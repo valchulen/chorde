@@ -3,6 +3,7 @@ import unittest
 import time
 import os
 from .clientbase import CacheClientTestMixIn, NamespaceWrapperTestMixIn, CacheMissError
+from .base import TestCase
 
 DEFAULT_CLIENT_ADDR = os.getenv("MEMCACHE_ADDR", "localhost:11211")
 
@@ -40,7 +41,7 @@ class K:
     pass
 
 @skipIfNoMemcached
-class MemcacheTest(CacheClientTestMixIn, unittest.TestCase):
+class MemcacheTest(CacheClientTestMixIn, TestCase):
     is_lru = False
     capacity_means_entries = False
     meaningful_capacity = False # controlled externally so it may not be consistent for testing purposes
@@ -160,7 +161,7 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
         # Manually clear memcached
         self.rclient.client.flush_all()
 
-    testStats = None
+    testStats = unittest.skip("not applicable")(MemcacheTest.testStats)
 
 @skipIfNoMemcached
 class UncompressedMemcacheTest(MemcacheTest):
@@ -185,10 +186,10 @@ class BuiltinNamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
             encoding_cache = threading.local() )
 
     # We don't implement clear
-    testNamespaceClear = None
+    testNamespaceClear = unittest.skip("not applicable")(NamespaceWrapperTestMixIn.testNamespaceClear)
 
 @skipIfNoMemcached
-class FastMemcacheTest(CacheClientTestMixIn, unittest.TestCase):
+class FastMemcacheTest(CacheClientTestMixIn, TestCase):
     is_lru = False
     capacity_means_entries = False
     meaningful_capacity = False # controlled externally so it may not be consistent for testing purposes

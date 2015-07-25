@@ -8,7 +8,9 @@ import unittest
 
 from chorde.threadpool import ThreadPool
 
-class ThreadpoolTest(unittest.TestCase):
+from .base import TestCase
+
+class ThreadpoolTest(TestCase):
     def setUp(self):
         self.pool = ThreadPool()
 
@@ -165,7 +167,7 @@ class ThreadpoolMultiprocessingCompatiblitityTest(ThreadpoolTest):
     # multiprocessing.pool.ThreadPool isn't that great with latency
     testAsyncLatency = unittest.expectedFailure(ThreadpoolTest.testAsyncLatency)
 
-class MultiQueueTest(unittest.TestCase):
+class MultiQueueTest(TestCase):
     def setUp(self):
         self.pool = ThreadPool()
 
