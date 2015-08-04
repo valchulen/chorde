@@ -124,6 +124,7 @@ def cached(client, ttl,
         async_writer_queue_size = None, 
         async_writer_workers = None,
         async_writer_threadpool = None,
+        async_writer_kwargs = None,
         async_ttl = None,
         async_client = None,
         async_expire = None,
@@ -133,6 +134,7 @@ def cached(client, ttl,
         async_processor = None,
         async_processor_workers = None,
         async_processor_threadpool = None,
+        async_processor_kwargs = None,
         renew_time = None,
         future_sync_check = None,
         initialize = None,
@@ -278,6 +280,9 @@ def cached(client, ttl,
             of workers as argument and returns a threadpool to be used. It's recommendable to always use
             factories instead of instances, to avoid premature thread initialization.
 
+        async_writer_kwargs: (optional) Optional arguments to be used when constructing AsyncWriteCacheClient
+            wrappers. Ignored if an explicit async_client is given.
+
         async_client: (optional) Alternatively to async_writer_queue_size and async_writer_workers, a specific
             async client may be specified. It is expected this client will be an async wrapper of the 'client'
             mandatorily specified, that can be shared among decorated functions (to avoid multiplying writer
@@ -298,6 +303,9 @@ def cached(client, ttl,
             It can also be a callable, in which case it must be a factory function that takes the number
             of workers as argument and returns a threadpool to be used. It's recommendable to always use
             factories instead of instances, to avoid premature thread initialization.
+
+        async_processor_kwargs: (optional) Optional arguments to be used when constructing AsyncCacheProcessors.
+            Ignored if an explicit async_processor is given.
 
         async_processor: (optional) Shared processor to utilize in future() calls.
 
@@ -371,6 +379,14 @@ def cached(client, ttl,
 
     if async_processor is not None and async_processor_workers is None:
         async_processor_workers = multiprocessing.cpu_count()
+
+    if async_writer_kwargs is None:
+        async_writer_kwargs = {}
+    async_writer_kwargs.setdefault('threadpool', async_writer_threadpool)
+
+    if async_processor_kwargs is None:
+        async_processor_kwargs = {}
+    async_processor_kwargs.setdefault('threadpool', async_processor_threadpool)
 
     def decor(f):
         if namespace is None:
@@ -963,7 +979,7 @@ def cached(client, ttl,
                     _client = async_processor.bound(_client)
                 else:
                     _client = async.AsyncCacheProcessor(async_processor_workers, _client,
-                        threadpool = async_processor_threadpool)
+                        **async_processor_kwargs)
                 # atomic
                 fclient[:] = [_client]
                 future_cached_f.client = fclient[0]
@@ -978,7 +994,7 @@ def cached(client, ttl,
                     aclient[:] = [async.AsyncWriteCacheClient(nclient, 
                         async_writer_queue_size, 
                         async_writer_workers,
-                        threadpool = async_writer_threadpool)]
+                        **async_writer_kwargs)]
                     async_cached_f.client = aclient[0]
                 return async_cached_f
             async_cached_f.clear = nclient.clear
@@ -1053,6 +1069,7 @@ if not no_coherence:
             async_writer_queue_size = None, 
             async_writer_workers = None,
             async_writer_threadpool = None,
+            async_writer_kwargs = None,
             async_ttl = None,
             async_expire = None,
             lazy_kwargs = {},
@@ -1061,6 +1078,7 @@ if not no_coherence:
             async_processor = None,
             async_processor_workers = None,
             async_processor_threadpool = None,
+            async_processor_kwargs = None,
             renew_time = None,
             future_sync_check = None,
             initialize = None,
@@ -1194,6 +1212,7 @@ if not no_coherence:
                 async_writer_queue_size = async_writer_queue_size, 
                 async_writer_workers = async_writer_workers,
                 async_writer_threadpool = async_writer_threadpool,
+                async_writer_kwargs = async_writer_kwargs,
                 async_ttl = async_ttl,
                 async_expire = async_expire,
                 initialize = initialize,
@@ -1204,6 +1223,7 @@ if not no_coherence:
                 async_processor = async_processor,
                 async_processor_workers = async_processor_workers,
                 async_processor_threadpool = async_processor_threadpool,
+                async_processor_kwargs = async_processor_kwargs,
                 renew_time = renew_time,
                 future_sync_check = future_sync_check,
                 ttl_spread = ttl_spread,

@@ -28,6 +28,10 @@ class _CLEAR:pass
 class _RENEW:pass
 class REGET:pass
 
+SPECIAL = set(map(id,[_NONE, _DELETE, _EXPIRE, _PURGE, _CLEAR, _RENEW, REGET]))
+def is_special(value):
+    return id(value) in SPECIAL
+
 class Defer(object):
     """
     Wrap a callable in this, and pass it as a value to an AsyncWriteCacheClient,
@@ -95,19 +99,26 @@ class AsyncCacheWriterThreadPool(ThreadPool):
         ThreadPool.__init__(self, workers)
 
 class AsyncCacheWriterPool:
-    def __init__(self, size, workers, client, overflow = False, cleanup_cycles = 500, threadpool = None):
+    def __init__(self, size, workers, client, overflow = False, cleanup_cycles = 500, 
+            defer_threadpool = None, writer_threadpool = None):
         
         self.client = client
         self.logger = logging.getLogger("chorde")
         self.size = size
         self.workers = workers
         self._spawnlock = threading.Lock()
-        if callable(threadpool):
-            self._threadpool_factory = threadpool
-            self._threadpool = None
+        if callable(defer_threadpool):
+            self._defer_threadpool_factory = defer_threadpool
+            self._defer_threadpool = None
         else:
-            self._threadpool_factory = None
-            self._threadpool = threadpool
+            self._defer_threadpool_factory = None
+            self._defer_threadpool = defer_threadpool
+        if callable(writer_threadpool):
+            self._writer_threadpool_factory = writer_threadpool
+            self._writer_threadpool = None
+        else:
+            self._writer_threadpool_factory = None
+            self._writer_threadpool = writer_threadpool
         
         # queueset holds the values to be written, associated
         # by key, providing some write-back coalescense in
@@ -124,26 +135,40 @@ class AsyncCacheWriterPool:
         self.cleanup_cycles = cleanup_cycles
 
     @property
-    def threadpool(self):
-        if self._threadpool is None:
+    def defer_threadpool(self):
+        if self._defer_threadpool is None:
             with self._spawnlock:
-                if self._threadpool is None:
-                    if self._threadpool_factory is not None:
-                        self._threadpool = self._threadpool_factory(self.workers)
+                if self._defer_threadpool is None:
+                    if self._defer_threadpool_factory is not None:
+                        self._defer_threadpool = self._defer_threadpool_factory(self.workers)
                     else:
-                        self._threadpool = AsyncCacheWriterThreadPool(self.workers)
-        return self._threadpool
+                        self._defer_threadpool = AsyncCacheWriterThreadPool(self.workers)
+        return self._defer_threadpool
+
+    @property
+    def writer_threadpool(self):
+        if self._writer_threadpool is None:
+            with self._spawnlock:
+                if self._writer_threadpool is None:
+                    if self._writer_threadpool_factory is not None:
+                        self._writer_threadpool = self._writer_threadpool_factory(self.workers)
+                    else:
+                        self._writer_threadpool = AsyncCacheWriterThreadPool(self.workers)
+        return self._writer_threadpool
 
     @staticmethod
-    def _writer(self, key):
+    def _writer(self, key, reentrant = False):
         # self is weakref
         self = self()
         if self is None:
             return
 
-        thread_id = thread.get_ident()
-        if thread_id not in self.threadset:
-            self.threadset.add(thread_id)
+        if not reentrant:
+            thread_id = thread.get_ident()
+            if thread_id not in self.threadset:
+                self.threadset.add(thread_id)
+            else:
+                thread_id = None
         else:
             thread_id = None
 
@@ -276,7 +301,7 @@ class AsyncCacheWriterPool:
 
     def enqueue(self, key, value, ttl=None):
         if (thread.get_ident() in self.threadset 
-                 or (hasattr(self.threadpool, 'in_worker') and self.threadpool.in_worker()) ):
+                 or (hasattr(self.defer_threadpool, 'in_worker') and self.defer_threadpool.in_worker()) ):
             # Oops, recursive call, bad idea
             # Run inline
             self.queueset[key] = value, ttl
@@ -292,7 +317,7 @@ class AsyncCacheWriterPool:
                             self.drop_one()
                             if len(self.queueset) < self.size:
                                 break
-                else:
+                elif not is_special(value):
                     # blocking semantics, wait
                     ev = self.done_event
                     while len(self.queueset) >= self.size:
@@ -322,8 +347,14 @@ class AsyncCacheWriterPool:
         workset = self.workset
         if key not in queueset:
             if not hasattr(value, 'undefer') or key not in workset:
+                if hasattr(value, 'undefer'):
+                    threadpool = self.defer_threadpool
+                    reentrant = True
+                else:
+                    threadpool = self.writer_threadpool
+                    reentrant = False
                 queueset[key] = value, ttl
-                self.threadpool.apply_async(self._writer, (self._wself, key))
+                threadpool.apply_async(self._writer, (self._wself, key, reentrant))
             else:
                 # else, bad luck, we assume defers compute, so if two
                 # defers go in concurrently, only the first will be invoked,
@@ -473,14 +504,16 @@ class AsyncCacheWriterPool:
         _global_cleanup_tasks.append(task)
 
 class AsyncWriteCacheClient(BaseCacheClient):
-    def __init__(self, client, writer_queue_size, writer_workers = None, overflow = False, threadpool = None):
+    def __init__(self, client, writer_queue_size, writer_workers = None, overflow = False, threadpool = None,
+            defer_threadpool = None, writer_threadpool = None):
         self.client = client
         self.writer_queue_size = writer_queue_size
         self.writer_workers = writer_workers if writer_workers is not None else multiprocessing.cpu_count()
         self.writer = None
         self.overflow = overflow
         self.spawning_lock = threading.Lock()
-        self._threadpool = threadpool
+        self._defer_threadpool = defer_threadpool or threadpool
+        self._writer_threadpool = writer_threadpool or threadpool
         
     def assert_started(self):
         if self.writer is None:
@@ -491,7 +524,8 @@ class AsyncWriteCacheClient(BaseCacheClient):
                         self.writer_workers,
                         self.client,
                         self.overflow,
-                        threadpool = self._threadpool)
+                        defer_threadpool = self._defer_threadpool,
+                        writer_threadpool = self._writer_threadpool)
     
     def is_started(self):
         return self.writer is not None
