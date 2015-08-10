@@ -157,13 +157,13 @@ class AsyncCacheWriterPool:
         return self._writer_threadpool
 
     @staticmethod
-    def _writer(self, key, reentrant = False):
+    def _writer(self, key, reentrant = True):
         # self is weakref
         self = self()
         if self is None:
             return
 
-        if not reentrant:
+        if reentrant:
             thread_id = thread.get_ident()
             if thread_id not in self.threadset:
                 self.threadset.add(thread_id)
