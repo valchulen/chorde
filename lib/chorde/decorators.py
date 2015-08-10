@@ -1149,6 +1149,10 @@ if not no_coherence:
                 async_writer_queue_size = 100
             if async_writer_workers is None:
                 async_writer_workers = multiprocessing.cpu_count()
+
+        if async_writer_kwargs is None:
+            async_writer_kwargs = {}
+        async_writer_kwargs.setdefault('threadpool', async_writer_threadpool)
         
         def decor(f):
             if ttl_spread:
@@ -1171,7 +1175,7 @@ if not no_coherence:
                 nprivate = async.AsyncWriteCacheClient(private, 
                     async_writer_queue_size, 
                     async_writer_workers,
-                    threadpool = async_writer_threadpool)
+                    **async_writer_kwargs)
             else:
                 nprivate = private
 
