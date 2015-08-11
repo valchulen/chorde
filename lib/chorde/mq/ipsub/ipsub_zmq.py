@@ -6,55 +6,22 @@ import logging
 import Queue
 import threading
 import thread
-import json
 import os
+import operator
 import random
-from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 
-try:
-    import cPickle
-except ImportError:
-    import pickle as cPickle
+from .base import *
+from ..compat import fbuffer, bbytes
 
-try:
-    import cStringIO
-except ImportError:
-    import StringIO as cStringIO
-
-from .compat import fbuffer, bbytes
+__ALL__ = (
+    'ZMQIPSub',
+)
 
 FRAME_HEARTBEAT = "__HeyDude__"
 FRAME_UPDATE_OK = "OK"
 FRAME_UPDATE_DROPPED = "DROP"
 FRAME_VALID_UPDATE_REPLIES = (FRAME_UPDATE_OK, FRAME_UPDATE_DROPPED)
-
-# EVENT KEY                         message payload format
-EVENT_INCOMING_UPDATE = 1         # [prefix, identity, payload]. Payload verbatim as sent
-EVENT_UPDATE_ACKNOWLEDGED = 2     # (update, reply frames)
-EVENT_UPDATE_IGNORED = 3          # (update, reply frames)
-EVENT_UPDATE_SENT = 4             # [prefix, identity, payload]. Payload verbatim as sent
-EVENT_ENTER_BROKER = 5            # None
-EVENT_LEAVE_BROKER = 6            # None
-EVENT_ENTER_LISTENER = 7          # None
-EVENT_LEAVE_LISTENER = 8          # None
-EVENT_IDLE = 9                    # None
-EVENT_TIC = 10                    # None
-
-EVENT_NAMES = {
-    EVENT_INCOMING_UPDATE : 'INCOMING_UPDATE',
-    EVENT_UPDATE_ACKNOWLEDGED : 'UPDATE_ACKNOWLEDGED',
-    EVENT_UPDATE_IGNORED: 'UPDATE_DROPPED',
-    EVENT_UPDATE_SENT : 'UPDATE_SENT',
-    EVENT_ENTER_BROKER : 'ENTER_BROKER',
-    EVENT_LEAVE_BROKER : 'LEAVE_BROKER',
-    EVENT_ENTER_LISTENER : 'ENTER_LISTENER',
-    EVENT_LEAVE_LISTENER : 'LEAVE_LISTENER',
-    EVENT_IDLE : 'IDLE',
-    EVENT_TIC : 'TIC',
-}
-
-IDENTITY_EVENTS = (EVENT_INCOMING_UPDATE,)
 
 BROKER_PUB_HWM = 1000
 BROKER_REP_HWM = 1000
@@ -66,32 +33,10 @@ INPROC_HWM = BROKER_PUB_HWM * 2
 MIN_UPDATE_REPLY_FRAMES = 1
 MAX_UPDATE_REPLY_FRAMES = 1
 MAX_UPDATE_REPLY_FIRSTFRAME = 10
-MAX_PREFIX = 256
-
-IDLE_PERIOD = 0.5
-TIC_PERIOD = 1.0
 
 EVENT_FOR_REPLY = {
     FRAME_UPDATE_OK : EVENT_UPDATE_ACKNOWLEDGED,
     FRAME_UPDATE_DROPPED : EVENT_UPDATE_IGNORED,
-}
-
-ENCODINGS = {
-    'json' : lambda x : json.dumps(x, separators=(',',':')),
-    'bytes' : lambda x : x,
-    'utf8' : lambda x : x.encode('utf8') if isinstance(x, unicode) else x,
-}
-
-DECODINGS = {
-    'json' : json.loads,
-    'bytes' : lambda x : x,
-    'utf8' : lambda x : x.decode('utf8'),
-}
-
-STREAMDECODINGS = {
-    'json' : json.load,
-    'bytes' : lambda x : x.read(),
-    'utf8' : lambda x : x.read().decode('utf8'),
 }
 
 if hasattr(zmq, 'HWM'):
@@ -100,18 +45,18 @@ if hasattr(zmq, 'HWM'):
         sock.hwm = hwm
 else:
     # Split HWM
-    def set_hwm(sock, hwm):
+    def set_hwm(sock, hwm):  # lint:ok
         sock.set_hwm(hwm)
 
 class BootstrapNow(Exception):
     pass
 
-class BrokerReply(object):
-    __slots__ = ('reply',)
-    def __init__(self, *reply_parts):
-        self.reply = reply_parts
-
-class IPSub(object):
+class ZMQIPSub(BaseIPSub):
+    _getbuffer = staticmethod(fbuffer)
+    _getbytes = operator.attrgetter('bytes')
+    _getslice = staticmethod(lambda x, start, end, fbuffer=fbuffer, bbytes=bbytes : bbytes(fbuffer(x, start, end)))
+    _getprefix = staticmethod(lambda x : getattr(x, 'bytes', x) )
+            
     class FSM(object):
         class State(object):
             __metaclass__ = ABCMeta
@@ -121,10 +66,10 @@ class IPSub(object):
                 self.logger = getattr(owner, 'logger', logging.getLogger('chorde.ipsub')) if logger is None else logger
 
             def transition(self, newstate):
-                self.logger.debug("IPSub.FSM: LEAVE %s", self.__class__.__name__)
+                self.logger.debug("ZMQIPSub.FSM: LEAVE %s", self.__class__.__name__)
                 self.leave()
                 self.__class__ = newstate
-                self.logger.debug("IPSub.FSM: ENTER %s", self.__class__.__name__)
+                self.logger.debug("ZMQIPSub.FSM: ENTER %s", self.__class__.__name__)
                 self.enter()
 
             @abstractmethod
@@ -154,7 +99,7 @@ class IPSub(object):
                     except zmq.ZMQError as e:
                         if e.errno in (zmq.EADDRINUSE, zmq.ENODEV):
                             # Not a transient error, shortcut to listener
-                            return self.transition(IPSub.FSM.Listener)
+                            return self.transition(ZMQIPSub.FSM.Listener)
                     except Exception as e:
                         self.logger.info("Got %s connecting", e)
                         self.logger.debug("Got %s connecting", e, exc_info = True)
@@ -163,8 +108,8 @@ class IPSub(object):
                     try:
                         owner._bind()
                     except:
-                        return self.transition(IPSub.FSM.Listener)
-                self.transition(IPSub.FSM.DesignatedBroker)
+                        return self.transition(ZMQIPSub.FSM.Listener)
+                self.transition(ZMQIPSub.FSM.DesignatedBroker)
 
             def stay(self):
                 pass
@@ -274,11 +219,11 @@ class IPSub(object):
                 except Queue.Full:
                     self.logger.error("While handling IPSub FSM pipe: Queue full, update lost")
                 except BootstrapNow:
-                    self.transition(IPSub.FSM.Bootstrap)
+                    self.transition(ZMQIPSub.FSM.Bootstrap)
                 except:
                     self.logger.error("Exception in IPSub listener, re-bootstrapping in a sec", exc_info = True)
                     time.sleep(1)
-                    self.transition(IPSub.FSM.Bootstrap)
+                    self.transition(ZMQIPSub.FSM.Bootstrap)
             
             def leave(self):
                 owner = self._owner()
@@ -367,11 +312,11 @@ class IPSub(object):
                 except Queue.Full:
                     self.logger.error("While handling IPSub FSM pipe: Queue full, update lost")
                 except BootstrapNow:
-                    self.transition(IPSub.FSM.Bootstrap)
+                    self.transition(ZMQIPSub.FSM.Bootstrap)
                 except:
                     self.logger.error("Exception in IPSub broker, re-bootstrapping in a sec", exc_info = True)
                     time.sleep(1)
-                    self.transition(IPSub.FSM.Bootstrap)
+                    self.transition(ZMQIPSub.FSM.Bootstrap)
     
             def leave(self):
                 owner = self._owner()
@@ -380,10 +325,11 @@ class IPSub(object):
                     owner._unbind()
 
     def __init__(self, broker_addresses, subscriptions = (), ctx=None):
+        super(ZMQIPSub, self).__init__()
+        
         self.broker_addresses = broker_addresses
         self.updates = Queue.Queue(INPROC_HWM)
         self.current_update = None
-        self.listeners = defaultdict(lambda : defaultdict(set))
         
         self.listener_req = self.listener_sub = None
         self.broker_rep = self.broker_pub = None
@@ -391,8 +337,6 @@ class IPSub(object):
         self._ndebug = None
         self._needs_subscriptions = True
 
-        self.logger = logging.getLogger('chorde.ipsub')
-        
         self.subscriptions = set(subscriptions)
         self.subscriptions.add(FRAME_HEARTBEAT)
         self.current_subscriptions = set()
@@ -401,9 +345,6 @@ class IPSub(object):
             id(self),
             os.urandom(8).encode("base64").strip('\t =\n'),
         )
-
-        self.last_idle = time.time()
-        self.last_tic = time.time()
 
         self.heartbeat_avg_period = 500
         self.heartbeat_push_timeout = 4000
@@ -423,7 +364,7 @@ class IPSub(object):
         return self.__context
 
     def reset(self):
-        self.fsm = IPSub.FSM.Bootstrap(self)
+        self.fsm = ZMQIPSub.FSM.Bootstrap(self)
 
     def run(self):
         # Must start in bootstrap
@@ -600,31 +541,6 @@ class IPSub(object):
         # Notify listeners
         self._notify_all(EVENT_UPDATE_SENT, update)
 
-    def _idle(self):
-        if EVENT_IDLE in self.listeners:
-            # Rate-limit idle events
-            if time.time() >= (self.last_idle + IDLE_PERIOD):
-                self._notify_all(EVENT_IDLE, None)
-                self.last_idle = time.time()
-
-        # Take the opportunity to check tic timestamp
-        self._tic()
-
-    def _tic(self):
-        if EVENT_TIC in self.listeners:
-            # Rate-limit tic events
-            if time.time() >= (self.last_tic + TIC_PERIOD):
-                self._notify_all(EVENT_TIC, None)
-                self.last_tic = time.time()
-
-    def request_tic(self):
-        try:
-            self.last_tic = time.time() - TIC_PERIOD
-            self._pushsocket().send("tic")
-        except zmq.ZMQError:
-            # Shit happens, probably not connected
-            pass
-    
     def _recv_update(self, socket):
         update = socket.recv_multipart(copy = False)
 
@@ -685,78 +601,6 @@ class IPSub(object):
             else:
                 socket.send(FRAME_UPDATE_OK)
 
-
-    def publish_json(self, prefix, payload, copy = False, timeout = None):
-        self.publish(prefix, ['json',ENCODINGS['json'](payload)], copy, timeout)
-
-    def publish_pyobj(self, prefix, payload, copy = False, timeout = None):
-        self.publish(prefix, ['pyobj',ENCODINGS['pyobj'](payload)], copy, timeout)
-
-    def publish_bytes(self, prefix, payload, copy = False, timeout = None):
-        self.publish(prefix, ['bytes',ENCODINGS['bytes'](payload)], copy, timeout)
-
-    def publish_unicode(self, prefix, payload, copy = False, timeout = None):
-        self.publish(prefix, ['utf8',ENCODINGS['utf8'](payload)], copy, timeout)
-
-    def publish_encode(self, prefix, encoding, payload, copy = False, timeout = None):
-        self.publish(prefix, self.encode_payload(encoding, payload), copy, timeout)
-
-    @staticmethod
-    def register_encoding(name, encoder, decoder, stream_decoder):
-        """
-        Register an encoding with the specified name.
-    
-        Params:
-            encoder: a callable that takes the object to be dumped,
-                and returns a string or buffer object.
-            decoder: a callable that takes a string resulting of encoder,
-                and returns in the represented object
-            stream_decoder: like decoder, but instead will take a
-                file-like object.
-        """
-        ENCODINGS[name] = encoder
-        DECODINGS[name] = decoder
-        STREAMDECODINGS[name] = stream_decoder
-
-    @staticmethod
-    def register_pyobj(pickler, unpickler):
-        """
-        Registers a pickling encoding.
-
-        Params:
-            pickler, unpickler: pickler/unpickler factory callables
-                that take a file-like object to dump into. Can be
-                stdlib's Pickle/Unpickle classes, or cPickle's, or
-                sPickles, they both work out-of-the-box.
-        """
-        def dumps(x):
-            io = cStringIO.StringIO()
-            p = pickler(io,2)
-            p.dump(x)
-            return io.getvalue()
-        def loads(x):
-            io = cStringIO.StringIO(x)
-            p = unpickler(io)
-            return p.load()
-        def load(x):
-            return unpickler(x).load()
-        IPSub.register_encoding('pyobj', dumps, loads, load)
-    
-    @staticmethod
-    def register_default_pyobj():
-        IPSub.register_pyobj(cPickle.Pickler, cPickle.Unpickler)
-    
-    @staticmethod
-    def encode_payload(encoding, payload):
-        return [encoding, ENCODINGS[encoding](payload)]
-
-    @staticmethod
-    def decode_payload(payload):
-        encoding = payload[-2].bytes
-        payload = payload[-1]
-        payload = cStringIO.StringIO(fbuffer(payload))
-        return STREAMDECODINGS[encoding](payload)
-
     def publish(self, prefix, payload, copy = False, timeout = None, _ident = thread.get_ident):
         parts = [ prefix, self.identity ] + payload
         if _ident() == self.fsm_thread_id:
@@ -784,123 +628,11 @@ class IPSub(object):
                 # Shit happens, probably not connected
                 pass
 
-    def listen(self, prefix, event, callback):
-        """
-        Registers a listener for all events whose prefix starts
-        with the given prefix.
-
-        The callback will be invoked with the whole prefix as
-        first argument, or None if the event doesn't have one,
-        the event id as second argument, and the whole message,
-        including prefix and payload, as third argument. 
-        Use decode_payload to decode, if needed.
-
-        It should return True, if it is to be called again, or
-        False if the listener is to be removed. Designated
-        brokers can also return a BrokerReply wrapper, in which case 
-        the reply's payload will be returned to the listener where 
-        the update originated, providing a way to piggy-back the 
-        req-response connection among them. These are considered
-        as True, so they will not be automatically removed.
-
-        Listeners are not guaranteed to be called in any specific
-        or stable order, but they are guaranteed to be called just
-        once (per instance, not function name). They should return fast, 
-        or the I/O thread may stall.
-        """
-        self.listeners[event][prefix].add(callback)
-        if event in IDENTITY_EVENTS:
-            # Those are external, so we must subscribe
-            self.add_subscriptions((prefix,))
-    
-    def listen_decode(self, prefix, event, callback):
-        """
-        See listen. The difference is that in this case, the payload
-        in decoded form will be given to the callback, rather than
-        the entire message.
-
-        Returns the actual callback to be used for unlistening.
-        """
-        def decoding_callback(prefix, event, message):
-            return callback(prefix, event, IPSub.decode_payload(message))
-        self.listen(prefix, event, decoding_callback)
-        return decoding_callback
-
-    def unlisten(self, prefix, event, callback):
-        if prefix in self.listeners[event]:
-            try:
-                self.listeners[event][prefix].remove(callback)
-            except KeyError:
-                pass
-        if event in IDENTITY_EVENTS and not self.listeners[event].get(prefix):
-            # Not interesting anymore... unsubscribe
-            self.cancel_subscriptions((prefix,))
-
     @property
     def is_broker(self):
-        return self.fsm.__class__ is IPSub.FSM.DesignatedBroker
+        return self.fsm.__class__ is ZMQIPSub.FSM.DesignatedBroker
 
     @property
     def is_running(self):
-        return self.fsm.__class__ is not IPSub.FSM.Bootstrap
-
-    def _notify_all(self, event, update):
-        listeners = self.listeners.get(event)
-        if not listeners and self._ndebug:
-            return
-        
-        if event in IDENTITY_EVENTS and len(update) > 1:
-            identity = update[1].bytes
-        else:
-            identity = None
-
-        if self._ndebug is None:
-            self._ndebug = not self.logger.isEnabledFor(logging.DEBUG)
-
-        if not self._ndebug:
-            if identity is None and event != EVENT_UPDATE_SENT:
-                prefix = None
-            elif len(update[0]) < MAX_PREFIX:
-                prefix = getattr(update[0], 'bytes', update[0])
-            else:
-                prefix = bbytes(fbuffer(update[0], 0, MAX_PREFIX))
-            if identity is None or identity == self.identity:
-                self.logger.debug("IPSub: (from %r) %s (prefix %r)", self.identity, EVENT_NAMES[event], prefix)
-            else:
-                self.logger.debug("IPSub: (from %r) %s (prefix %r)", identity, EVENT_NAMES[event], prefix)
-
-        if identity is not None and identity == self.identity:
-            # Ehm... identified roundtrip -> ignore
-            return
-
-        if listeners:
-            if identity is None:
-                prefix = None
-            elif len(update[0]) < MAX_PREFIX:
-                prefix = update[0].bytes
-            else:
-                prefix = bbytes(fbuffer(update[0], 0, MAX_PREFIX))
-            called = set()
-            rrv = rv = None
-            for cb_prefix, callbacks in listeners.items():
-                if prefix is None or prefix.startswith(cb_prefix):
-                    byebye = set()
-                    for callback in set(callbacks):
-                        if callback in called:
-                            continue
-                        try:
-                            rv = callback(prefix, event, update)
-                            if not rv:
-                                byebye.add(callback)
-                            else:
-                                called.add(callback)
-                                if isinstance(rv, BrokerReply):
-                                    rrv = rv
-                        except:
-                            self.logger.error("Exception in handler", exc_info = True)
-                            byebye.add(callback)
-                    for callback in byebye:
-                        self.unlisten(cb_prefix, event, callback)
-            return rrv or rv
-
+        return self.fsm.__class__ is not ZMQIPSub.FSM.Bootstrap
 
