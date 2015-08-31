@@ -183,7 +183,10 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     def usage(self):
         return self.stats.get('bytes', 0)
 
-    def shorten_key(self, key):
+    def shorten_key(self, key,
+            tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in xrange(256)),
+            imap = itertools.imap,
+            isinstance = isinstance, basestring = basestring, unicode = unicode, ord = ord, any = any, len = len ):
         # keys cannot be anything other than strings
         exact = True
         zpfx = 'z#'
@@ -201,11 +204,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             zpfx = 'z'
 
         # keys cannot contain control characters or spaces
-        for c in itertools.imap(ord,key):
-            if c < 33 or c == 127:
-                key = "B#" + key.encode("base64").replace("\n","")
-                zpfx = 'z'
-                break
+        if any(imap(ord, key.translate(tmap))):
+            key = "B#" + key.encode("base64").replace("\n","")
+            zpfx = 'z'
 
         if self.compress:
             key = zpfx + key
