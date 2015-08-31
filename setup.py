@@ -31,6 +31,7 @@ packages = [
       "chorde",
       "chorde.clients",
       "chorde.mq",
+      "chorde.mq.ipsub",
 ]
 
 if not no_pyrex:
