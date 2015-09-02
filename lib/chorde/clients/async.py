@@ -581,9 +581,9 @@ class AsyncWriteCacheClient(BaseCacheClient):
             self.writer.purge()
     
     def getTtl(self, key, default = NONE, 
-            SPECIAL = (_DELETE, _EXPIRE, _RENEW),
-            _CLEAR = _CLEAR, hasattr = hasattr,
+            _DELETE = _DELETE, _EXPIRE = _EXPIRE, _RENEW = _RENEW, _CLEAR = _CLEAR, 
             NONE = NONE, _NONE = _NONE,
+            hasattr = hasattr,
             **kw):
         ettl = None
         writer = self.writer
@@ -592,20 +592,17 @@ class AsyncWriteCacheClient(BaseCacheClient):
             value = writer.getTtl(key, _NONE)
             if value is not _NONE:
                 value, ttl = value
-                if value in SPECIAL:
-                    if value is _DELETE:
-                        # Deletion means a miss... right?
-                        if default is NONE:
-                            raise CacheMissError, key
-                        else:
-                            return default, -1
-                    elif value is _EXPIRE:
-                        # Expiration just sets the TTL
-                        ettl = -1
-                    elif value is _RENEW:
-                        ettl = ttl
+                if value is _DELETE:
+                    # Deletion means a miss... right?
+                    if default is NONE:
+                        raise CacheMissError, key
                     else:
-                        raise AssertionError("Should not happen")
+                        return default, -1
+                elif value is _EXPIRE:
+                    # Expiration just sets the TTL
+                    ettl = -1
+                elif value is _RENEW:
+                    ettl = ttl
                 elif not hasattr(value, 'undefer'):
                     return value, ttl
             # Yep, _NONE when querying the writer, because we don't want
