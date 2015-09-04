@@ -85,6 +85,40 @@ class ZlibFile:
     def __exit__(self, type, value, traceback):
         self.close()
 
+class MemcachedStoreClient(memcache.Client):
+    # A faster check_key
+    def check_key(self, key, key_extra_len=0,
+            isinstance = isinstance, tuple = tuple, str = str, 
+            unicode = unicode, basestring = basestring, len = len,
+            tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in xrange(256)),
+            imap = itertools.imap):
+        """Checks sanity of key.  Fails if:
+            Key length is > SERVER_MAX_KEY_LENGTH (Raises MemcachedKeyLength).
+            Contains control characters  (Raises MemcachedKeyCharacterError).
+            Is not a string (Raises MemcachedStringEncodingError)
+            Is an unicode string (Raises MemcachedStringEncodingError)
+            Is not a string (Raises MemcachedKeyError)
+            Is None (Raises MemcachedKeyError)
+        """
+        if isinstance(key, tuple): key = key[1]
+        if not key:
+            raise self.MemcachedKeyNoneError("Key is None")
+        if not isinstance(key, str):
+            if isinstance(key, unicode):
+                raise self.MemcachedStringEncodingError(
+                        "Keys must be str()'s, not unicode.  Convert your unicode "
+                        "strings using mystring.encode(charset)!")
+            else:
+                raise self.MemcachedKeyTypeError("Key must be str()'s")
+
+        if self.server_max_key_length != 0 and \
+            len(key) + key_extra_len > self.server_max_key_length:
+            raise self.MemcachedKeyLengthError("Key length is > %s"
+                     % self.server_max_key_length)
+        if any(imap(ord, key.translate(tmap))):
+            raise self.MemcachedKeyCharacterError(
+                    "Control characters not allowed")
+
 class DynamicResolvingMemcachedClient(BaseCacheClient, DynamicResolvingClient):
     def __init__(self, client_class, client_addresses, client_args):
         super(DynamicResolvingMemcachedClient, self).__init__(
@@ -104,7 +138,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             compress = True,
             checksum_key = None, # CHANGE IT!
             encoding_cache = None, # should be able to contain attributes
-            client_class = memcache.Client,
+            client_class = MemcachedStoreClient,
             **client_args):
         if checksum_key is None:
             raise ValueError, "MemcachedClient requires a checksum key for security checks"
@@ -581,7 +615,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             namespace = None,
             failfast_time = None,
             failfast_size = 100,
-            client_class = memcache.Client,
+            client_class = MemcachedStoreClient,
             **client_args):
         
         max_backing_key_length = min(

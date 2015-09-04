@@ -4,7 +4,7 @@ import socket
 
 from . import memcached
 
-class ElastiCacheStoreClient(memcache.Client):
+class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
     """
     This is a low-level memcache client for use with ElastiCache, that can be passed
     to chorde.clients.memcached.MemcachedClient instead of the default memcache.Client,
