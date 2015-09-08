@@ -374,20 +374,18 @@ class NamespaceWrapper(DecoratedWrapper):
         self.namespace = namespace
         self.revision = client.get((namespace,'REVMARK'), 0)
 
-        # Avoid indirection, inline decorator function and specialize
-        def getTtl(key, *p, **kw):
-            return client.getTtl((self.namespace, self.revision, key), *p, **kw)
-        def contains(key, *p, **kw):
-            return client.contains((self.namespace, self.revision, key), *p, **kw)
-        self.getTtl = getTtl
-        self.contains = contains
-
     key_decorator = property(
         operator.attrgetter('_key_decorator'),
         lambda self, value : None)
 
     def _key_decorator(self, key):
         return (self.namespace, self.revision, key)
+
+    def getTtl(self, key, default = NONE, **kw):
+        return self.client.getTtl(self._key_decorator(key), default, **kw)
+
+    def contains(self, key, ttl = None, **kw):
+        return self.client.contains(self._key_decorator(key), ttl, **kw)
 
     def clear(self):
         # Cannot clear a shared client, so, instead, switch revisions
