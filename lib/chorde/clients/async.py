@@ -458,6 +458,12 @@ class AsyncCacheWriterPool:
             tid = thread.get_ident()
             return self.workset.get(key, (tid,))[0] != tid
 
+    def _contains(self, key):
+        # Fast version of contains that doesn't check the workset
+        # Useful for special-purpose checks, like contains(CLEAR)
+        self._contains = _contains = self.queueset.__contains__
+        return _contains(key)
+
     def put(self, key, value, ttl):
         self.enqueue(key, value, ttl)
 
@@ -610,7 +616,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
             # still check the client.
 
             # Check pending clear - after checking the queue for sorted semantics
-            if writer.contains(_CLEAR):
+            if writer._contains(_CLEAR):
                 # Well, 
                 if default is NONE:
                     raise CacheMissError, key
