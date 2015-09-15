@@ -20,7 +20,7 @@ class TerminateWorker(Exception):
 
 class WorkerThread(threading.Thread):
     def __init__(self,target,*args,**kwargs):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, name=kwargs.pop('name', None))
         self.target = target
         self.args = args
         self.kwargs = kwargs
@@ -87,12 +87,15 @@ class ThreadPool:
     
     Process = WorkerThread
 
-    def __init__(self, workers = None, min_batch = 10, max_batch = 1000, max_slice = None, logger = None):
+    def __init__(self, workers = None, min_batch = 10, max_batch = 1000, max_slice = None, logger = None,
+            name_pattern = None):
         if workers is None:
             workers = multiprocessing.cpu_count()
         
         self.workers = workers
+        self.name_pattern = name_pattern
         self.logger = logger if logger is not None else logging.getLogger('chorde')
+        self.__last_worker_index = 1
         self.__workers = None
         self.__pid = os.getpid()
         self.__spawnlock = threading.Lock()
@@ -434,8 +437,13 @@ class ThreadPool:
     def populate_workers(self):
         with self.__spawnlock:
             if not self.is_started():
-                self.__workers = [ self.Process(functools.partial(self.worker, weakref.ref(self)))
-                                   for i in xrange(self.workers) ]
+                name_pattern = self.name_pattern
+                index_base = self.__last_worker_index
+                self.__last_worker_index += self.workers
+                self.__workers = [ self.Process(
+                        functools.partial(self.worker, weakref.ref(self)),
+                        name = name_pattern % (i+index_base,) if name_pattern is not None else None
+                    ) for i in xrange(self.workers) ]
                 for w in self.__workers:
                     w.logger = self.logger
                     w.daemon = True
@@ -444,8 +452,13 @@ class ThreadPool:
                 self.__pid = os.getpid()
             # Else, just keep number of workers in sync
             elif len(self.__workers) < self.workers:
-                nworkers = [ self.Process(functools.partial(self.worker, weakref.ref(self)))
-                                   for i in xrange(self.workers - len(self.__workers)) ]
+                new_workers = self.workers - len(self.__workers)
+                index_base = self.__last_worker_index
+                self.__last_worker_index += new_workers
+                nworkers = [ self.Process(
+                        functools.partial(self.worker, weakref.ref(self)),
+                        name = name_pattern % (i+index_base,) if name_pattern is not None else None
+                    ) for i in xrange(new_workers) ]
                 for w in nworkers:
                     w.daemon = True
                     w.start()
