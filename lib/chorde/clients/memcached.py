@@ -134,8 +134,12 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             succeedfast_size = 10,
             succeedfast_time = 0.25,
             pickler = None,
+            key_pickler = None,
             namespace = None,
             compress = True,
+            compress_prefix = 'z',
+            compress_file_class = ZlibFile,
+            decompress_fn = zlib.decompress,
             checksum_key = None, # CHANGE IT!
             encoding_cache = None, # should be able to contain attributes
             client_class = MemcachedStoreClient,
@@ -154,11 +158,15 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         self.max_backing_value_length = max_backing_value_length - 256 # 256-bytes for page header and other overhead
         self.last_seen_stamp = 0
         self.pickler = pickler or cPickle
+        self.key_pickler = key_pickler or self.pickler
         self.namespace = namespace
         self.failfast_time = failfast_time
         self.succeedfast_time = succeedfast_time
         self.encoding_cache = encoding_cache
         self.compress = compress
+        self.compress_prefix = compress_prefix
+        self.compress_file_class = compress_file_class
+        self.decompress_fn = decompress_fn
         
         if self.namespace:
             self.max_backing_key_length -= len(self.namespace)+1
@@ -223,24 +231,25 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             isinstance = isinstance, basestring = basestring, unicode = unicode, ord = ord, any = any, len = len ):
         # keys cannot be anything other than strings
         exact = True
-        zpfx = 'z#'
         if not isinstance(key, basestring):
             try:
                 # Try JSON
                 key = "J#"+json.dumps(key, separators=JSON_SEPARATORS)
-                zpfx = 'z'
+                zpfx = self.compress_prefix
             except:
                 # Try pickling
-                key = "P#"+self.pickler.dumps(key,2).encode("base64").replace("\n","")
-                zpfx = 'z'
+                key = "P#"+self.key_pickler.dumps(key,2).encode("base64").replace("\n","")
+                zpfx = self.compress_prefix
         elif isinstance(key, unicode):
             key = "U#" + key.encode("utf-8")
-            zpfx = 'z'
+            zpfx = self.compress_prefix
+        else:
+            zpfx = self.compress_prefix + '#'
 
         # keys cannot contain control characters or spaces
         if any(imap(ord, key.translate(tmap))):
             key = "B#" + key.encode("base64").replace("\n","")
-            zpfx = 'z'
+            zpfx = self.compress_prefix
 
         if self.compress:
             key = zpfx + key
@@ -301,7 +310,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             #   otherwise it's too expensive and not worth it
             sio = StringIO()
             if self.compress:
-                with ZlibFile(sio, 1) as zio:
+                with self.compress_file_class(sio, 1) as zio:
                     self.pickler.dump((key,value),zio,2)
                 del zio
             else:
@@ -356,7 +365,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             del cached
 
         if self.compress:
-            value = zlib.decompress(data)
+            value = self.decompress_fn(data)
         else:
             value = data
         value = self.pickler.loads(value)
