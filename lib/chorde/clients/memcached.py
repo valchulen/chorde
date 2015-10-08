@@ -183,6 +183,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             succeedfast_time = 0.25,
             pickler = None,
             key_pickler = None,
+            client_pickler = None,
+            client_unpickler = None,
+            client_pickler_key = ';',
             namespace = None,
             compress = True,
             compress_prefix = default_compression_pfx,
@@ -205,8 +208,6 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         self.max_backing_key_length = max_backing_key_length - 16 # 16-bytes for page suffix
         self.max_backing_value_length = max_backing_value_length - 256 # 256-bytes for page header and other overhead
         self.last_seen_stamp = 0
-        self.pickler = pickler or cPickle
-        self.key_pickler = key_pickler or self.pickler
         self.namespace = namespace
         self.failfast_time = failfast_time
         self.succeedfast_time = succeedfast_time
@@ -215,6 +216,18 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         self.compress_prefix = compress_prefix
         self.compress_file_class = compress_file_class
         self.decompress_fn = decompress_fn
+
+        if client_pickler is None:
+            self.client_pickler = lambda *p, **kw: sPickle.SecurePickler(checksum_key, *p, **kw)
+            self.client_unpickler = lambda *p, **kw: sPickle.SecureUnpickler(checksum_key, *p, **kw)
+            self.client_pickler_key = '%s,' % (sPickle.checksum_algo_name,)
+        else:
+            self.client_pickler = client_pickler
+            self.client_unpickler = client_unpickler
+            self.client_pickler_key = client_pickler_key
+
+        self.pickler = pickler or cPickle
+        self.key_pickler = key_pickler or self.pickler
         
         if self.namespace:
             self.max_backing_key_length -= len(self.namespace)+1
@@ -226,12 +239,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             # use binary protocol, otherwise binary data gets inflated
             # unreasonably when pickling
             client_args['pickleProtocol'] = 2
-        
-        if 'pickler' not in client_args:
-            client_args['pickler'] = lambda *p, **kw: sPickle.SecurePickler(checksum_key, *p, **kw)
-        
-        if 'unpickler' not in client_args:
-            client_args['unpickler'] = lambda *p, **kw: sPickle.SecureUnpickler(checksum_key, *p, **kw)
+
+        client_args['pickler'] = self.client_pickler
+        client_args['unpickler'] = self.client_unpickler
 
         self._failfast_cache = Cache(failfast_size)
         self._succeedfast_cache = Cache(succeedfast_size)
@@ -317,7 +327,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if self.namespace:
             key = "%s|%s" % (self.namespace,key)
         
-        return "%s,%s" % (sPickle.checksum_algo_name, key), exact
+        return "%s%s" % (self.client_pickler_key, key), exact
     
     def get_version_stamp(self):
         stamp_key = "#--version-counter--#"

@@ -176,6 +176,31 @@ class UncompressedMemcacheTest(MemcacheTest):
             compress = False)
 
 @skipIfNoMemcached
+class CustomPicklerMemcacheTest(MemcacheTest):
+    def setUpClient(self):
+        import json
+        return super(CustomPicklerMemcacheTest, self).setUpClient(
+            pickler = json)
+
+    def testObjectKey(self):
+        # This should fail
+        client = self.client
+        k = K()
+        self.assertRaises(TypeError, client.put, k, 15, 10)
+
+@skipIfNoMemcached
+class CustomClientPicklerMemcacheTest(MemcacheTest):
+    def setUpClient(self):
+        try:
+            import cPickle
+        except ImportError:
+            import pickle as cPickle  # lint:ok
+        return super(CustomClientPicklerMemcacheTest, self).setUpClient(
+            client_pickler = cPickle.Pickler,
+            client_unpickler = cPickle.Unpickler,
+            compress = False)
+
+@skipIfNoMemcached
 @skipIfNoLZ4
 class LZ4MemcacheTest(MemcacheTest):
     def setUpClient(self):
