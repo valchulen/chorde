@@ -435,7 +435,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     
     def _getTtl(self, key, default, decode = True, ttl_skip = None, short_key = None, pages = None, 
             method = None, multi_method = None,
-            force_all_pages = False):
+            force_all_pages = False, valid_sequence_types = (list, tuple) ):
         now = time.time()
 
         if decode:
@@ -463,7 +463,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         if pages is None:
             pages = { 0 : method(short_key+"|0") }
-        if pages[0] is None or not isinstance(pages[0],tuple) or len(pages[0]) != 5:
+        if pages[0] is None or not isinstance(pages[0],valid_sequence_types) or len(pages[0]) != 5:
             return default, -1
         
         ttl = pages[0][2]
