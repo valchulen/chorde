@@ -6,7 +6,6 @@ import logging
 import Queue
 import threading
 import thread
-import os
 import operator
 import random
 from abc import ABCMeta, abstractmethod
@@ -19,9 +18,6 @@ __ALL__ = (
 )
 
 FRAME_HEARTBEAT = "__HeyDude__"
-FRAME_UPDATE_OK = "OK"
-FRAME_UPDATE_DROPPED = "DROP"
-FRAME_VALID_UPDATE_REPLIES = (FRAME_UPDATE_OK, FRAME_UPDATE_DROPPED)
 
 BROKER_PUB_HWM = 1000
 BROKER_REP_HWM = 1000
@@ -33,11 +29,6 @@ INPROC_HWM = BROKER_PUB_HWM * 2
 MIN_UPDATE_REPLY_FRAMES = 1
 MAX_UPDATE_REPLY_FRAMES = 1
 MAX_UPDATE_REPLY_FIRSTFRAME = 10
-
-EVENT_FOR_REPLY = {
-    FRAME_UPDATE_OK : EVENT_UPDATE_ACKNOWLEDGED,
-    FRAME_UPDATE_DROPPED : EVENT_UPDATE_IGNORED,
-}
 
 if hasattr(zmq, 'HWM'):
     # Has single HWM
@@ -340,11 +331,6 @@ class ZMQIPSub(BaseIPSub):
         self.subscriptions = set(subscriptions)
         self.subscriptions.add(FRAME_HEARTBEAT)
         self.current_subscriptions = set()
-        self.identity = "%x-%x-%s" % (
-            os.getpid(),
-            id(self),
-            os.urandom(8).encode("base64").strip('\t =\n'),
-        )
 
         self.heartbeat_avg_period = 500
         self.heartbeat_push_timeout = 4000

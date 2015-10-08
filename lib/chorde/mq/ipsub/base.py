@@ -3,6 +3,7 @@ import time
 import zmq
 import logging
 import json
+import os
 from collections import defaultdict
 
 try:
@@ -27,6 +28,11 @@ __ALL__ = (
     'EVENT_IDLE',
     'EVENT_TIC',
     'EVENT_NAMES',
+
+    'FRAME_UPDATE_OK',
+    'FRAME_UPDATE_DROPPED',
+    'FRAME_VALID_UPDATE_REPLIES',
+    'EVENT_FOR_REPLY',
 
     'BrokerReply',
     'BaseIPSub',
@@ -63,6 +69,15 @@ EVENT_NAMES = {
 }
 
 IDENTITY_EVENTS = (EVENT_INCOMING_UPDATE,)
+
+FRAME_UPDATE_OK = "OK"
+FRAME_UPDATE_DROPPED = "DROP"
+FRAME_VALID_UPDATE_REPLIES = (FRAME_UPDATE_OK, FRAME_UPDATE_DROPPED)
+
+EVENT_FOR_REPLY = {
+    FRAME_UPDATE_OK : EVENT_UPDATE_ACKNOWLEDGED,
+    FRAME_UPDATE_DROPPED : EVENT_UPDATE_IGNORED,
+}
 
 MAX_PREFIX = 256
 
@@ -118,6 +133,12 @@ class BaseIPSub(object):
         
         self.last_idle = time.time()
         self.last_tic = time.time()
+        
+        self.identity = "%x-%x-%s" % (
+            os.getpid(),
+            id(self),
+            os.urandom(8).encode("base64").strip('\t =\n'),
+        )
 
     def _idle(self):
         """
