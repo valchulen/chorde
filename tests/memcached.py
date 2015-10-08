@@ -37,6 +37,12 @@ elif not memcachedReachable():
 else:
     skipIfNoMemcached = lambda c : c
 
+try:
+    import lz4  # lint:ok
+    skipIfNoLZ4 = lambda c : c
+except ImportError:
+    skipIfNoLZ4 = unittest.skip("lz4 support not built in")
+
 class K:
     pass
 
@@ -168,6 +174,16 @@ class UncompressedMemcacheTest(MemcacheTest):
     def setUpClient(self):
         return super(UncompressedMemcacheTest, self).setUpClient(
             compress = False)
+
+@skipIfNoMemcached
+@skipIfNoLZ4
+class LZ4MemcacheTest(MemcacheTest):
+    def setUpClient(self):
+        import chorde.clients.memcached
+        return super(LZ4MemcacheTest, self).setUpClient(
+            compress_prefix = chorde.clients.memcached.lz4_compress_prefix,
+            compress_file_class = chorde.clients.memcached.lz4_compress_file_class,
+            decompress_fn = chorde.clients.memcached.lz4_decompress_fn)
 
 @skipIfNoMemcached
 class BuiltinNamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):

@@ -85,6 +85,54 @@ class ZlibFile:
     def __exit__(self, type, value, traceback):
         self.close()
 
+default_compression_pfx = zlib_compress_prefix = 'z'
+default_compress_file_class = zlib_compress_file_class = ZlibFile
+default_decompress_fn = zlib_decompress_fn = zlib.decompress
+
+try:
+    import lz4
+    
+    class LZ4File:
+        def __init__(self, fileobj, level = 9):
+            self.fileobj = fileobj
+            self.buffer = StringIO()
+            self.flushed = True
+            self.closed = False
+    
+        def write(self, buf):
+            self.buffer.write(buf)
+            self.flushed = False
+    
+        def flush(self):
+            if not self.flushed:
+                self.fileobj.write(lz4.compress(self.buffer.getvalue()))
+                self.buffer.reset()
+                self.buffer.truncate()
+                self.flushed = True
+            self.fileobj.flush()
+    
+        def close(self):
+            if not self.closed:
+                self.flush()
+                self.closed = True
+    
+        def __del__(self):
+            self.close()
+    
+        def __enter__(self):
+            return self
+    
+        def __exit__(self, type, value, traceback):
+            self.close()
+
+    lz4_compress_prefix = 'lz4'
+    lz4_compress_file_class = LZ4File
+    lz4_decompress_fn = lz4.decompress
+except:
+    lz4_compress_prefix = None
+    lz4_compress_file_class = None
+    lz4_decompress_fn = None
+
 class MemcachedStoreClient(memcache.Client):
     # A faster check_key
     def check_key(self, key, key_extra_len=0,
@@ -137,9 +185,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             key_pickler = None,
             namespace = None,
             compress = True,
-            compress_prefix = 'z',
-            compress_file_class = ZlibFile,
-            decompress_fn = zlib.decompress,
+            compress_prefix = default_compression_pfx,
+            compress_file_class = default_compress_file_class,
+            decompress_fn = default_decompress_fn,
             checksum_key = None, # CHANGE IT!
             encoding_cache = None, # should be able to contain attributes
             client_class = MemcachedStoreClient,
