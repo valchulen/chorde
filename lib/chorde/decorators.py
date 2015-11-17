@@ -43,7 +43,7 @@ def wraps(wrapped):
         return wrapper
     return decor
 
-def _make_namespace(f):
+def _make_namespace(f, salt = None):
     f = getattr(f, 'im_func', f)
     fname = getattr(f, '__name__', None)
     if fname is None:
@@ -64,6 +64,8 @@ def _make_namespace(f):
     
     try:
         body_digest = md5.md5(fpath)
+        if salt:
+            body_digest.update(salt)
         if fcode:
             body_digest.update(getattr(fcode, 'co_code', ''))
         return "%s.%s#%s" % (mname,fname,body_digest.digest().encode("base64").strip("=\n"))
@@ -141,6 +143,7 @@ def cached(client, ttl,
         decorate = None,
         timings = True,
         ttl_spread = True,
+        autonamespace_version_salt = None,
         _eff_async_ttl = None,
         _put_deferred = None,
         _fput_deferred = None,
@@ -260,6 +263,10 @@ def cached(client, ttl,
             If not, a default one will be derived out of the function's module and name, which may differ between
             platforms, so you'll want to provide a stable one for shared caches. If NO_NAMEPSACE is given,
             no namespace decoration will be applied. Specify if somehow collisions are certain not to occur.
+
+        autonamespace_version_salt: (optional) If provided, it will alter the automatically generated namespace
+            in a predictable and stable way. Can be used to force version upgrades when the automatic namespace
+            is not able to pick up code changes.
 
         value_serialization_function: (optional) If provided, values will not be stored directly into the cache,
             but the result of applying this function to them. Use if the cache is remote and does not natively
@@ -390,7 +397,7 @@ def cached(client, ttl,
 
     def decor(f):
         if namespace is None:
-            nclient = base.NamespaceWrapper(_make_namespace(f), client)
+            nclient = base.NamespaceWrapper(_make_namespace(f, salt = autonamespace_version_salt), client)
             if async_client:
                 nasync_client = base.NamespaceMirrorWrapper(nclient, async_client)
             else:
@@ -1086,6 +1093,7 @@ if not no_coherence:
             tiered_opts = None,
             ttl_spread = True,
             wait_time = None,
+            autonamespace_version_salt = None,
             **coherence_kwargs ):
         """
         This decorator provides cacheability to suitable functions, in a way that maintains coherency across
@@ -1162,12 +1170,12 @@ if not no_coherence:
                 eff_async_ttl = None
             
             if coherence_namespace is None:
-                _coherence_namespace = _make_namespace(f)
+                _coherence_namespace = _make_namespace(f, salt = autonamespace_version_salt)
             else:
                 _coherence_namespace = coherence_namespace
     
             if namespace is None:
-                _namespace = _make_namespace(f)
+                _namespace = _make_namespace(f, salt = autonamespace_version_salt)
             else:
                 _namespace = namespace
     
