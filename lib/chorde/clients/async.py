@@ -1104,20 +1104,26 @@ class AsyncCacheProcessor(object):
 
     def _enqueue(self, action, coalesce = None, coalesce_key = NONE):
         cfuture = future = Future(logger=self.logger)
-        
-        if coalesce is not None and coalesce_key is not NONE:
+
+        do_coalescence = coalesce is not None and coalesce_key is not NONE
+        if do_coalescence:
             cfuture = coalesce.setdefault(coalesce_key, future)
 
         if cfuture is future:
             if self.maxqueue is not None and self.queuelen > (self.maxqueue*2):
                 # Stop filling it
                 cfuture.cancel()
+                if do_coalescence:
+                    try:
+                        del coalesce[coalesce_key]
+                    except:
+                        pass
             else:
                 # I'm the one queueing
                 wself = self._wself
                 def wrapped_action():
                     def clean():
-                        if coalesce is not None and coalesce_key is not NONE:
+                        if do_coalescence:
                             try:
                                 del coalesce[coalesce_key]
                             except:
@@ -1141,28 +1147,33 @@ class AsyncCacheProcessor(object):
                     # discard queue head quickly when we're overloaded
                     # head is always less relevant
                     self = wself()
-                    if self is not None and self.maxqueue is not None:
-                        if self.queuelen > self.maxqueue:
-                            # Only discard half the entries, otherwise we can
-                            # enter a race condition in which really fast input
-                            # to the processor keeps the queue full and discarding all
-                            if self._tit_tat():
-                                cfuture.cancel()
-                    
-                    if cfuture.set_running_or_notify_cancelled():
-                        try:
-                            rv = action()
+                    try:
+                        if self is not None and self.maxqueue is not None:
+                            if self.queuelen > self.maxqueue:
+                                # Only discard half the entries, otherwise we can
+                                # enter a race condition in which really fast input
+                                # to the processor keeps the queue full and discarding all
+                                if self._tit_tat():
+                                    cfuture.cancel()
+
+                        if cfuture.set_running_or_notify_cancelled():
+                            try:
+                                rv = action()
+                                clean()
+                                cfuture.set(rv)
+                            except CacheMissError:
+                                clean()
+                                cfuture.miss()
+                            except:
+                                clean()
+                                # Clear up traceback to avoid leaks
+                                cfuture.exc(sys.exc_info()[:-1] + (None,))
+                        else:
                             clean()
-                            cfuture.set(rv)
-                        except CacheMissError:
-                            clean()
-                            cfuture.miss()
-                        except:
-                            clean()
-                            # Clear up traceback to avoid leaks
-                            cfuture.exc(sys.exc_info()[:-1] + (None,))
-                    else:
+                    except:
+                        # Just in case, we really need to clean, or we leak cfutures
                         clean()
+                        raise
                 self.threadpool.apply_async(wrapped_action, ())
         return cfuture
 
