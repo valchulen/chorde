@@ -30,6 +30,15 @@ cdef class _node:
         self.key = key
         self.value = value
 
+    cdef attach(_node self, unsigned int prio, unsigned int index, object key, object value):
+        self.prio = prio
+        self.index = index
+        self.key = key
+        self.value = value
+
+    cdef detach(_node self):
+        self.key = self.value = None
+
     def __richcmp__(_node self not None, _node other, int op):
         if op == 0:
             return self.prio < other.prio
@@ -59,20 +68,40 @@ cdef class LRUCache:
     not manual ones invoked with del, pop or clear.
     """
 
+    cdef int use_freelist
     cdef unsigned int next_prio
     cdef readonly unsigned int size
     cdef readonly unsigned int touch_on_read
     cdef list pqueue
+    cdef list freelist
     cdef dict emap
     cdef object eviction_callback
 
-    def __cinit__(LRUCache self, unsigned int size, unsigned int touch_on_read = 1, object eviction_callback = None):
+    def __cinit__(LRUCache self, unsigned int size, unsigned int touch_on_read = 1, object eviction_callback = None,
+            preallocate = True):
+        cdef int i
+        
         self.size = size
         self.touch_on_read = touch_on_read
         self.pqueue = []
         self.emap = {}
         self.next_prio = 0
         self.eviction_callback = eviction_callback
+
+        if size > 0 and preallocate:
+            # Preallocate big structures
+            self.use_freelist = 1
+            self.freelist = [None]*(size+1)
+            for i from 0 <= i < size+1:
+                self.freelist[i] = _node(0, 0, None, None)
+            self.pqueue.extend(self.freelist)
+            for i from 0 <= i < size+1:
+                self.emap[i] = i
+            self.emap.clear()
+            del self.pqueue[:]
+        else:
+            self.freelist = []
+            self.use_freelist = 0
     
     def __len__(LRUCache self not None):
         return len(self.pqueue)
@@ -186,7 +215,11 @@ cdef class LRUCache:
             self.next_prio = self.next_prio + 1
             if self.next_prio == 0:
                 self.c_rehash()
-            node = _node(self.next_prio, 0, key, val) # atomic barrier (might release GIL)
+            if self.use_freelist and len(self.freelist) > 0:
+                node = self.freelist.pop()
+                node.attach(self.next_prio, 0, key, val)
+            else:
+                node = _node(self.next_prio, 0, key, val) # atomic barrier (might release GIL)
             node.index = <unsigned int>PyList_GET_SIZE(<void*>self.pqueue) # from now on, atomic
             self.pqueue.append(node)
             self.emap[key] = node
@@ -225,6 +258,10 @@ cdef class LRUCache:
 
             del self.emap[key]
             del self.pqueue[-1]
+
+            if self.use_freelist and len(self.freelist) <= self.size:
+                node.detach()
+                self.freelist.append(node)
             
             return 0
 
@@ -291,18 +328,27 @@ cdef class LRUCache:
         # Hold onto old lists to prevent decref from freeing them before we're done
         cdef object pqueue, emap
         cdef object opqueue, oemap
+        cdef object ofreelist, freelist
         opqueue = self.pqueue
         oemap = self.emap
+        ofreelist = self.freelist
         pqueue = []
+        freelist = []
         emap = {}
         self.pqueue = pqueue
         self.emap = emap
+        self.freelist = freelist
         self.next_prio = 0
     
     def defrag(LRUCache self not None):
         # Hold onto old lists to prevent decref from freeing them before we're done
         cdef object pqueue, emap
         cdef object opqueue, oemap
+
+        if self.use_freelist:
+            # No need
+            return
+        
         opqueue = self.pqueue
         oemap = self.emap
         pqueue = list(opqueue)
