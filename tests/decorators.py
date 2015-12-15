@@ -55,6 +55,22 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertEquals(val, get_random())
         self.assertEquals([val], values)
 
+    def test_broken_value_callback(self):
+        # Puts a random number in cache and checks the value in the client
+        key = lambda: 'test_cached'
+        values = []
+        @self.decorator(5, key=key)
+        def get_random():
+            return random.random()
+        @get_random.on_value
+        def record_value(value):
+            values.append(value)
+            raise RuntimeError
+        val = get_random()
+        self.assertTrue(get_random.client.contains(key()))
+        self.assertEquals(val, get_random())
+        self.assertEquals([val], values)
+
     def test_get_ttl(self):
         # Puts a random number in cache and checks the value in the client
         key = lambda: 'test_cached'
