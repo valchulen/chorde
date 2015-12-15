@@ -40,6 +40,21 @@ class CachedDecoratorTest(DecoratorTestCase):
         self.assertTrue(get_random.client.contains(key()))
         self.assertEquals(val, get_random())
 
+    def test_value_callback(self):
+        # Puts a random number in cache and checks the value in the client
+        key = lambda: 'test_cached'
+        values = []
+        @self.decorator(5, key=key)
+        def get_random():
+            return random.random()
+        @get_random.on_value
+        def record_value(value):
+            values.append(value)
+        val = get_random()
+        self.assertTrue(get_random.client.contains(key()))
+        self.assertEquals(val, get_random())
+        self.assertEquals([val], values)
+
     def test_get_ttl(self):
         # Puts a random number in cache and checks the value in the client
         key = lambda: 'test_cached'
@@ -284,6 +299,22 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         r = get_random.future()().result()
         self.assertEquals(r, val[0])
     
+    def test_value_callback(self):
+        # Should return the value using on_value function
+        val = []
+        cval = []
+        @cached(self.client, ttl=5)
+        def get_random():
+            val[:] = [random.random()]
+            return val[0]
+        @get_random.on_value
+        def record_value(value):
+            cval.append(value)
+        get_random()
+        r = get_random.future()().result()
+        self.assertEquals(r, val[0])
+        self.assertEquals(val, cval)
+    
     def test_future_on_value_bad_key(self):
         # Should return the value using on_value function, even when given a bad callkey callable
         # To-do: validate bad key logged
@@ -397,6 +428,21 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.assertEquals(get_random, get_random.async())
         val = get_random()
         self.assertEquals(val, get_random())
+            
+    def test_value_callback(self):
+        # Puts a random number in cache and checks the value in the client
+        key = lambda: 'test_async_cached'
+        values = []
+        @cached(self.client, ttl=5, key=key)
+        def get_random():
+            return random.random()
+        @get_random.on_value
+        def record_value(value):
+            values.append(value)
+        self.assertEquals(get_random, get_random.async())
+        val = get_random()
+        self.assertEquals(val, get_random())
+        self.assertEquals([val], values)
             
     def test_put_async(self):
         # Should change the cached value

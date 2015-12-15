@@ -450,6 +450,13 @@ def cached(client, ttl,
                         # Ignore stats collection exceptions. 
                         # Quite possible since there is no thread synchronization.
                         pass
+                    if value_callbacks:
+                        try:
+                            _value_callback(rv)
+                        except:
+                            # Just log callback exceptions, orthogonal behavior shouldn't propagate to the caller
+                            logging.error("Error on value callback", exc_info = True)
+                            pass
                     return rv
                 except:
                     stats.errors += 1
@@ -464,14 +471,30 @@ def cached(client, ttl,
             def af(*p, **kw):  # lint:ok
                 stats.misses += 1
                 try:
-                    return of(*p, **kw)
+                    rv = of(*p, **kw)
+                    if value_callbacks:
+                        try:
+                            _value_callback(rv)
+                        except:
+                            # Just log callback exceptions, orthogonal behavior shouldn't propagate to the caller
+                            logging.error("Error on value callback", exc_info = True)
+                            pass
+                    return rv
                 except:
                     stats.errors += 1
                     raise
             @wraps(of)
             def f(*p, **kw):  # lint:ok
                 stats.sync_misses += 1
-                return af(*p, **kw)
+                rv = af(*p, **kw)
+                if value_callbacks:
+                    try:
+                        _value_callback(rv)
+                    except:
+                        # Just log callback exceptions, orthogonal behavior shouldn't propagate to the caller
+                        logging.error("Error on value callback", exc_info = True)
+                        pass
+                return rv
 
         @wraps(of)
         def cached_f(*p, **kw):
@@ -972,15 +995,21 @@ def cached(client, ttl,
             aclient = []
 
         promote_callbacks = []
+        value_callbacks = []
         get_kwargs = {}
         def _promote_callback(value, ttl):
             for cb in promote_callbacks:
                 cb(value, ttl)
+        def _value_callback(value):
+            for cb in value_callbacks:
+                cb(value)
         def on_promote_f(callback):
             promote_callbacks.append(callback)
             get_kwargs.setdefault('promote_callback', _promote_callback)
             lazy_kwargs.setdefault('promote_callback', _promote_callback)
             async_lazy_recheck_kwargs.setdefault('promote_callback', _promote_callback)
+        def on_value_f(callback):
+            value_callbacks.append(callback)
 
         fclient = []
         def future_f():
@@ -1029,8 +1058,10 @@ def cached(client, ttl,
             async_cached_f.callkey = key
             async_cached_f.stats = stats
             async_cached_f.get_ttl = get_ttl_f
-            cached_f._promote_callbacks = promote_callbacks
-            cached_f.on_promote = on_promote_f
+            async_cached_f._promote_callbacks = promote_callbacks
+            async_cached_f._value_callbacks = value_callbacks
+            async_cached_f.on_promote = on_promote_f
+            async_cached_f.on_value = on_value_f
             cached_f.async = async_f
             cached_f.lazy = lazy_cached_f
             cached_f.refresh = refresh_f
@@ -1056,7 +1087,9 @@ def cached(client, ttl,
         cached_f.uncached = of
         cached_f.get_ttl = get_ttl_f
         cached_f._promote_callbacks = promote_callbacks
+        cached_f._value_callbacks = value_callbacks
         cached_f.on_promote = on_promote_f
+        cached_f.on_value = on_value_f
         
         future_cached_f.clear = lambda : fclient[0].clear()
         future_cached_f.client = None
@@ -1073,7 +1106,9 @@ def cached(client, ttl,
         future_cached_f.uncached = of
         future_cached_f.get_ttl = future_get_ttl_f
         future_cached_f._promote_callbacks = promote_callbacks
-        future_cached_f._on_promote = on_promote_f
+        future_cached_f._value_callbacks = value_callbacks
+        future_cached_f.on_promote = on_promote_f
+        future_cached_f.on_value = on_value_f
 
         decorated_functions.add(cached_f)
         return cached_f
