@@ -213,6 +213,11 @@ def cached(client, ttl,
             be another decorated function, created on demand, backed by the same client wrapped in an async adapter.
             As such, it can be used to perform asynchronous operations on an otherwise synchronous function.
 
+        on_promote: subdecorator that registers callbacks that will receive promotion events from this function.
+
+        on_value: subdecorator that registers callbacks that will receive freshly computed values from this function.
+            The callback will receive the value as its first argument.
+
         stats: cache statistics, containing:
             hits - number of cache hits
             misses - number of cache misses
