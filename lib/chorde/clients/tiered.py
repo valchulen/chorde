@@ -123,7 +123,7 @@ class TieredInclusiveClient(BaseCacheClient):
         for client in self.clients:
             client.purge(*p, **kw)
     
-    def _getTtl(self, key, default = NONE, _max_tiers = None, ttl_skip = 0, **kw):
+    def _getTtl(self, key, default = NONE, _max_tiers = None, ttl_skip = 0, promote_callback = None, **kw):
         ttl = -1
         NONE__ = NONE_
         clients = self.clients
@@ -143,6 +143,8 @@ class TieredInclusiveClient(BaseCacheClient):
                         except:
                             # Ignore, go to the next
                             logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
+                    if promote_callback:
+                        promote_callback(rv, ttl)
                 return rv, ttl
             elif not i:
                 self.l1_misses += 1
@@ -161,7 +163,7 @@ class TieredInclusiveClient(BaseCacheClient):
     def getTtl(self, *p, **kw):
         return self._getTtl(*p, **kw)
     
-    def promote(self, key, default = NONE, _max_tiers = None, ttl_skip = 0, **kw):
+    def promote(self, key, default = NONE, _max_tiers = None, ttl_skip = 0, promote_callback = None, **kw):
         ttl = -1
         NONE__ = NONE_
         clients = self.clients
@@ -179,6 +181,8 @@ class TieredInclusiveClient(BaseCacheClient):
                         except:
                             # Ignore, go to the next
                             logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
+                    if promote_callback:
+                        promote_callback(rv, ttl)
                 
                 # Even if we don't really promote, stop trying
                 # If the above client.contains returns True but getTtl doesn't find it,

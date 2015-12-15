@@ -81,7 +81,7 @@ class BaseCacheClient(object):
         return self.delete(key)
 
     @abstractmethod
-    def getTtl(self, key, default = NONE, ttl_skip = None):
+    def getTtl(self, key, default = NONE, ttl_skip = None, promote_callback = None):
         """
         Returns: a tuple (value, ttl). If a default is given and the value
             is not in cache, return (default, -1). If a default is not given
@@ -91,13 +91,17 @@ class BaseCacheClient(object):
             If ttl_skip is given, and the cache is an aggregate of multiple
             caches, entries with ttl below ttl_skip will be ignored, and
             automatic promotion of remaining entries will occur.
+
+            If promote_callback is given, and the operation results in a promotion
+            from a lower level to a higher one, promote_callback will be called
+            with the return tuple as arguments (ie: two arguments, value and ttl)
         """
         if default is NONE:
             raise CacheMissError, key
         else:
             return (default, -1)
     
-    def promote(self, key, default = NONE, ttl_skip = None):
+    def promote(self, key, default = NONE, ttl_skip = None, promote_callback = None):
         """
         Returns: None. If getTtl would find an entry with the given arguments,
             this entry will be promoted. Otherwise, it's a no-op.

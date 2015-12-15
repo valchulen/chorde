@@ -64,6 +64,13 @@ class CacheClientTestMixIn:
         self.assertEqual(client.get(3, None), None)
         self.assertEqual(client.get(3, 1), 1)
 
+    def testGetPromoteCB(self):
+        client = self.client
+        client.put(4, 10, 10)
+        self.assertRaises(CacheMissError, client.get, 3)
+        self.assertEqual(client.get(3, None, promote_callback = lambda rv,ttl : None), None)
+        self.assertEqual(client.get(3, 1, promote_callback = lambda rv,ttl : None), 1)
+
     def testRenew(self):
         client = self.client
         client.put(14, 10, 10)
@@ -90,6 +97,14 @@ class CacheClientTestMixIn:
         client.put(4, 10, 10)
         time.sleep(0.1)
         v,ttl = client.getTtl(4)
+        self.assertEqual(v, 10)
+        self.assertTrue(ttl < 10)
+
+    def testGetTtlPromoteCB(self):
+        client = self.client
+        client.put(4, 10, 10)
+        time.sleep(0.1)
+        v,ttl = client.getTtl(4, promote_callback = lambda rv,ttl : None)
         self.assertEqual(v, 10)
         self.assertTrue(ttl < 10)
 

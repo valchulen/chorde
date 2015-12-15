@@ -575,7 +575,8 @@ class FilesCacheClient(base.BaseCacheClient):
             except:
                 pass
 
-    def _getTtl(self, key, default = base.NONE, baseNONE = base.NONE, ttl_skip=None, decode=True):
+    def _getTtl(self, key, default = base.NONE, baseNONE = base.NONE, ttl_skip=None, 
+            promote_callback = None, decode=True):
         key = self.key_pickler(key)
         kpath = self._mkpath(key)
         targetpath = os.path.join(self.basepath, *kpath)
@@ -634,14 +635,14 @@ class FilesCacheClient(base.BaseCacheClient):
                 self._failfast_cache[key] = time.time()
                 return default, -1
 
-    def getTtl(self, key, default=NONE, ttl_skip = None):
+    def getTtl(self, key, default=NONE, ttl_skip = None, **kw):
         # This trampoline is necessary to avoid re-entrancy issues when this client
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
-        return self._getTtl(key, default, ttl_skip = ttl_skip)
+        return self._getTtl(key, default, ttl_skip = ttl_skip, **kw)
 
-    def get(self, key, default=NONE):
-        rv, ttl = self._getTtl(key, default, ttl_skip = 0)
+    def get(self, key, default=NONE, **kw):
+        rv, ttl = self._getTtl(key, default, ttl_skip = 0, **kw)
         if ttl < 0 and default is NONE:
             raise CacheMissError, key
         else:

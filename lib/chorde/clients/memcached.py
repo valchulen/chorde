@@ -433,8 +433,8 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         
         return value
     
-    def _getTtl(self, key, default, decode = True, ttl_skip = None, short_key = None, pages = None, 
-            method = None, multi_method = None,
+    def _getTtl(self, key, default, decode = True, ttl_skip = None, promote_callback = None, 
+            short_key = None, pages = None, method = None, multi_method = None,
             force_all_pages = False, valid_sequence_types = (list, tuple) ):
         now = time.time()
 
@@ -506,14 +506,14 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             logging.warning("Error decoding cached data", exc_info=True)
             return default, -1
 
-    def getTtl(self, key, default=NONE, ttl_skip = None):
+    def getTtl(self, key, default=NONE, ttl_skip = None, **kw):
         # This trampoline is necessary to avoid re-entrancy issues when this client
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
-        return self._getTtl(key, default, ttl_skip = ttl_skip)
+        return self._getTtl(key, default, ttl_skip = ttl_skip, **kw)
 
-    def get(self, key, default=NONE):
-        rv, ttl = self._getTtl(key, default, ttl_skip = 0)
+    def get(self, key, default=NONE, **kw):
+        rv, ttl = self._getTtl(key, default, ttl_skip = 0, **kw)
         if ttl < 0 and default is NONE:
             raise CacheMissError, key
         else:
@@ -859,7 +859,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         value, ttl = self.pickler.loads(value)
         return value, ttl
     
-    def _getTtl(self, key, default, ttl_skip = None, encoded = False, raw_key = None):
+    def _getTtl(self, key, default, ttl_skip = None, promote_callback = None, encoded = False, raw_key = None):
         # Quick check for a concurrent put
         if encoded:
             value = NONE
@@ -907,11 +907,11 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         else:
             return value, ttl
 
-    def getTtl(self, key, default = NONE, ttl_skip = None):
+    def getTtl(self, key, default = NONE, ttl_skip = None, **kw):
         # This trampoline is necessary to avoid re-entrancy issues when this client
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
-        return self._getTtl(key, default, ttl_skip = ttl_skip)
+        return self._getTtl(key, default, ttl_skip = ttl_skip, **kw)
     
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip

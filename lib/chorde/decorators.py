@@ -486,7 +486,7 @@ def cached(client, ttl,
                 return f(*p, **kw)
             
             try:
-                rv = nclient.get(callkey)
+                rv = nclient.get(callkey, **get_kwargs)
                 stats.hits += 1
             except CacheMissError:
                 rv = f(*p, **kw)
@@ -506,7 +506,7 @@ def cached(client, ttl,
                 logging.error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return f(*p, **kw)
-            rv = nclient.getTtl(callkey)
+            rv = nclient.getTtl(callkey, **get_kwargs)
             if rv[1] < 0:
                 stats.misses += 1
             else:
@@ -529,7 +529,7 @@ def cached(client, ttl,
 
             client = aclient[0]
             __NONE = _NONE
-            rv, rvttl = client.getTtl(callkey, __NONE)
+            rv, rvttl = client.getTtl(callkey, __NONE, **get_kwargs)
 
             if (rv is __NONE or rvttl < eff_async_ttl) and not client.contains(callkey, eff_async_ttl):
                 if renew_time is not None and rv is not __NONE:
@@ -538,7 +538,7 @@ def cached(client, ttl,
                 _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
             elif rv is not __NONE:
                 if rvttl < eff_async_ttl:
-                    client.promote(callkey, ttl_skip = eff_async_ttl)
+                    client.promote(callkey, ttl_skip = eff_async_ttl, **get_kwargs)
                 stats.hits += 1
 
             if rv is __NONE:
@@ -546,7 +546,7 @@ def cached(client, ttl,
                 if timings:
                     t0 = time.time()
                 client.wait(callkey)
-                rv, rvttl = client.getTtl(callkey, __NONE)
+                rv, rvttl = client.getTtl(callkey, __NONE, **get_kwargs)
                 if rv is __NONE or rvttl < eff_async_ttl:
                     # FUUUUU
                     rv = f(*p, **kw)
@@ -613,7 +613,7 @@ def cached(client, ttl,
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                         else:
                             # just promote
-                            nclient.promote(callkey, ttl_skip = eff_async_ttl)
+                            nclient.promote(callkey, ttl_skip = eff_async_ttl, **get_kwargs)
                     def on_miss():  # lint:ok
                         _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_exc(exc_info):  # lint:ok
@@ -709,7 +709,7 @@ def cached(client, ttl,
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                         else:
                             # just promote
-                            nclient.promote(callkey, ttl_skip = eff_async_ttl)
+                            nclient.promote(callkey, ttl_skip = eff_async_ttl, **get_kwargs)
                     def on_miss():  # lint:ok
                         _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_exc(exc_info):  # lint:ok
@@ -786,7 +786,7 @@ def cached(client, ttl,
 
             # To-Do: intercept hits/misses and update stats?
             #   (involves considerable overhead...)
-            return fclient[0].getTtl(callkey)
+            return fclient[0].getTtl(callkey, **get_kwargs)
         if decorate is not None:
             future_get_ttl_f = decorate(future_get_ttl_f)
 
@@ -971,6 +971,17 @@ def cached(client, ttl,
         else:
             aclient = []
 
+        promote_callbacks = []
+        get_kwargs = {}
+        def _promote_callback(value, ttl):
+            for cb in promote_callbacks:
+                cb(value, ttl)
+        def on_promote_f(callback):
+            promote_callbacks.append(callback)
+            get_kwargs.setdefault('promote_callback', _promote_callback)
+            lazy_kwargs.setdefault('promote_callback', _promote_callback)
+            async_lazy_recheck_kwargs.setdefault('promote_callback', _promote_callback)
+
         fclient = []
         def future_f():
             if _initialize:
@@ -1018,6 +1029,8 @@ def cached(client, ttl,
             async_cached_f.callkey = key
             async_cached_f.stats = stats
             async_cached_f.get_ttl = get_ttl_f
+            cached_f._promote_callbacks = promote_callbacks
+            cached_f.on_promote = on_promote_f
             cached_f.async = async_f
             cached_f.lazy = lazy_cached_f
             cached_f.refresh = refresh_f
@@ -1042,6 +1055,8 @@ def cached(client, ttl,
         cached_f.stats = stats
         cached_f.uncached = of
         cached_f.get_ttl = get_ttl_f
+        cached_f._promote_callbacks = promote_callbacks
+        cached_f.on_promote = on_promote_f
         
         future_cached_f.clear = lambda : fclient[0].clear()
         future_cached_f.client = None
@@ -1057,6 +1072,8 @@ def cached(client, ttl,
         future_cached_f.stats = stats
         future_cached_f.uncached = of
         future_cached_f.get_ttl = future_get_ttl_f
+        future_cached_f._promote_callbacks = promote_callbacks
+        future_cached_f._on_promote = on_promote_f
 
         decorated_functions.add(cached_f)
         return cached_f

@@ -6,6 +6,7 @@ import threading
 import functools
 from chorde.decorators import cached, coherent_cached, CacheMissError
 from chorde.clients.inproc import InprocCacheClient
+from chorde.clients.tiered import TieredInclusiveClient
 from chorde.clients.async import AsyncWriteCacheClient
 from tests.coherence import skipIfUnsupported, ipsub, zmq
 
@@ -15,16 +16,19 @@ class DecoratorTestCase(unittest.TestCase):
 
     def setUp(self):
         self.client = InprocCacheClient(100)
+        self.client2 = InprocCacheClient(100)
+        self.tiered_client = TieredInclusiveClient(self.client2, self.client)
 
     def tearDown(self):
         self.client.clear()
-
+        self.client2.clear()
 
 class CachedDecoratorTest(DecoratorTestCase):
     """Basic tests for cached decorator"""
     def setUp(self):
         super(CachedDecoratorTest, self).setUp()
         self.decorator = functools.partial(cached, self.client)
+        self.tiered_decorator = functools.partial(cached, self.tiered_client)
 
     def test_cached(self):
         # Puts a random number in cache and checks the value in the client
@@ -72,6 +76,31 @@ class CachedDecoratorTest(DecoratorTestCase):
             return random.random()
         namespace = get_random.client.namespace
         self.assertTrue(namespace.startswith(get_random.__module__))
+
+    def test_promote(self):
+        # If a namespace is provided, should create the key with that
+        namespace = 'my_namespace'
+        @self.decorator(5, namespace=namespace)
+        def get_random():
+            return random.random()
+        tiered_get_random = self.tiered_decorator(5, namespace=namespace)(get_random.uncached)
+        val = get_random()
+        self.assertEquals(val, tiered_get_random())
+
+    def test_promote_callback(self):
+        # If a namespace is provided, should create the key with that
+        namespace = 'my_namespace'
+        promotions = []
+        @self.decorator(5, namespace=namespace)
+        def get_random():
+            return random.random()
+        tiered_get_random = self.tiered_decorator(5, namespace=namespace)(get_random.uncached)
+        @tiered_get_random.on_promote
+        def record_promote(val, ttl):
+            promotions.append((val, ttl))
+        val = get_random()
+        self.assertEquals(val, tiered_get_random())
+        self.assertEquals(1, len(promotions))
 
     def test_serialization_function(self):
         # Should apply the a function the returned value
@@ -337,6 +366,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
     def setUp(self):
         super(CachedDecoratorAsyncTest, self).setUp()
         self.client = AsyncWriteCacheClient(self.client, 100)
+        self.client2 = AsyncWriteCacheClient(self.client2, 100)
 
     def test_lazy_async(self):
         # Should raise a CacheMissError and start calculating the value
@@ -480,6 +510,7 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
                 self.shared, self.ipsub)
         self.decorator2 = functools.partial(coherent_cached, self.private2, 
                 self.shared, self.ipsub2)
+        self.tiered_decorator = self.decorator2
 
     @classmethod
     def tearDownClass(cls):

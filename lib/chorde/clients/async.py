@@ -28,6 +28,7 @@ class _CLEAR:pass
 class _RENEW:pass
 class REGET:pass
 
+COALESCE_IGNORE_KWARGS = frozenset(['promote_callback'])
 SPECIAL = set(map(id,[_NONE, _DELETE, _EXPIRE, _PURGE, _CLEAR, _RENEW, REGET]))
 def is_special(value):
     return id(value) in SPECIAL
@@ -1212,7 +1213,7 @@ class AsyncCacheProcessor(object):
         return WrappedCacheProcessor(self, client)
     
     def getTtl(self, key, default = NONE, **kw):
-        if not kw:
+        if not kw or not (kw.viewkeys() - COALESCE_IGNORE_KWARGS):
             if default is NONE:
                 ckey = key
             else:
@@ -1222,12 +1223,15 @@ class AsyncCacheProcessor(object):
         return self._enqueue(functools.partial(self.client.getTtl, key, default, **kw),
             self.coalesce_getTtl, ckey)
     
-    def get(self, key, default = NONE):
-        if default is NONE:
-            ckey = key
+    def get(self, key, default = NONE, **kw):
+        if not kw or not (kw.viewkeys() - COALESCE_IGNORE_KWARGS):
+            if default is NONE:
+                ckey = key
+            else:
+                ckey = (key, default)
         else:
-            ckey = (key, default)
-        return self._enqueue(functools.partial(self.client.get, key, default),
+            ckey = NONE
+        return self._enqueue(functools.partial(self.client.get, key, default, **kw),
             self.coalesce_get, ckey)
     
     def contains(self, key, *p, **kw):
