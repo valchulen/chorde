@@ -94,7 +94,8 @@ class BaseCacheClient(object):
 
             If promote_callback is given, and the operation results in a promotion
             from a lower level to a higher one, promote_callback will be called
-            with the return tuple as arguments (ie: two arguments, value and ttl)
+            with 3 arguments: the key as given, the value being promoted, 
+            and the remaining TTL.
         """
         if default is NONE:
             raise CacheMissError, key

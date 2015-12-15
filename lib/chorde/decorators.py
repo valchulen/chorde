@@ -216,7 +216,8 @@ def cached(client, ttl,
         on_promote: subdecorator that registers callbacks that will receive promotion events from this function.
 
         on_value: subdecorator that registers callbacks that will receive freshly computed values from this function.
-            The callback will receive the value as its first argument.
+            The callback will receive the value as its first argument, and all the original arguments for the call
+            that initiated the computation following that argument (including keyword arguments).
 
         stats: cache statistics, containing:
             hits - number of cache hits
@@ -457,7 +458,7 @@ def cached(client, ttl,
                         pass
                     if value_callbacks:
                         try:
-                            _value_callback(rv)
+                            _value_callback(rv, *p, **kw)
                         except:
                             # Just log callback exceptions, orthogonal behavior shouldn't propagate to the caller
                             logging.error("Error on value callback", exc_info = True)
@@ -479,7 +480,7 @@ def cached(client, ttl,
                     rv = of(*p, **kw)
                     if value_callbacks:
                         try:
-                            _value_callback(rv)
+                            _value_callback(rv, *p, **kw)
                         except:
                             # Just log callback exceptions, orthogonal behavior shouldn't propagate to the caller
                             logging.error("Error on value callback", exc_info = True)
@@ -494,7 +495,7 @@ def cached(client, ttl,
                 rv = af(*p, **kw)
                 if value_callbacks:
                     try:
-                        _value_callback(rv)
+                        _value_callback(rv, *p, **kw)
                     except:
                         # Just log callback exceptions, orthogonal behavior shouldn't propagate to the caller
                         logging.error("Error on value callback", exc_info = True)
@@ -1002,12 +1003,12 @@ def cached(client, ttl,
         promote_callbacks = []
         value_callbacks = []
         get_kwargs = {}
-        def _promote_callback(value, ttl):
+        def _promote_callback(*p, **kw):
             for cb in promote_callbacks:
-                cb(value, ttl)
-        def _value_callback(value):
+                cb(*p, **kw)
+        def _value_callback(*p, **kw):
             for cb in value_callbacks:
-                cb(value)
+                cb(*p, **kw)
         def on_promote_f(callback):
             promote_callbacks.append(callback)
             get_kwargs.setdefault('promote_callback', _promote_callback)

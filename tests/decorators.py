@@ -111,8 +111,8 @@ class CachedDecoratorTest(DecoratorTestCase):
             return random.random()
         tiered_get_random = self.tiered_decorator(5, namespace=namespace)(get_random.uncached)
         @tiered_get_random.on_promote
-        def record_promote(val, ttl):
-            promotions.append((val, ttl))
+        def record_promote(key, val, ttl):
+            promotions.append((key, val, ttl))
         val = get_random()
         self.assertEquals(val, tiered_get_random())
         self.assertEquals(1, len(promotions))

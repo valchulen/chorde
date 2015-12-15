@@ -144,7 +144,7 @@ class TieredInclusiveClient(BaseCacheClient):
                             # Ignore, go to the next
                             logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
                     if promote_callback:
-                        promote_callback(rv, ttl)
+                        promote_callback(key, rv, ttl)
                 return rv, ttl
             elif not i:
                 self.l1_misses += 1
@@ -182,7 +182,7 @@ class TieredInclusiveClient(BaseCacheClient):
                             # Ignore, go to the next
                             logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
                     if promote_callback:
-                        promote_callback(rv, ttl)
+                        promote_callback(key, rv, ttl)
                 
                 # Even if we don't really promote, stop trying
                 # If the above client.contains returns True but getTtl doesn't find it,
