@@ -401,6 +401,11 @@ def cached(client, ttl,
         async_processor_kwargs = {}
     async_processor_kwargs.setdefault('threadpool', async_processor_threadpool)
 
+    # Copy to avoid modifying references to caller objects
+    elazy_kwargs = lazy_kwargs.copy()
+    easync_lazy_recheck_kwargs = async_lazy_recheck_kwargs.copy()
+    eget_async_lazy_recheck_kwargs = easync_lazy_recheck_kwargs.copy()
+
     def decor(f):
         if namespace is None:
             nclient = base.NamespaceWrapper(_make_namespace(f, salt = autonamespace_version_salt), client)
@@ -461,7 +466,7 @@ def cached(client, ttl,
                             _value_callback(rv, *p, **kw)
                         except:
                             # Just log callback exceptions, orthogonal behavior shouldn't propagate to the caller
-                            logging.error("Error on value callback", exc_info = True)
+                            logging.getLogger('chorde').error("Error on value callback", exc_info = True)
                             pass
                     return rv
                 except:
@@ -483,7 +488,7 @@ def cached(client, ttl,
                             _value_callback(rv, *p, **kw)
                         except:
                             # Just log callback exceptions, orthogonal behavior shouldn't propagate to the caller
-                            logging.error("Error on value callback", exc_info = True)
+                            logging.getLogger('chorde').getLogger('chorde').error("Error on value callback", exc_info = True)
                             pass
                     return rv
                 except:
@@ -498,7 +503,7 @@ def cached(client, ttl,
                         _value_callback(rv, *p, **kw)
                     except:
                         # Just log callback exceptions, orthogonal behavior shouldn't propagate to the caller
-                        logging.error("Error on value callback", exc_info = True)
+                        logging.getLogger('chorde').error("Error on value callback", exc_info = True)
                         pass
                 return rv
 
@@ -510,7 +515,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return f(*p, **kw)
             
@@ -532,7 +537,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return f(*p, **kw)
             rv = nclient.getTtl(callkey, **get_kwargs)
@@ -552,7 +557,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return f(*p, **kw)
 
@@ -595,7 +600,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return fclient[0].do_async(f, *p, **kw)
 
@@ -606,7 +611,7 @@ def cached(client, ttl,
 
             if future_sync_check:
                 # Quick sync call with lazy_kwargs
-                rv, rvttl = client.getTtl(callkey, __NONE, **lazy_kwargs)
+                rv, rvttl = client.getTtl(callkey, __NONE, **elazy_kwargs)
             else:
                 rv = __NONE
                 rvttl = -1
@@ -620,7 +625,7 @@ def cached(client, ttl,
                         frv.set(value[0])
                         # If it's stale, though, start an async refresh
                         if value[1] < eff_async_ttl and not nclient.contains(callkey, eff_async_ttl, 
-                                **async_lazy_recheck_kwargs):
+                                **easync_lazy_recheck_kwargs):
                             if renew_time is not None and (rv is not __NONE or lazy_kwargs):
                                 nclient.renew(callkey, eff_async_ttl + renew_time)
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
@@ -629,7 +634,7 @@ def cached(client, ttl,
                     def on_exc(exc_info):
                         stats.errors += 1
                         return frv.exc(exc_info)
-                    clientf.getTtl(callkey, ttl_skip = eff_async_ttl, **async_lazy_recheck_kwargs)\
+                    clientf.getTtl(callkey, ttl_skip = eff_async_ttl, **eget_async_lazy_recheck_kwargs)\
                         .on_any(on_value, on_miss, on_exc)
                 else:
                     # It was a stale hit, so set the value now, but start a touch-refresh
@@ -647,7 +652,7 @@ def cached(client, ttl,
                         _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
-                    clientf.contains(callkey, eff_async_ttl, **async_lazy_recheck_kwargs)\
+                    clientf.contains(callkey, eff_async_ttl, **easync_lazy_recheck_kwargs)\
                         .on_any_once(on_value, on_miss, on_exc)
             else:
                 stats.hits += 1
@@ -664,12 +669,12 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 raise CacheMissError
 
             try:
-                rv = nclient.get(callkey, **lazy_kwargs)
+                rv = nclient.get(callkey, **elazy_kwargs)
                 stats.hits += 1
                 return rv
             except CacheMissError:
@@ -685,7 +690,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 raise CacheMissError
 
@@ -695,7 +700,7 @@ def cached(client, ttl,
 
             if future_sync_check:
                 # Quick sync call with lazy_kwargs
-                rv, rvttl = client.getTtl(callkey, __NONE, **lazy_kwargs)
+                rv, rvttl = client.getTtl(callkey, __NONE, **elazy_kwargs)
             else:
                 rv = __NONE
                 rvttl = -1
@@ -710,7 +715,7 @@ def cached(client, ttl,
                         frv.set(value[0])
                         # If it's stale, though, start an async refresh
                         if value[1] < eff_async_ttl and not client.contains(callkey, eff_async_ttl, 
-                                **async_lazy_recheck_kwargs):
+                                **easync_lazy_recheck_kwargs):
                             if renew_time is not None and (rv is not __NONE or lazy_kwargs):
                                 nclient.renew(callkey, eff_async_ttl + renew_time)
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
@@ -721,7 +726,7 @@ def cached(client, ttl,
                     def on_exc(exc_info):
                         stats.errors += 1
                         frv.exc(exc_info)
-                    clientf.getTtl(callkey, ttl_skip = eff_async_ttl, **async_lazy_recheck_kwargs)\
+                    clientf.getTtl(callkey, ttl_skip = eff_async_ttl, **eget_async_lazy_recheck_kwargs)\
                         .on_any(on_value, on_miss, on_exc)
                 else:
                     # It was a stale hit or permanent miss, so set the value now, but start a touch-refresh
@@ -743,7 +748,7 @@ def cached(client, ttl,
                         _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
-                    clientf.contains(callkey, eff_async_ttl, **async_lazy_recheck_kwargs)\
+                    clientf.contains(callkey, eff_async_ttl, **easync_lazy_recheck_kwargs)\
                         .on_any_once(on_value, on_miss, on_exc)
             else:
                 stats.hits += 1
@@ -758,7 +763,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 raise CacheMissError
 
@@ -769,7 +774,7 @@ def cached(client, ttl,
 
             if future_sync_check:
                 # Quick sync call with lazy_kwargs
-                rv, rvttl = client.getTtl(callkey, __NONE, **lazy_kwargs)
+                rv, rvttl = client.getTtl(callkey, __NONE, **elazy_kwargs)
             else:
                 rv = __NONE
                 rvttl = -1
@@ -809,7 +814,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 raise CacheMissError
 
@@ -826,7 +831,7 @@ def cached(client, ttl,
             try:
                 callkey = key(*p, **kw)
             except:
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
             nclient.delete(callkey)
@@ -838,7 +843,7 @@ def cached(client, ttl,
             try:
                 callkey = key(*p, **kw)
             except:
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
             return fclient[0].delete(callkey)
@@ -853,7 +858,7 @@ def cached(client, ttl,
             try:
                 callkey = key(*p, **kw)
             except:
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
             nclient.put(callkey, value, eff_ttl())
@@ -868,7 +873,7 @@ def cached(client, ttl,
             try:
                 callkey = key(*p, **kw)
             except:
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
             aclient[0].put(callkey, value, eff_ttl())
@@ -881,7 +886,7 @@ def cached(client, ttl,
             try:
                 callkey = key(*p, **kw)
             except:
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
             return fclient[0].put(callkey, value, eff_ttl())
@@ -896,25 +901,26 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 raise CacheMissError
 
             __NONE = _NONE
             client = aclient[0]
 
-            rv, rvttl = client.getTtl(callkey, __NONE, **lazy_kwargs)
+            rv, rvttl = client.getTtl(callkey, __NONE, **elazy_kwargs)
 
-            if (rv is __NONE or rvttl < eff_async_ttl) and not client.contains(callkey, eff_async_ttl, **lazy_kwargs):
+            if (rv is __NONE or rvttl < eff_async_ttl) and not client.contains(callkey, eff_async_ttl, **elazy_kwargs):
                 if async_lazy_recheck:
                     stats.misses += 1
                     
                     # send a Defer that touches the client with recheck kwargs
                     # before doing the refresh. Needs not be coherent.
                     def touch_key(*p, **kw):
-                        rv, rvttl = nclient.getTtl(callkey, __NONE, ttl_skip = eff_async_ttl, **async_lazy_recheck_kwargs)
+                        rv, rvttl = nclient.getTtl(callkey, __NONE, ttl_skip = eff_async_ttl, 
+                            **eget_async_lazy_recheck_kwargs)
                         if (rv is __NONE or rvttl < eff_async_ttl) and not nclient.contains(callkey, eff_async_ttl, 
-                                **async_lazy_recheck_kwargs):
+                                **easync_lazy_recheck_kwargs):
                             if renew_time is not None and (rv is not __NONE or lazy_kwargs):
                                 nclient.renew(callkey, eff_async_ttl + renew_time)
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
@@ -948,7 +954,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
 
@@ -966,7 +972,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
 
@@ -982,7 +988,7 @@ def cached(client, ttl,
                 callkey = key(*p, **kw)
             except:
                 # Bummer
-                logging.error("Error evaluating callkey", exc_info = True)
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
 
@@ -1012,8 +1018,8 @@ def cached(client, ttl,
         def on_promote_f(callback):
             promote_callbacks.append(callback)
             get_kwargs.setdefault('promote_callback', _promote_callback)
-            lazy_kwargs.setdefault('promote_callback', _promote_callback)
-            async_lazy_recheck_kwargs.setdefault('promote_callback', _promote_callback)
+            elazy_kwargs.setdefault('promote_callback', _promote_callback)
+            eget_async_lazy_recheck_kwargs.setdefault('promote_callback', _promote_callback)
         def on_value_f(callback):
             value_callbacks.append(callback)
 
