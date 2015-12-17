@@ -65,11 +65,21 @@ class CacheClientTestMixIn:
         self.assertEqual(client.get(3, 1), 1)
 
     def testGetPromoteCB(self):
+        from chorde.clients.inproc import InprocCacheClient
+        from chorde.clients.tiered import TieredInclusiveClient
         client = self.client
+        client2 = TieredInclusiveClient(InprocCacheClient(100), client)
         client.put(4, 10, 10)
+        promotions = []
+        def register_promotion(key, value, ttl):
+            promotions.append((key, value))
         self.assertRaises(CacheMissError, client.get, 3)
-        self.assertEqual(client.get(3, None, promote_callback = lambda rv,ttl : None), None)
-        self.assertEqual(client.get(3, 1, promote_callback = lambda rv,ttl : None), 1)
+        self.assertEqual(client.get(3, None, promote_callback = register_promotion), None)
+        self.assertEqual(client.get(3, 1, promote_callback = register_promotion), 1)
+        self.assertEqual(client.get(4, 1, promote_callback = register_promotion), 10)
+        self.assertEqual(promotions, [])
+        self.assertEqual(client2.get(4, 1, promote_callback = register_promotion), 10)
+        self.assertEqual(promotions, [(4, 10)])
 
     def testRenew(self):
         client = self.client

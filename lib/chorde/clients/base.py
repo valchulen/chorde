@@ -277,9 +277,12 @@ class DecoratedWrapper(BaseCacheClient):
     A namespace wrapper client will decorate keys with a namespace, making it possible
     to share one client among many sub-clients without key collisions.
     """
-    def __init__(self, client, key_decorator = None, value_decorator = None, value_undecorator = None):
+    def __init__(self, client, 
+            key_decorator = None, key_undecorator = None, 
+            value_decorator = None, value_undecorator = None):
         self.client = client
         self.key_decorator = key_decorator
+        self.key_undecorator = key_undecorator
         self.value_decorator = value_decorator
         self.value_undecorator = value_undecorator
 
@@ -346,6 +349,12 @@ class DecoratedWrapper(BaseCacheClient):
         key_decorator = self.key_decorator
         if key_decorator is not None:
             key = key_decorator(key)
+            key_undecorator = self.key_undecorator
+            if key_undecorator is not None and 'promote_callback' in kw:
+                promote_callback = kw['promote_callback']
+                def undecorating_callback(key, value, ttl):
+                    promote_callback(key_undecorator(key), value, ttl)
+                kw['promote_callback'] = undecorating_callback
         rv, ttl = self.client.getTtl(key, default, **kw)
         if rv is not default and self.value_undecorator is not None:
             rv = self.value_undecorator(rv)
@@ -355,6 +364,12 @@ class DecoratedWrapper(BaseCacheClient):
         key_decorator = self.key_decorator
         if key_decorator is not None:
             key = key_decorator(key)
+            key_undecorator = self.key_undecorator
+            if key_undecorator is not None and 'promote_callback' in kw:
+                promote_callback = kw['promote_callback']
+                def undecorating_callback(key, value, ttl):
+                    promote_callback(key_undecorator(key), value, ttl)
+                kw['promote_callback'] = undecorating_callback
         self.client.promote(key, *p, **kw)
     
     def clear(self):
@@ -378,6 +393,7 @@ class NamespaceWrapper(DecoratedWrapper):
         super(NamespaceWrapper, self).__init__(client)
         self.namespace = namespace
         self.revision = client.get((namespace,'REVMARK'), 0)
+        self.key_undecorator = operator.itemgetter(2)
 
     key_decorator = property(
         operator.attrgetter('_key_decorator'),
