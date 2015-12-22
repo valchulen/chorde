@@ -200,8 +200,8 @@ class DynamicResolvingClient(object):
     @property
     def client(self):
         store = self._client_store
-        if store._client is None or self._client_servers != self.servers:
-            self._client_servers = servers = self.servers
+        if store._client is None or store._client_servers != self.servers:
+            store._client_servers = servers = self.servers
             store._client = self._client_class(sorted(servers), **self._client_args)
         return store._client
 
@@ -241,4 +241,6 @@ class ThreadLocalDynamicResolvingClient(DynamicResolvingClient):
             self._tl = tl = threading.local()
         if not hasattr(tl, '_client'):
             tl._client = None
+        if not hasattr(tl, '_client_servers'):
+            tl._client_servers = None
         return tl
