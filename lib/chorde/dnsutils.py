@@ -3,6 +3,7 @@ import os
 import os.path
 import time
 import socket
+import threading
 
 def is_ip4(x):
     try:
@@ -105,6 +106,10 @@ class DynamicResolvingClient(object):
         self._removed_addresses = set()
 
     @property
+    def _client_store(self):
+        return self
+
+    @property
     def servers(self):
         """
         Returns a set of server names derived from client_addresses.
@@ -194,14 +199,16 @@ class DynamicResolvingClient(object):
 
     @property
     def client(self):
-        if self._client is None or self._client_servers != self.servers:
+        store = self._client_store
+        if store._client is None or self._client_servers != self.servers:
             self._client_servers = servers = self.servers
-            self._client = self._client_class(sorted(servers), **self._client_args)
-        return self._client
+            store._client = self._client_class(sorted(servers), **self._client_args)
+        return store._client
 
     @client.deleter
     def client(self):  # lint:ok
-        self._client = None
+        store = self._client_store
+        store._client = None
         self._dynamic_client_addresses = None
         self._dynamic_client_checktime = None
 
@@ -225,3 +232,13 @@ class DynamicResolvingClient(object):
             # normal A record, forget to mark static
             addrs = []
         return addrs
+
+class ThreadLocalDynamicResolvingClient(DynamicResolvingClient):
+    @property
+    def _client_store(self):
+        tl = getattr(self, '_tl', None)
+        if tl is None:
+            self._tl = tl = threading.local()
+        if not hasattr(tl, '_client'):
+            tl._client = None
+        return tl

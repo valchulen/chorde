@@ -28,7 +28,7 @@ except ImportError:
     from StringIO import StringIO  # lint:ok
 
 from chorde import sPickle
-from chorde.dnsutils import DynamicResolvingClient
+from chorde.dnsutils import ThreadLocalDynamicResolvingClient
 
 try:
     try:
@@ -167,7 +167,7 @@ class MemcachedStoreClient(memcache.Client):
             raise self.MemcachedKeyCharacterError(
                     "Control characters not allowed")
 
-class DynamicResolvingMemcachedClient(BaseCacheClient, DynamicResolvingClient):
+class DynamicResolvingMemcachedClient(BaseCacheClient, ThreadLocalDynamicResolvingClient):
     def __init__(self, client_class, client_addresses, client_args):
         super(DynamicResolvingMemcachedClient, self).__init__(
                 client_class, client_addresses, client_args)
