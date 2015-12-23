@@ -793,17 +793,19 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             deletions = []
             renewals = []
             quicknow = time.time()
+            encode = self.encode
+            encode_key = self.encode_key
             for i in xrange(2):
                 # It can explode if a thread lingers, so restart if that happens
                 try:
                     for key, (value, ttl) in workset.iteritems():
-                        key = self.encode_key(key)
+                        key = encode_key(key)
                         if value is NONE:
                             deletions.append(key)
                         elif value is _RENEW:
                             renewals.append((key, ttl))
                         else:
-                            plan[ttl][key] = self.encode(key, ttl+quicknow, value)
+                            plan[ttl][key] = encode(key, ttl+quicknow, value)
                     break
                 except RuntimeError, e:
                     del deletions[:]
@@ -817,31 +819,34 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             last_error = None
 
             if plan or deletions or renewals:
+                client = self.client
                 if deletions:
                     try:
-                        self.client.delete_multi(deletions)
+                        client.delete_multi(deletions)
                     except:
                         logging.error("Exception in background writer", exc_info = True)
                 if plan:
                     for ttl, batch in plan.iteritems():
                         try:
-                            self.client.set_multi(batch, ttl)
+                            client.set_multi(batch, ttl)
                         except:
                             logging.error("Exception in background writer", exc_info = True)
                 if renewals:
                     for key, ttl in renewals:
-                        value = self.client.gets(key)
+                        value = client.gets(key)
                         if value is not None:
                             value, kttl = self.decode(value)
                             nttl = ttl + quicknow
                             if kttl < nttl:
-                                value = self.encode(key, nttl, value)
-                                self.client.cas(key, value, ttl)
+                                value = encode(key, nttl, value)
+                                client.cas(key, value, ttl)
                 
                 # Let us be suicidal
-                del self, plan, deletions, renewals
+                del client
                 workset.clear()
-                del workset
+
+            del self, plan, deletions, renewals, encode, encode_key
+            del workset
             
             key = value = ttl = kttl = nttl = batch = None
             workev.wait(1)
