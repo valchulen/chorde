@@ -233,14 +233,14 @@ class DynamicResolvingClient(object):
             addrs = []
         return addrs
 
+class DynamicResolvingClientLocalStore(threading.local):
+    _client = None
+    _client_servers = None
+
 class ThreadLocalDynamicResolvingClient(DynamicResolvingClient):
     @property
     def _client_store(self):
         tl = getattr(self, '_tl', None)
         if tl is None:
-            self._tl = tl = threading.local()
-        if not hasattr(tl, '_client'):
-            tl._client = None
-        if not hasattr(tl, '_client_servers'):
-            tl._client_servers = None
+            self._tl = tl = DynamicResolvingClientLocalStore()
         return tl
