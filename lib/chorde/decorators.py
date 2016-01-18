@@ -711,8 +711,12 @@ def cached(client, ttl,
                 if rv is __NONE and (not future_sync_check or async_lazy_recheck):
                     # It was a preliminar miss, so wait for a recheck to set the value
                     def on_value(value):
-                        stats.hits += 1
-                        frv.set(value[0])
+                        if value[1] >= 0:
+                            stats.hits += 1
+                            frv.set(value[0])
+                        else:
+                            # Too stale
+                            frv.miss()
                         # If it's stale, though, start an async refresh
                         if value[1] < eff_async_ttl and not client.contains(callkey, eff_async_ttl, 
                                 **easync_lazy_recheck_kwargs):
@@ -784,15 +788,20 @@ def cached(client, ttl,
                 if rv is __NONE and (not future_sync_check or async_lazy_recheck):
                     # It was a miss, so wait for setting the value
                     def on_value(value):
-                        stats.hits += 1
-                        return frv.set(value[0])
+                        if value[1] >= 0:
+                            stats.hits += 1
+                            return frv.set(value[0])
+                        else:
+                            # Too stale
+                            return frv.miss()
                     def on_miss():
                         # Ok, real miss, report it
                         return frv.miss()
                     def on_exc(exc_info):
                         stats.errors += 1
                         return frv.exc(exc_info)
-                    clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
+                    clientf.getTtl(callkey, ttl_skip = eff_async_ttl, **eget_async_lazy_recheck_kwargs)\
+                        .on_any(on_value, on_miss, on_exc)
                 else:
                     # It was a stale hit or permanent miss
                     if rv is __NONE or rvttl < 0:
