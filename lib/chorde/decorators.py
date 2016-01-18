@@ -795,7 +795,7 @@ def cached(client, ttl,
                     clientf.getTtl(callkey).on_any(on_value, on_miss, on_exc)
                 else:
                     # It was a stale hit or permanent miss
-                    if rv is __NONE:
+                    if rv is __NONE or rvttl < 0:
                         stats.misses += 1
                         frv._miss_nothreads()
                     else:
