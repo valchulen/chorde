@@ -167,7 +167,7 @@ class CoherentWrapperClient(BaseCacheClient):
             timeout = None
         self.manager.wait_done(key, timeout=timeout)
     
-    def put(self, key, value, ttl, coherence_timeout = None):
+    def put(self, key, value, ttl, coherence_timeout = None, **kw):
         manager = self.manager
         if manager.quick_refresh:
             # In quick refresh mode, we publish all puts
@@ -179,12 +179,12 @@ class CoherentWrapperClient(BaseCacheClient):
                         manager.fire_done([key])
                     return rv
                 value.callable_ = done_after
-                self.client.put(key, value, ttl)
+                self.client.put(key, value, ttl, **kw)
             else:
-                self.client.put(key, value, ttl)
+                self.client.put(key, value, ttl, **kw)
                 manager.fire_done([key], timeout = coherence_timeout)
         else:
-            self.client.put(key, value, ttl)
+            self.client.put(key, value, ttl, **kw)
 
     def put_coherently(self, key, ttl, expired, future, callable_, *args, **kwargs):
         """
@@ -209,6 +209,7 @@ class CoherentWrapperClient(BaseCacheClient):
                 lock.
         """
         wait_time = kwargs.pop('wait_time', 0)
+        put_kwargs = kwargs.pop('put_kwargs', None) or None
         value = CoherentDefer(
             callable_, 
             key = key,
@@ -228,7 +229,7 @@ class CoherentWrapperClient(BaseCacheClient):
                 if value is NONE:
                     # Abort
                     return
-            self.client.put(key, value, ttl)
+            self.client.put(key, value, ttl, **(put_kwargs or {}))
         finally:
             if deferred is not None:
                 deferred.done()

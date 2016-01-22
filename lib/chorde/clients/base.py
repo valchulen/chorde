@@ -163,16 +163,16 @@ class ReadWriteSyncAdapter(BaseCacheClient):
         return self.client.usage
 
     @serialize_write
-    def put(self, key, value, ttl):
-        return self.client.put(key, value, ttl)
+    def put(self, key, value, ttl, **kw):
+        return self.client.put(key, value, ttl, **kw)
 
     @serialize_write
-    def renew(self, key, ttl):
-        return self.client.renew(key, ttl)
+    def renew(self, key, ttl, **kw):
+        return self.client.renew(key, ttl, **kw)
 
     @serialize_write
-    def add(self, key, value, ttl):
-        return self.client.add(key, value, ttl)
+    def add(self, key, value, ttl, **kw):
+        return self.client.add(key, value, ttl, **kw)
 
     @serialize_write
     def delete(self, key):
@@ -226,16 +226,16 @@ class SyncAdapter(BaseCacheClient):
         return self.client.usage
 
     @serialize
-    def put(self, key, value, ttl):
-        return self.client.put(key, value, ttl)
+    def put(self, key, value, ttl, **kw):
+        return self.client.put(key, value, ttl, **kw)
 
     @serialize
-    def renew(self, key, ttl):
-        return self.client.renew(key, ttl)
+    def renew(self, key, ttl, **kw):
+        return self.client.renew(key, ttl, **kw)
 
     @serialize
-    def add(self, key, value, ttl):
-        return self.client.add(key, value, ttl)
+    def add(self, key, value, ttl, **kw):
+        return self.client.add(key, value, ttl, **kw)
 
     @serialize
     def delete(self, key):
@@ -303,7 +303,7 @@ class DecoratedWrapper(BaseCacheClient):
             key = self.key_decorator(key)
         return self.client.wait(key, timeout)
     
-    def put(self, key, value, ttl):
+    def put(self, key, value, ttl, **kw):
         if self.key_decorator:
             key = self.key_decorator(key)
         if self.value_decorator:
@@ -313,27 +313,27 @@ class DecoratedWrapper(BaseCacheClient):
                 value.callable_ = lambda *p, **kw: value_decorator(callable_(*p, **kw))
             else:
                 value = self.value_decorator(value)
-        return self.client.put(key, value, ttl)
+        return self.client.put(key, value, ttl, **kw)
 
-    def put_coherently(self, key, ttl, expired, future, callable_):
+    def put_coherently(self, key, ttl, expired, future, callable_, **kw):
         if self.key_decorator:
             key = self.key_decorator(key)
         if self.value_decorator:
             value_decorator = self.value_decorator
             callable_ = lambda *p, **kw: value_decorator(callable_(*p, **kw))
-        return self.client.put_coherently(key, ttl, expired, future, callable_)
+        return self.client.put_coherently(key, ttl, expired, future, callable_, **kw)
 
-    def renew(self, key, ttl):
+    def renew(self, key, ttl, **kw):
         if self.key_decorator:
             key = self.key_decorator(key)
-        return self.client.renew(key, ttl)
+        return self.client.renew(key, ttl, **kw)
 
-    def add(self, key, value, ttl):
+    def add(self, key, value, ttl, **kw):
         if self.key_decorator:
             key = self.key_decorator(key)
         if self.value_decorator:
             value = self.value_decorator(value)
-        return self.client.add(key, value, ttl)
+        return self.client.add(key, value, ttl, **kw)
 
     def delete(self, key):
         if self.key_decorator:

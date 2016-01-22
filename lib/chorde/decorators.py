@@ -406,6 +406,8 @@ def cached(client, ttl,
     easync_lazy_recheck_kwargs = async_lazy_recheck_kwargs.copy()
     eget_async_lazy_recheck_kwargs = easync_lazy_recheck_kwargs.copy()
 
+    EMPTY_KWARGS = {}
+
     def decor(f):
         if namespace is None:
             nclient = base.NamespaceWrapper(_make_namespace(f, salt = autonamespace_version_salt), client)
@@ -862,6 +864,7 @@ def cached(client, ttl,
         @wraps(of)
         def put_f(*p, **kw):
             value = kw.pop('_cache_put')
+            put_kwargs = kw.pop('_cache_put_kwargs', None)
             if _initialize:
                 _initialize[0]()
             try:
@@ -870,7 +873,7 @@ def cached(client, ttl,
                 logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
-            nclient.put(callkey, value, eff_ttl())
+            nclient.put(callkey, value, eff_ttl(), **(put_kwargs or EMPTY_KWARGS))
         if decorate is not None:
             put_f = decorate(put_f)
         
@@ -879,26 +882,28 @@ def cached(client, ttl,
             if _initialize:
                 _initialize[0]()
             value = kw.pop('_cache_put')
+            put_kwargs = kw.pop('_cache_put_kwargs', None)
             try:
                 callkey = key(*p, **kw)
             except:
                 logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
-            aclient[0].put(callkey, value, eff_ttl())
+            aclient[0].put(callkey, value, eff_ttl(), **(put_kwargs or EMPTY_KWARGS))
         if decorate is not None:
             async_put_f = decorate(async_put_f)
         
         @wraps(of)
         def future_put_f(*p, **kw):
             value = kw.pop('_cache_put')
+            put_kwargs = kw.pop('_cache_put_kwargs', None)
             try:
                 callkey = key(*p, **kw)
             except:
                 logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
-            return fclient[0].put(callkey, value, eff_ttl())
+            return fclient[0].put(callkey, value, eff_ttl(), **(put_kwargs or EMPTY_KWARGS))
         if decorate is not None:
             future_put_f = decorate(future_put_f)
         

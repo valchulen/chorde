@@ -4,7 +4,7 @@ import random
 import unittest
 import threading
 import functools
-from chorde.decorators import cached, coherent_cached, CacheMissError
+from chorde.decorators import cached, coherent_cached, CacheMissError, NO_NAMESPACE
 from chorde.clients.inproc import InprocCacheClient
 from chorde.clients.tiered import TieredInclusiveClient
 from chorde.clients.async import AsyncWriteCacheClient
@@ -107,6 +107,14 @@ class CachedDecoratorTest(DecoratorTestCase):
             return random.random()
         namespace = get_random.client.namespace
         self.assertTrue(namespace.startswith(get_random.__module__))
+
+    def test_force_no_namespace(self):
+        # Without namespace, for real
+        @self.decorator(5, namespace=NO_NAMESPACE)
+        def get_random():
+            return random.random()
+        val = get_random()
+        self.assertEqual(get_random.client.get(get_random.callkey()), val)
 
     def test_promote(self):
         # If a namespace is provided, should create the key with that
@@ -232,6 +240,21 @@ class CachedDecoratorTest(DecoratorTestCase):
         val = get_number()
         get_number.put(_cache_put=val+2)
         self.assertEquals(get_number(), val+2)
+
+    def test_put_l1(self):
+        # Should change the cached value
+        key = lambda: 'test_put'
+        @self.tiered_decorator(ttl=10, key=key, namespace=NO_NAMESPACE)
+        def get_number():
+            return 1
+        val = get_number()
+        self.assertEquals(get_number(), val)
+        self.assertEquals(get_number.client.get(get_number.callkey()), val)
+        self.assertEquals(self.client.get(get_number.callkey()), val)
+        get_number.put(_cache_put=val+2, _cache_put_kwargs=dict(_max_tiers=1))
+        self.assertEquals(get_number(), val+2)
+        self.assertEquals(get_number.client.get(get_number.callkey()), val+2)
+        self.assertEquals(self.client.get(get_number.callkey()), val)
 
     def test_peek_not_cached(self):
         # Should raise a CacheMissError
@@ -699,3 +722,18 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         futures2[0].result(5)
         for f in futures[1:] + futures2[1:]:
             self.assertEqual(f.result(0.1), retval)
+
+    def test_put_l1(self):
+        # Should change the cached value
+        key = lambda: 'test_put'
+        @self.tiered_decorator(ttl=10, key=key, namespace=NO_NAMESPACE)
+        def get_number():
+            return 1
+        val = get_number()
+        self.assertEquals(get_number(), val)
+        self.assertEquals(get_number.client.get(get_number.callkey()), val)
+        self.assertEquals(self.shared.get(get_number.callkey()), val)
+        get_number.put(_cache_put=val+2, _cache_put_kwargs=dict(_max_tiers=1))
+        self.assertEquals(get_number(), val+2)
+        self.assertEquals(get_number.client.get(get_number.callkey()), val+2)
+        self.assertEquals(self.shared.get(get_number.callkey()), val)

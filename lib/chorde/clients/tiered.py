@@ -34,7 +34,7 @@ class TieredInclusiveClient(BaseCacheClient):
         for client in self.clients:
             client.wait(key, timeout)
     
-    def __putnext(self, clients, fractions, key, value, ttl):
+    def __putnext(self, clients, fractions, key, value, ttl, _max_tiers=None, **kw):
         deferred = value
         try:
             value = value.undefer()
@@ -42,16 +42,16 @@ class TieredInclusiveClient(BaseCacheClient):
                 value = self.get(key)
                 deferred.set(value)
             elif value is not NONE and value is not async._NONE:
-                for fraction, client in islice(izip(fractions,clients), 1, None):
+                for fraction, client in islice(izip(fractions,clients), 1, _max_tiers):
                     try:
-                        client.put(key, value, ttl * fraction)
+                        client.put(key, value, ttl * fraction, **kw)
                     except:
                         logging.getLogger('chorde').error("Error propagating deferred value through tier %r", client)
             return value
         finally:
             deferred.done()
     
-    def put(self, key, value, ttl):
+    def put(self, key, value, ttl, _max_tiers=None, **kw):
         clients = self.clients
         fractions = self.ttl_fractions
         if isinstance(value, async.Defer):
@@ -62,27 +62,33 @@ class TieredInclusiveClient(BaseCacheClient):
                 deferred = async.Defer(
                     self.__putnext, 
                     clients, fractions, 
-                    key, value, ttl)
+                    key, value, ttl, _max_tiers, **kw)
                 if hasattr(value, 'future'):
                     # Transfer the original deferred's future to this new one-shot deferred
                     deferred.future = value.future
-                clients[0].put(key, deferred, ttl * fractions[0])
+                clients[0].put(key, deferred, ttl * fractions[0], **kw)
             else:
                 # Cannot undefer here, it might create deadlocks.
                 # Raise error.
                 raise ValueError, "Sync first tier, cannot undefer"
         else:
             # Simple case
-            for ttl_fraction, client in izip(fractions, clients):
-                client.put(key, value, ttl * ttl_fraction)
+            tiers = izip(fractions, clients)
+            if _max_tiers is not None:
+                tiers = islice(tiers, _max_tiers)
+            for ttl_fraction, client in tiers:
+                client.put(key, value, ttl * ttl_fraction, **kw)
 
-    def renew(self, key, ttl):
+    def renew(self, key, ttl, _max_tiers=None, **kw):
         clients = self.clients
         fractions = self.ttl_fractions
-        for ttl_fraction, client in izip(fractions, clients):
-            client.renew(key, ttl * ttl_fraction)
+        tiers = izip(fractions, clients)
+        if _max_tiers is not None:
+            tiers = islice(tiers, _max_tiers)
+        for ttl_fraction, client in tiers:
+            client.renew(key, ttl * ttl_fraction, **kw)
 
-    def add(self, key, value, ttl):
+    def add(self, key, value, ttl, _max_tiers=None, **kw):
         clients = self.clients
         fractions = self.ttl_fractions
         if isinstance(value, async.Defer):
@@ -93,16 +99,19 @@ class TieredInclusiveClient(BaseCacheClient):
                 deferred = async.Defer(
                     self.__putnext, 
                     clients, fractions, 
-                    key, value, ttl)
-                return clients[0].add(key, deferred, ttl * fractions[0])
+                    key, value, ttl, _max_tiers, **kw)
+                return clients[0].add(key, deferred, ttl * fractions[0], **kw)
             else:
                 # Cannot undefer here, it might create deadlocks.
                 # Raise error.
                 raise ValueError, "Sync first tier, cannot undefer"
         else:
             # Simple case
-            for ttl_fraction, client in izip(fractions, clients):
-                if not client.add(key, value, ttl * ttl_fraction):
+            tiers = izip(fractions, clients)
+            if _max_tiers is not None:
+                tiers = islice(tiers, _max_tiers)
+            for ttl_fraction, client in tiers:
+                if not client.add(key, value, ttl * ttl_fraction, **kw):
                     return False
             else:
                 return True

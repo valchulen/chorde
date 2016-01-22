@@ -181,7 +181,7 @@ class AsyncCacheWriterPool:
             return
         else:
             # Unpack
-            value, ttl = value
+            value, ttl, kw = value
 
         try:
             if value is _NONE or value is NONE:
@@ -214,7 +214,7 @@ class AsyncCacheWriterPool:
 
             elif value is _RENEW:
                 try:
-                    self.client.renew(key, ttl)
+                    self.client.renew(key, ttl, **(kw or {}))
                 except:
                     self.logger.error("Error renewing key", exc_info=True)
             
@@ -238,7 +238,7 @@ class AsyncCacheWriterPool:
             
             else:
                 try:
-                    self.client.put(key, value, ttl)
+                    self.client.put(key, value, ttl, **(kw or {}))
                 except:
                     self.logger.error("Error saving data in cache %r, key %r", self.client, key, exc_info=True)
 
@@ -300,12 +300,12 @@ class AsyncCacheWriterPool:
         rv = self.queueset.pop(key, _NONE)
         return rv
 
-    def enqueue(self, key, value, ttl=None):
+    def enqueue(self, key, value, ttl=None, **kw):
         if (thread.get_ident() in self.threadset 
                  or (hasattr(self.defer_threadpool, 'in_worker') and self.defer_threadpool.in_worker()) ):
             # Oops, recursive call, bad idea
             # Run inline
-            self.queueset[key] = value, ttl
+            self.queueset[key] = value, ttl, (kw or None)
             self._writer(self._wself, key)
         else:
             if key not in self.queueset:
@@ -325,7 +325,7 @@ class AsyncCacheWriterPool:
                         ev.wait(1.0)
                         if ev.isSet():
                             ev.clear()
-            delayed = self._enqueue(key, value, ttl)
+            delayed = self._enqueue(key, value, ttl, **kw)
             if delayed is not None:
                 # delayed callback, invoke now that we're outside the critical section
                 delayed()
@@ -333,7 +333,8 @@ class AsyncCacheWriterPool:
     @serialize
     def clearqueue(self):
         delayed = []
-        for value, ttl in self.queueset.itervalues():
+        for entry in self.queueset.itervalues():
+            value = entry[0]
             if hasattr(value, 'undefer') and hasattr(value, 'future'):
                 future = getattr(value, 'future', None)
                 if future is not None and hasattr(future, 'add_done_callback'):
@@ -342,7 +343,7 @@ class AsyncCacheWriterPool:
         return delayed
     
     @serialize
-    def _enqueue(self, key, value, ttl, isinstance=isinstance, getattr=getattr, hasattr=hasattr):
+    def _enqueue(self, key, value, ttl, isinstance=isinstance, getattr=getattr, hasattr=hasattr, **kw):
         delayed = None
         queueset = self.queueset
         workset = self.workset
@@ -354,7 +355,7 @@ class AsyncCacheWriterPool:
                 else:
                     threadpool = self.writer_threadpool
                     reentrant = False
-                queueset[key] = value, ttl
+                queueset[key] = value, ttl, (kw or None)
                 threadpool.apply_async(self._writer, (self._wself, key, reentrant))
             else:
                 # else, bad luck, we assume defers compute, so if two
@@ -412,7 +413,7 @@ class AsyncCacheWriterPool:
                         if queue_future is not None:
                             # Delay the callback, we're in a critical section here
                             delayed = functools.partial(queue_future.set, value)
-                queueset[key] = value, ttl
+                queueset[key] = value, ttl, (kw or None)
         return delayed
     
     def waitkey(self, key, timeout=None):
@@ -465,14 +466,14 @@ class AsyncCacheWriterPool:
         self._contains = _contains = self.queueset.__contains__
         return _contains(key)
 
-    def put(self, key, value, ttl):
-        self.enqueue(key, value, ttl)
+    def put(self, key, value, ttl, **kw):
+        self.enqueue(key, value, ttl, **kw)
 
-    def renew(self, key, ttl):
+    def renew(self, key, ttl, **kw):
         # Don't schedule a renew if another thing is queued on the key
         # It causes... issues
         if key not in self.queueset and key not in self.workset:
-            self.enqueue(key, _RENEW, ttl)
+            self.enqueue(key, _RENEW, ttl, **kw)
 
     def delete(self, key):
         self.enqueue(key, _DELETE)
@@ -560,13 +561,13 @@ class AsyncWriteCacheClient(BaseCacheClient):
     def usage(self):
         return (self.client.usage, self.writer.usage if self.writer is not None else 0)
 
-    def put(self, key, value, ttl):
+    def put(self, key, value, ttl, **kw):
         self.assert_started()
-        self.writer.put(key, value, ttl)
+        self.writer.put(key, value, ttl, **kw)
     
-    def renew(self, key, ttl):
+    def renew(self, key, ttl, **kw):
         self.assert_started()
-        self.writer.renew(key, ttl)
+        self.writer.renew(key, ttl, **kw)
     
     def delete(self, key):
         self.assert_started()
@@ -598,7 +599,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
             # Try to read pending writes as if they were on the cache
             value = writer.getTtl(key, _NONE)
             if value is not _NONE:
-                value, ttl = value
+                value, ttl, _ = value
                 if value is _DELETE:
                     # Deletion means a miss... right?
                     if default is NONE:
@@ -1244,14 +1245,14 @@ class AsyncCacheProcessor(object):
         return self._enqueue(functools.partial(self.client.contains, key, *p, **kw),
             self.coalesce_contains, ckey)
 
-    def put(self, key, value, ttl):
-        return self._enqueue(functools.partial(self.client.put, key, value, ttl))
+    def put(self, key, value, ttl, **kw):
+        return self._enqueue(functools.partial(self.client.put, key, value, ttl, **kw))
 
-    def renew(self, key, ttl):
-        return self._enqueue(functools.partial(self.client.renew, key, ttl))
+    def renew(self, key, ttl, **kw):
+        return self._enqueue(functools.partial(self.client.renew, key, ttl, **kw))
 
-    def add(self, key, value, ttl):
-        return self._enqueue(functools.partial(self.client.add, key, value, ttl))
+    def add(self, key, value, ttl, **kw):
+        return self._enqueue(functools.partial(self.client.add, key, value, ttl, **kw))
 
     def delete(self, key):
         return self._enqueue(functools.partial(self.client.delete, key))
@@ -1345,14 +1346,14 @@ class WrappedCacheProcessor(object):
         return self.processor.do_async_coalescent(self.coalesce_contains, ckey,
             self.client.contains, key, *p, **kw)
 
-    def put(self, key, value, ttl):
-        return self.processor.do_async(self.client.put, key, value, ttl)
+    def put(self, key, value, ttl, **kw):
+        return self.processor.do_async(self.client.put, key, value, ttl, **kw)
 
-    def renew(self, key, ttl):
-        return self.processor.do_async(self.client.renew, key, ttl)
+    def renew(self, key, ttl, **kw):
+        return self.processor.do_async(self.client.renew, key, ttl, **kw)
 
-    def add(self, key, value, ttl):
-        return self.processor.do_async(self.client.add, key, value, ttl)
+    def add(self, key, value, ttl, **kw):
+        return self.processor.do_async(self.client.add, key, value, ttl, **kw)
 
     def delete(self, key):
         return self.processor.do_async(self.client.delete, key)
