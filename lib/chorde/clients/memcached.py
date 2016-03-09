@@ -89,6 +89,8 @@ default_compression_pfx = zlib_compress_prefix = 'z'
 default_compress_file_class = zlib_compress_file_class = ZlibFile
 default_decompress_fn = zlib_decompress_fn = zlib.decompress
 
+stamp_prefix = "#vc#"
+
 try:
     import lz4
     
@@ -329,8 +331,12 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         
         return "%s%s" % (self.client_pickler_key, key), exact
     
-    def get_version_stamp(self):
-        stamp_key = "#--version-counter--#"
+    def get_version_stamp(self, short_key = None):
+        if short_key is None:
+            stamp_key = stamp_prefix
+        else:
+            # 8-bit hash to spread stamp keys, doesn't really need to be totally uniform, just almost
+            stamp_key = "%s%02x" % (stamp_prefix, abs(zlib.adler32(short_key)) % 127)
         try:
             stamp = self.client.incr(stamp_key)
         except ValueError:
@@ -354,7 +360,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         self.last_seen_stamp = stamp
         return stamp
     
-    def encode_pages(self, key, ttl, value):
+    def encode_pages(self, short_key, key, ttl, value):
         encoded = None
         if self.encoding_cache is not None:
             cached = getattr(self.encoding_cache, 'cache', None)
@@ -382,7 +388,11 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         
         npages = (len(encoded) + self.max_backing_value_length - 1) / self.max_backing_value_length
         pagelen = self.max_backing_value_length
-        version = self.get_version_stamp()
+        if npages > 1:
+            version = self.get_version_stamp(short_key)
+        else:
+            # No need to do versioning for single-page values
+            version = 1
         page = 0
         for page,start in enumerate(xrange(0,len(encoded),self.max_backing_value_length)):
             yield (npages, page, ttl, version, encoded[start:start+pagelen])
@@ -538,7 +548,8 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
         short_key,exact = self.shorten_key(key)
-        pages = dict([(page,data) for page,data in enumerate(self.encode_pages(key, ttl+time.time(), value))])
+        pages = dict([(page,data) for page,data in enumerate(self.encode_pages(
+            short_key, key, ttl+time.time(), value))])
         self.client.set_multi(pages, ttl, key_prefix=short_key+"|")
         
         try:
