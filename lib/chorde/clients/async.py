@@ -176,14 +176,14 @@ class AsyncCacheWriterPool:
         ev = self.done_event
         deferred = _NONE
         value = self.dequeue(key)
-        if value is _NONE or value is NONE:
-            # Cancelled
-            return
-        else:
-            # Unpack
-            value, ttl, kw = value
-
         try:
+            if value is _NONE or value is NONE:
+                # Cancelled
+                return
+            else:
+                # Unpack
+                value, ttl, kw = value
+
             if value is _NONE or value is NONE:
                 # Something's hinky
                 return
