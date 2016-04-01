@@ -193,6 +193,7 @@ class AsyncCacheWriterPool:
                     value = value.undefer()
                     if value is REGET:
                         deferred.set(self.client.get(key))
+                        value = _NONE # don't set, it's already set
                 except CacheMissError:
                     # It's ok, accepted pattern to cancel computation in a transparent way
                     value = _NONE
