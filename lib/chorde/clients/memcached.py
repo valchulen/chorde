@@ -449,6 +449,7 @@ class MemcachedStoreClient(memcache.Client):
                         except (memcache._Error, socket.error), msg:
                             if isinstance(msg, tuple): msg = msg[1]
                             server.mark_dead(msg)
+                            pending_keys = state[1]
                             notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
                             sockets.pop(sock)
                             poller.unregister(sock)
@@ -712,6 +713,7 @@ class MemcachedStoreClient(memcache.Client):
                         except (memcache._Error, socket.error), msg:
                             if isinstance(msg, tuple): msg = msg[1]
                             server.mark_dead(msg)
+                            pending_keys = state[1]
                             notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
                             sockets.pop(sock)
             return notstored
