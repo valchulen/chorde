@@ -280,7 +280,7 @@ class MemcachedStoreClient(memcache.Client):
     
             # send out all requests on each server before reading anything
             unsent = self._send_multi({
-                server : " ".join(["get"] + server_keys[server] + ['\r\n'])
+                server : "get %s\r\n" % (" ".join(server_keys[server]),)
                 for server in server_keys.iterkeys()
             })
             dead_servers = unsent.keys()
@@ -510,7 +510,7 @@ class MemcachedStoreClient(memcache.Client):
                 del pops[:]
             return unsent
 
-        def get_multi(self, keys, key_prefix=''):
+        def get_multi(self, keys, key_prefix=''):  # lint:ok
             '''
             Retrieves multiple keys from the memcache doing just one query.
     
@@ -554,7 +554,7 @@ class MemcachedStoreClient(memcache.Client):
     
             # send out all requests on each server before reading anything
             unsent = self._send_multi({
-                server : " ".join(["get"] + server_keys[server] + ['\r\n'])
+                server : "get %s\r\n" % (" ".join(server_keys[server]),)
                 for server in server_keys.iterkeys()
             })
             dead_servers = unsent.keys()
@@ -606,7 +606,7 @@ class MemcachedStoreClient(memcache.Client):
                             sockets.pop(sock)
             return retvals
     
-        def set_multi(self, mapping, time=0, key_prefix='', min_compress_len=0):
+        def set_multi(self, mapping, time=0, key_prefix='', min_compress_len=0):  # lint:ok
             '''
             Sets multiple keys in the memcache doing just one query.
     
