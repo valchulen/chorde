@@ -323,6 +323,7 @@ class MemcachedStoreClient(memcache.Client):
                                 if not line or line == 'END':
                                     sockets.pop(sock)
                                     poller.unregister(sock)
+                                    break
                                 else:
                                     rkey, flags, rlen = self._expectvalue(server, line)
                                     #  Bo Yang reports that this can sometimes be None
@@ -445,6 +446,7 @@ class MemcachedStoreClient(memcache.Client):
                                     if state[1] <= 0:
                                         sockets.pop(sock)
                                         poller.unregister(sock)
+                                        break
                                 # Go on unless there's no more lines to read
                                 if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
                                     break
@@ -591,6 +593,7 @@ class MemcachedStoreClient(memcache.Client):
                                 line = server.readline()
                                 if not line or line == 'END':
                                     sockets.pop(sock)
+                                    break
                                 else:
                                     rkey, flags, rlen = self._expectvalue(server, line)
                                     #  Bo Yang reports that this can sometimes be None
@@ -706,6 +709,7 @@ class MemcachedStoreClient(memcache.Client):
                                     state[1] -= 1
                                     if state[1] <= 0:
                                         sockets.pop(sock)
+                                        break
                                 # Go on unless there's no more lines to read
                                 if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
                                     break
