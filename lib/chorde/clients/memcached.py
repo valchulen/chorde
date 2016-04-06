@@ -431,7 +431,7 @@ class MemcachedStoreClient(memcache.Client):
                     rlist = [ fdmap(sock) for sock,flags in poller.poll(socket_timeout) ]
                     if not rlist:
                         for sock in sockets:
-                            sockets[sock].mark_dead("timeout")
+                            sockets[sock][0].mark_dead("timeout")
                         for sock, (server, pending_keys) in sockets.iteritems():
                             notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
                         break
@@ -695,7 +695,7 @@ class MemcachedStoreClient(memcache.Client):
                     rlist, wlist, xlist = select_(sockets.keys(), (), (), socket_timeout)
                     if not rlist:
                         for sock in sockets:
-                            sockets[sock].mark_dead("timeout")
+                            sockets[sock][0].mark_dead("timeout")
                         for sock, (server, pending_keys) in sockets.iteritems():
                             notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
                         break
