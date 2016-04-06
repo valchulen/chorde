@@ -192,7 +192,6 @@ class MemcachedStoreClient(memcache.Client):
             }
             fdmap = { sock.fileno() : sock for sock in sockets }.__getitem__
             unsent = {}
-            pops = []
             buffer_ = buffer
             len_ = len
             sendflags = socket.MSG_DONTWAIT
@@ -222,18 +221,15 @@ class MemcachedStoreClient(memcache.Client):
                             if isinstance(msg, tuple):
                                 msg = msg[1]
                             server.mark_dead(msg)
-                        pops.append(sock)
-                    if sent == len_(buf):
-                        state[1] = None
-                        pops.append(sock)
-                    else:
-                        state[1] = buffer_(buf, sent)
-                for sock in pops:
-                    server, buf = sockets.pop(sock)
-                    poller.unregister(sock)
-                    if buf is not None:
+                        sockets.pop(sock)
+                        poller.unregister(sock)
                         unsent[server] = buf
-                del pops[:]
+                    else:
+                        if sent == len_(buf):
+                            sockets.pop(sock)
+                            poller.unregister(sock)
+                        else:
+                            state[1] = buffer_(buf, sent)
             return unsent
 
         def get_multi(self, keys, key_prefix=''):
