@@ -312,8 +312,8 @@ class MemcachedStoreClient(memcache.Client):
                 while sockets:
                     rlist = [ fdmap(sock) for sock,flags in poller.poll(socket_timeout) ]
                     if not rlist:
-                        for server in server_keys:
-                            server.mark_dead("timeout")
+                        for sock in sockets:
+                            sockets[sock].mark_dead("timeout")
                         break
                     for sock in rlist:
                         server = sockets[sock]
@@ -430,8 +430,8 @@ class MemcachedStoreClient(memcache.Client):
                 while sockets:
                     rlist = [ fdmap(sock) for sock,flags in poller.poll(socket_timeout) ]
                     if not rlist:
-                        for server in server_keys:
-                            server.mark_dead("timeout")
+                        for sock in sockets:
+                            sockets[sock].mark_dead("timeout")
                         for sock, (server, pending_keys) in sockets.iteritems():
                             notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
                         break
@@ -583,8 +583,8 @@ class MemcachedStoreClient(memcache.Client):
                 while sockets:
                     rlist, wlist, xlist = select_(sockets.keys(), (), (), socket_timeout)
                     if not rlist:
-                        for server in server_keys:
-                            server.mark_dead("timeout")
+                        for sock in sockets:
+                            sockets[sock].mark_dead("timeout")
                         break
                     for sock in rlist:
                         server = sockets[sock]
@@ -694,8 +694,8 @@ class MemcachedStoreClient(memcache.Client):
                 while sockets:
                     rlist, wlist, xlist = select_(sockets.keys(), (), (), socket_timeout)
                     if not rlist:
-                        for server in server_keys:
-                            server.mark_dead("timeout")
+                        for sock in sockets:
+                            sockets[sock].mark_dead("timeout")
                         for sock, (server, pending_keys) in sockets.iteritems():
                             notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
                         break
