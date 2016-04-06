@@ -195,14 +195,14 @@ class MemcachedStoreClient(memcache.Client):
             buffer_ = buffer
             len_ = len
             sendflags = socket.MSG_DONTWAIT
-            socket_timeout = socket.timeout
+            socket_error_timeout = socket.timeout
             socket_error = socket.error
             POLLOUT = select.POLLOUT
             POLLERR = select.POLLERR
             poller = select.poll()
             for sock in sockets:
                 poller.register(sock, POLLOUT|POLLERR)
-            socket_timeout = max([server.socket_timeout for server in buffers])
+            socket_timeout = max([server.socket_timeout for server in buffers]) * 1000
             while sockets:
                 wlist = [ fdmap(sock) for sock,flags in poller.poll(socket_timeout) ]
                 if not wlist:
@@ -214,7 +214,7 @@ class MemcachedStoreClient(memcache.Client):
                     server, buf = state
                     try:
                         sent = sock.send(buf, sendflags)
-                    except socket_timeout:
+                    except socket_error_timeout:
                         continue
                     except socket_error, msg:
                         if mark_dead:
@@ -297,7 +297,7 @@ class MemcachedStoreClient(memcache.Client):
                 for server in server_keys
             }
             if sockets:
-                socket_timeout = max([server.socket_timeout for server in server_keys])
+                socket_timeout = max([server.socket_timeout for server in server_keys]) * 1000
                 fdmap = { sock.fileno() : sock for sock in sockets }.__getitem__
                 POLLIN = select.POLLIN
                 POLLERR = select.POLLERR
@@ -415,7 +415,7 @@ class MemcachedStoreClient(memcache.Client):
                 for server, keys in server_keys.iteritems()
             }
             if sockets:
-                socket_timeout = max([server.socket_timeout for server in server_keys])
+                socket_timeout = max([server.socket_timeout for server in server_keys]) * 1000
                 fdmap = { sock.fileno() : sock for sock in sockets }.__getitem__
                 POLLIN = select.POLLIN
                 POLLERR = select.POLLERR
@@ -474,7 +474,7 @@ class MemcachedStoreClient(memcache.Client):
             buffer_ = buffer
             len_ = len
             sendflags = socket.MSG_DONTWAIT
-            socket_timeout = socket.timeout
+            socket_error_timeout = socket.timeout
             socket_error = socket.error
             select_ = select.select
             socket_timeout = max([server.socket_timeout for server in buffers])
@@ -489,7 +489,7 @@ class MemcachedStoreClient(memcache.Client):
                     server, buf = state
                     try:
                         sent = sock.send(buf, sendflags)
-                    except socket_timeout:
+                    except socket_error_timeout:
                         continue
                     except socket_error, msg:
                         if mark_dead:
