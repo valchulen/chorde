@@ -152,8 +152,39 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def testBigValue(self):
         bigval = self.BIG_VALUE
         client = self.client
-        client.put("bigkey", bigval, 60)
-        self.assertEqual(client.get("bigkey"), bigval)
+        client.put("bigkey1", bigval, 60)
+        self.assertEqual(client.get("bigkey1"), bigval)
+
+    def testRenewBigValue(self):
+        bigval = self.BIG_VALUE
+        client = self.client
+        client.put("bigkey2", bigval, 10)
+        client.renew("bigkey2", 120)
+        self.assertGreater(client.getTtl("bigkey2")[1], 10)
+
+    def testContainsBigValue(self):
+        bigval = self.BIG_VALUE
+        client = self.client
+        client.put("bigkey3", bigval, 10)
+        self.assertTrue(client.contains("bigkey3"))
+
+    def testContainsBigValueTTLExact(self):
+        bigval = self.BIG_VALUE
+        client = self.client
+        client.put("bigkey3", bigval, 10)
+        self.assertTrue(client.contains("bigkey3"))
+
+    def testContainsBigValueTTLInexact(self):
+        bigval = self.BIG_VALUE
+        client = self.client
+        bigkey = "bigkey3" * 500
+        client.put(bigkey, bigval, 10)
+
+        # Force re-decoding
+        if hasattr(client, 'encoding_cache'):
+            client.encoding_cache.cache = None
+        
+        self.assertTrue(client.contains(bigkey, 1))
 
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
@@ -263,6 +294,10 @@ class FastMemcacheTest(CacheClientTestMixIn, TestCase):
     testSpacedLongStringKey = None
     testObjectKey = None
     testBigValue = None
+    testRenewBigValue = None
+    testContainsBigValue = None
+    testContainsBigValueTTLExact = None
+    testContainsBigValueTTLInexact = None
 
 @skipIfNoMemcached
 class FastElastiCacheTest(FastMemcacheTest):

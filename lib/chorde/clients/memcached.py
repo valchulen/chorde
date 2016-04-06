@@ -1031,10 +1031,10 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         if not decode:
             if force_all_pages and npages > 1:
-                if multi_method is not None:
+                if npages > 2 and multi_method is not None:
                     pages.update( multi_method(xrange(1,npages), key_prefix=short_key+"|") )
                 else:
-                    pages.update([ method("%s|%d" % (short_key,i)) for i in xrange(1,npages) ])
+                    pages.update([ (i,method("%s|%d" % (short_key,i))) for i in xrange(1,npages) ])
             return pages, ttl - now
         elif ttl_skip is not None and ttl < ttl_skip:
             return default, -1
@@ -1044,10 +1044,10 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             return default, -1
         
         if npages > 1:
-            if multi_method:
+            if npages > 2 and multi_method:
                 pages.update( multi_method(xrange(1,npages), key_prefix=short_key+"|") )
             else:
-                pages.update([ method("%s|%d" % (short_key,i)) for i in xrange(1,npages) ])
+                pages.update([ (i,method("%s|%d" % (short_key,i))) for i in xrange(1,npages) ])
         
         try:
             cached_key, cached_value = self.decode_pages(pages, key)
@@ -1082,7 +1082,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     def renew(self, key, ttl):
         short_key,exact = self.shorten_key(key)
         raw_pages, store_ttl = self._getTtl(key, NONE, False, short_key = short_key, 
-            method = self.client.gets)
+            method = self.client.gets, force_all_pages = True)
         if raw_pages is not NONE and store_ttl < ttl:
             now = time.time()
             for i,page in raw_pages.iteritems():
