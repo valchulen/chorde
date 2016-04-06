@@ -52,6 +52,9 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     capacity_means_entries = False
     meaningful_capacity = False # controlled externally so it may not be consistent for testing purposes
 
+    # Big uncompressible (but ascii-compatible) value
+    BIG_VALUE = os.urandom(4 << 20).encode("base64")
+
     def setUpClient(self, **kwargs):
         from chorde.clients.memcached import MemcachedClient
         import threading
@@ -145,6 +148,12 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         client = self.client
         client.put(None, 15, 10)
         self.assertEqual(client.get(None), 15)
+
+    def testBigValue(self):
+        bigval = self.BIG_VALUE
+        client = self.client
+        client.put("bigkey", bigval, 60)
+        self.assertEqual(client.get("bigkey"), bigval)
 
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
@@ -253,6 +262,7 @@ class FastMemcacheTest(CacheClientTestMixIn, TestCase):
     testSpacedStringKey = None
     testSpacedLongStringKey = None
     testObjectKey = None
+    testBigValue = None
 
 @skipIfNoMemcached
 class FastElastiCacheTest(FastMemcacheTest):
