@@ -8,6 +8,8 @@ import random
 import time
 import weakref
 import zlib
+import socket
+import select
 from threading import Event, Thread, Lock
 
 from .base import BaseCacheClient, CacheMissError, NONE
@@ -26,6 +28,11 @@ try:
     from cStringIO import StringIO
 except ImportError:
     from StringIO import StringIO  # lint:ok
+
+try:
+    from select import poll
+except ImportError:
+    pass
 
 from chorde import sPickle
 from chorde.dnsutils import ThreadLocalDynamicResolvingClient
@@ -168,6 +175,549 @@ class MemcachedStoreClient(memcache.Client):
         if any(imap(ord, key.translate(tmap))):
             raise self.MemcachedKeyCharacterError(
                     "Control characters not allowed")
+
+    if poll is not None:
+        # Use poll, it's better than select
+        def _send_multi(self, buffers, mark_dead = True):
+            '''
+            Takes a mapping server->buffer, sends the data in the buffers
+            to all servers in parallel, returning unsent buffers at the end 
+            (ie: due to errors)
+            '''
+            if not buffers:
+                return {}
+            sockets = {
+                server.socket : [server, buf]
+                for server, buf in buffers.iteritems()
+            }
+            fdmap = { sock.fileno() : sock for sock in sockets }.__getitem__
+            unsent = {}
+            buffer_ = buffer
+            len_ = len
+            sendflags = socket.MSG_DONTWAIT
+            socket_error_timeout = socket.timeout
+            socket_error = socket.error
+            POLLOUT = select.POLLOUT
+            POLLERR = select.POLLERR
+            poller = select.poll()
+            for sock in sockets:
+                poller.register(sock, POLLOUT|POLLERR)
+            socket_timeout = max([server.socket_timeout for server in buffers]) * 1000
+            while sockets:
+                wlist = [ fdmap(sock) for sock,flags in poller.poll(socket_timeout) ]
+                if not wlist:
+                    for sock, (server, buf) in sockets.iteritems():
+                        unsent[server] = buf
+                    break
+                for sock in wlist:
+                    state = sockets[sock]
+                    server, buf = state
+                    try:
+                        sent = sock.send(buf, sendflags)
+                    except socket_error_timeout:
+                        continue
+                    except socket_error, msg:
+                        if mark_dead:
+                            if isinstance(msg, tuple):
+                                msg = msg[1]
+                            server.mark_dead(msg)
+                        sockets.pop(sock)
+                        poller.unregister(sock)
+                        unsent[server] = buf
+                    else:
+                        if sent == len_(buf):
+                            sockets.pop(sock)
+                            poller.unregister(sock)
+                        else:
+                            state[1] = buffer_(buf, sent)
+            return unsent
+
+        def get_multi(self, keys, key_prefix=''):
+            '''
+            Retrieves multiple keys from the memcache doing just one query.
+    
+            >>> success = mc.set("foo", "bar")
+            >>> success = mc.set("baz", 42)
+            >>> mc.get_multi(["foo", "baz", "foobar"]) == {"foo": "bar", "baz": 42}
+            1
+            >>> mc.set_multi({'k1' : 1, 'k2' : 2}, key_prefix='pfx_') == []
+            1
+    
+            This looks up keys 'pfx_k1', 'pfx_k2', ... . Returned dict will just have unprefixed keys 'k1', 'k2'.
+            >>> mc.get_multi(['k1', 'k2', 'nonexist'], key_prefix='pfx_') == {'k1' : 1, 'k2' : 2}
+            1
+    
+            get_mult [ and L{set_multi} ] can take str()-ables like ints / longs as keys too. Such as your db pri key fields.
+            They're rotored through str() before being passed off to memcache, with or without the use of a key_prefix.
+            In this mode, the key_prefix could be a table name, and the key itself a db primary key number.
+    
+            >>> mc.set_multi({42: 'douglass adams', 46 : 'and 2 just ahead of me'}, key_prefix='numkeys_') == []
+            1
+            >>> mc.get_multi([46, 42], key_prefix='numkeys_') == {42: 'douglass adams', 46 : 'and 2 just ahead of me'}
+            1
+    
+            This method is recommended over regular L{get} as it lowers the number of
+            total packets flying around your network, reducing total latency, since
+            your app doesn't have to wait for each round-trip of L{get} before sending
+            the next one.
+    
+            See also L{set_multi}.
+    
+            @param keys: An array of keys.
+            @param key_prefix: A string to prefix each key when we communicate with memcache.
+                Facilitates pseudo-namespaces within memcache. Returned dictionary keys will not have this prefix.
+            @return:  A dictionary of key/value pairs that were available. If key_prefix was provided, the keys in the retured dictionary will not have it present.
+    
+            '''
+    
+            self._statlog('get_multi')
+    
+            server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(keys, key_prefix)
+    
+            # send out all requests on each server before reading anything
+            unsent = self._send_multi({
+                server : "get %s\r\n" % (" ".join(server_keys[server]),)
+                for server in server_keys.iterkeys()
+            })
+            dead_servers = unsent.keys()
+            del unsent
+    
+            # if any servers died on the way, don't expect them to respond.
+            for server in dead_servers:
+                del server_keys[server]
+    
+            # fetch values from all servers, in interleaved fashion, skipping
+            # unready servers, marking dead ones. While this isn't fully
+            # nonblocking, it decreases the time sockets spend blocked due
+            # to full buffers, and has a better chance to parallelize bulk 
+            # network I/O from value data
+            retvals = {}
+            sockets = {
+                server.socket : server
+                for server in server_keys
+            }
+            if sockets:
+                socket_timeout = max([server.socket_timeout for server in server_keys]) * 1000
+                fdmap = { sock.fileno() : sock for sock in sockets }.__getitem__
+                POLLIN = select.POLLIN
+                POLLERR = select.POLLERR
+                poller = select.poll()
+                for sock in sockets:
+                    poller.register(sock, POLLIN|POLLERR)
+                max_blocking_buffer = 4096
+                while sockets:
+                    rlist = [ fdmap(sock) for sock,flags in poller.poll(socket_timeout) ]
+                    if not rlist:
+                        for sock in sockets:
+                            sockets[sock].mark_dead("timeout")
+                        break
+                    for sock in rlist:
+                        server = sockets[sock]
+                        try:
+                            while 1:
+                                line = server.readline()
+                                if not line or line == 'END':
+                                    sockets.pop(sock)
+                                    poller.unregister(sock)
+                                    break
+                                else:
+                                    rkey, flags, rlen = self._expectvalue(server, line)
+                                    #  Bo Yang reports that this can sometimes be None
+                                    if rkey is not None:
+                                        val = self._recv_value(server, flags, rlen)
+                                        retvals[prefixed_to_orig_key[rkey]] = val   # un-prefix returned key.
+                                # Go on unless there's no more lines to read
+                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
+                                    break
+                        except (memcache._Error, socket.error), msg:
+                            if isinstance(msg, tuple): msg = msg[1]
+                            server.mark_dead(msg)
+                            sockets.pop(sock)
+                            poller.unregister(sock)
+            return retvals
+    
+        def set_multi(self, mapping, time=0, key_prefix='', min_compress_len=0):
+            '''
+            Sets multiple keys in the memcache doing just one query.
+    
+            >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'})
+            >>> mc.get_multi(['key1', 'key2']) == {'key1' : 'val1', 'key2' : 'val2'}
+            1
+    
+    
+            This method is recommended over regular L{set} as it lowers the number of
+            total packets flying around your network, reducing total latency, since
+            your app doesn't have to wait for each round-trip of L{set} before sending
+            the next one.
+    
+            @param mapping: A dict of key/value pairs to set.
+            @param time: Tells memcached the time which this value should expire, either
+            as a delta number of seconds, or an absolute unix time-since-the-epoch
+            value. See the memcached protocol docs section "Storage Commands"
+            for more info on <exptime>. We default to 0 == cache forever.
+            @param key_prefix:  Optional string to prepend to each key when sending to memcache. Allows you to efficiently stuff these keys into a pseudo-namespace in memcache:
+                >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'}, key_prefix='subspace_')
+                >>> len(notset_keys) == 0
+                True
+                >>> mc.get_multi(['subspace_key1', 'subspace_key2']) == {'subspace_key1' : 'val1', 'subspace_key2' : 'val2'}
+                True
+    
+                Causes key 'subspace_key1' and 'subspace_key2' to be set. Useful in conjunction with a higher-level layer which applies namespaces to data in memcache.
+                In this case, the return result would be the list of notset original keys, prefix not applied.
+    
+            @param min_compress_len: The threshold length to kick in auto-compression
+            of the value using the zlib.compress() routine. If the value being cached is
+            a string, then the length of the string is measured, else if the value is an
+            object, then the length of the pickle result is measured. If the resulting
+            attempt at compression yeilds a larger string than the input, then it is
+            discarded. For backwards compatability, this parameter defaults to 0,
+            indicating don't ever try to compress.
+            @return: List of keys which failed to be stored [ memcache out of memory, etc. ].
+            @rtype: list
+    
+            '''
+    
+            self._statlog('set_multi')
+    
+            server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping.iterkeys(), key_prefix)
+    
+            # send out all requests on each server before reading anything
+            notstored = [] # original keys.
+    
+            server_commands = {}
+            for server in server_keys.iterkeys():
+                bigcmd = []
+                write = bigcmd.append
+                for key in server_keys[server]: # These are mangled keys
+                    store_info = self._val_to_store_info(
+                            mapping[prefixed_to_orig_key[key]],
+                            min_compress_len)
+                    if store_info:
+                        write("set %s %d %d %d\r\n%s\r\n" % (key, store_info[0],
+                                time, store_info[1], store_info[2]))
+                    else:
+                        notstored.append(prefixed_to_orig_key[key])
+                server_commands[server] = ''.join(bigcmd)
+            unsent = self._send_multi(server_commands)
+            dead_servers = unsent.keys()
+            del unsent, server_commands
+    
+            # if any servers died on the way, don't expect them to respond.
+            for server in dead_servers:
+                del server_keys[server]
+    
+            #  short-circuit if there are no servers, just return all keys
+            if not server_keys: return(mapping.keys())
+    
+            # wait for all confirmations
+            sockets = {
+                server.socket : [server, len(keys)]
+                for server, keys in server_keys.iteritems()
+            }
+            if sockets:
+                socket_timeout = max([server.socket_timeout for server in server_keys]) * 1000
+                fdmap = { sock.fileno() : sock for sock in sockets }.__getitem__
+                POLLIN = select.POLLIN
+                POLLERR = select.POLLERR
+                poller = select.poll()
+                for sock in sockets:
+                    poller.register(sock, POLLIN|POLLERR)
+                max_blocking_buffer = 4096
+                while sockets:
+                    rlist = [ fdmap(sock) for sock,flags in poller.poll(socket_timeout) ]
+                    if not rlist:
+                        for sock in sockets:
+                            sockets[sock][0].mark_dead("timeout")
+                        for sock, (server, pending_keys) in sockets.iteritems():
+                            notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
+                        break
+                    for sock in rlist:
+                        state = sockets[sock]
+                        server, pending_keys = state
+                        try:
+                            while 1:
+                                line = server.readline()
+                                if line == 'STORED':
+                                    state[1] -= 1
+                                    if state[1] <= 0:
+                                        sockets.pop(sock)
+                                        poller.unregister(sock)
+                                        break
+                                # Go on unless there's no more lines to read
+                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
+                                    break
+                        except (memcache._Error, socket.error), msg:
+                            if isinstance(msg, tuple): msg = msg[1]
+                            server.mark_dead(msg)
+                            pending_keys = state[1]
+                            notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
+                            sockets.pop(sock)
+                            poller.unregister(sock)
+            return notstored
+
+    else:
+        # fall back to select
+        def _send_multi(self, buffers, mark_dead = True):  # lint:ok
+            '''
+            Takes a mapping server->buffer, sends the data in the buffers
+            to all servers in parallel, returning unsent buffers at the end 
+            (ie: due to errors)
+            '''
+            if not buffers:
+                return {}
+            sockets = {
+                server.socket : [server, buf]
+                for server, buf in buffers.iteritems()
+            }
+            unsent = {}
+            pops = []
+            buffer_ = buffer
+            len_ = len
+            sendflags = socket.MSG_DONTWAIT
+            socket_error_timeout = socket.timeout
+            socket_error = socket.error
+            select_ = select.select
+            socket_timeout = max([server.socket_timeout for server in buffers])
+            while sockets:
+                rlist, wlist, xlist = select_((), sockets.keys(), (), socket_timeout)
+                if not wlist:
+                    for sock, (server, buf) in sockets.iteritems():
+                        unsent[server] = buf
+                    return
+                for sock in wlist:
+                    state = sockets[sock]
+                    server, buf = state
+                    try:
+                        sent = sock.send(buf, sendflags)
+                    except socket_error_timeout:
+                        continue
+                    except socket_error, msg:
+                        if mark_dead:
+                            if isinstance(msg, tuple):
+                                msg = msg[1]
+                            server.mark_dead(msg)
+                        pops.append(sock)
+                    if sent == len_(buf):
+                        state[1] = None
+                        pops.append(sock)
+                    else:
+                        state[1] = buffer_(buf, sent)
+                for sock in pops:
+                    server, buf = sockets.pop(sock)
+                    if buf is not None:
+                        unsent[server] = buf
+                del pops[:]
+            return unsent
+
+        def get_multi(self, keys, key_prefix=''):  # lint:ok
+            '''
+            Retrieves multiple keys from the memcache doing just one query.
+    
+            >>> success = mc.set("foo", "bar")
+            >>> success = mc.set("baz", 42)
+            >>> mc.get_multi(["foo", "baz", "foobar"]) == {"foo": "bar", "baz": 42}
+            1
+            >>> mc.set_multi({'k1' : 1, 'k2' : 2}, key_prefix='pfx_') == []
+            1
+    
+            This looks up keys 'pfx_k1', 'pfx_k2', ... . Returned dict will just have unprefixed keys 'k1', 'k2'.
+            >>> mc.get_multi(['k1', 'k2', 'nonexist'], key_prefix='pfx_') == {'k1' : 1, 'k2' : 2}
+            1
+    
+            get_mult [ and L{set_multi} ] can take str()-ables like ints / longs as keys too. Such as your db pri key fields.
+            They're rotored through str() before being passed off to memcache, with or without the use of a key_prefix.
+            In this mode, the key_prefix could be a table name, and the key itself a db primary key number.
+    
+            >>> mc.set_multi({42: 'douglass adams', 46 : 'and 2 just ahead of me'}, key_prefix='numkeys_') == []
+            1
+            >>> mc.get_multi([46, 42], key_prefix='numkeys_') == {42: 'douglass adams', 46 : 'and 2 just ahead of me'}
+            1
+    
+            This method is recommended over regular L{get} as it lowers the number of
+            total packets flying around your network, reducing total latency, since
+            your app doesn't have to wait for each round-trip of L{get} before sending
+            the next one.
+    
+            See also L{set_multi}.
+    
+            @param keys: An array of keys.
+            @param key_prefix: A string to prefix each key when we communicate with memcache.
+                Facilitates pseudo-namespaces within memcache. Returned dictionary keys will not have this prefix.
+            @return:  A dictionary of key/value pairs that were available. If key_prefix was provided, the keys in the retured dictionary will not have it present.
+    
+            '''
+    
+            self._statlog('get_multi')
+    
+            server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(keys, key_prefix)
+    
+            # send out all requests on each server before reading anything
+            unsent = self._send_multi({
+                server : "get %s\r\n" % (" ".join(server_keys[server]),)
+                for server in server_keys.iterkeys()
+            })
+            dead_servers = unsent.keys()
+            del unsent
+    
+            # if any servers died on the way, don't expect them to respond.
+            for server in dead_servers:
+                del server_keys[server]
+    
+            # fetch values from all servers, in interleaved fashion, skipping
+            # unready servers, marking dead ones. While this isn't fully
+            # nonblocking, it decreases the time sockets spend blocked due
+            # to full buffers, and has a better chance to parallelize bulk 
+            # network I/O from value data
+            retvals = {}
+            sockets = {
+                server.socket : server
+                for server in server_keys
+            }
+            if sockets:
+                socket_timeout = max([server.socket_timeout for server in server_keys])
+                select_ = select.select
+                max_blocking_buffer = 4096
+                while sockets:
+                    rlist, wlist, xlist = select_(sockets.keys(), (), (), socket_timeout)
+                    if not rlist:
+                        for sock in sockets:
+                            sockets[sock].mark_dead("timeout")
+                        break
+                    for sock in rlist:
+                        server = sockets[sock]
+                        try:
+                            while 1:
+                                line = server.readline()
+                                if not line or line == 'END':
+                                    sockets.pop(sock)
+                                    break
+                                else:
+                                    rkey, flags, rlen = self._expectvalue(server, line)
+                                    #  Bo Yang reports that this can sometimes be None
+                                    if rkey is not None:
+                                        val = self._recv_value(server, flags, rlen)
+                                        retvals[prefixed_to_orig_key[rkey]] = val   # un-prefix returned key.
+                                # Go on unless there's no more lines to read
+                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
+                                    break
+                        except (memcache._Error, socket.error), msg:
+                            if isinstance(msg, tuple): msg = msg[1]
+                            server.mark_dead(msg)
+                            sockets.pop(sock)
+            return retvals
+    
+        def set_multi(self, mapping, time=0, key_prefix='', min_compress_len=0):  # lint:ok
+            '''
+            Sets multiple keys in the memcache doing just one query.
+    
+            >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'})
+            >>> mc.get_multi(['key1', 'key2']) == {'key1' : 'val1', 'key2' : 'val2'}
+            1
+    
+    
+            This method is recommended over regular L{set} as it lowers the number of
+            total packets flying around your network, reducing total latency, since
+            your app doesn't have to wait for each round-trip of L{set} before sending
+            the next one.
+    
+            @param mapping: A dict of key/value pairs to set.
+            @param time: Tells memcached the time which this value should expire, either
+            as a delta number of seconds, or an absolute unix time-since-the-epoch
+            value. See the memcached protocol docs section "Storage Commands"
+            for more info on <exptime>. We default to 0 == cache forever.
+            @param key_prefix:  Optional string to prepend to each key when sending to memcache. Allows you to efficiently stuff these keys into a pseudo-namespace in memcache:
+                >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'}, key_prefix='subspace_')
+                >>> len(notset_keys) == 0
+                True
+                >>> mc.get_multi(['subspace_key1', 'subspace_key2']) == {'subspace_key1' : 'val1', 'subspace_key2' : 'val2'}
+                True
+    
+                Causes key 'subspace_key1' and 'subspace_key2' to be set. Useful in conjunction with a higher-level layer which applies namespaces to data in memcache.
+                In this case, the return result would be the list of notset original keys, prefix not applied.
+    
+            @param min_compress_len: The threshold length to kick in auto-compression
+            of the value using the zlib.compress() routine. If the value being cached is
+            a string, then the length of the string is measured, else if the value is an
+            object, then the length of the pickle result is measured. If the resulting
+            attempt at compression yeilds a larger string than the input, then it is
+            discarded. For backwards compatability, this parameter defaults to 0,
+            indicating don't ever try to compress.
+            @return: List of keys which failed to be stored [ memcache out of memory, etc. ].
+            @rtype: list
+    
+            '''
+    
+            self._statlog('set_multi')
+    
+            server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping.iterkeys(), key_prefix)
+    
+            # send out all requests on each server before reading anything
+            notstored = [] # original keys.
+    
+            server_commands = {}
+            for server in server_keys.iterkeys():
+                bigcmd = []
+                write = bigcmd.append
+                for key in server_keys[server]: # These are mangled keys
+                    store_info = self._val_to_store_info(
+                            mapping[prefixed_to_orig_key[key]],
+                            min_compress_len)
+                    if store_info:
+                        write("set %s %d %d %d\r\n%s\r\n" % (key, store_info[0],
+                                time, store_info[1], store_info[2]))
+                    else:
+                        notstored.append(prefixed_to_orig_key[key])
+                server_commands[server] = ''.join(bigcmd)
+            unsent = self._send_multi(server_commands)
+            dead_servers = unsent.keys()
+            del unsent, server_commands
+    
+            # if any servers died on the way, don't expect them to respond.
+            for server in dead_servers:
+                del server_keys[server]
+    
+            #  short-circuit if there are no servers, just return all keys
+            if not server_keys: return(mapping.keys())
+    
+            # wait for all confirmations
+            sockets = {
+                server.socket : [server, len(keys)]
+                for server, keys in server_keys.iteritems()
+            }
+            if sockets:
+                socket_timeout = max([server.socket_timeout for server in server_keys])
+                select_ = select.select
+                max_blocking_buffer = 4096
+                while sockets:
+                    rlist, wlist, xlist = select_(sockets.keys(), (), (), socket_timeout)
+                    if not rlist:
+                        for sock in sockets:
+                            sockets[sock][0].mark_dead("timeout")
+                        for sock, (server, pending_keys) in sockets.iteritems():
+                            notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
+                        break
+                    for sock in rlist:
+                        state = sockets[sock]
+                        server, pending_keys = state
+                        try:
+                            while 1:
+                                line = server.readline()
+                                if line == 'STORED':
+                                    state[1] -= 1
+                                    if state[1] <= 0:
+                                        sockets.pop(sock)
+                                        break
+                                # Go on unless there's no more lines to read
+                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
+                                    break
+                        except (memcache._Error, socket.error), msg:
+                            if isinstance(msg, tuple): msg = msg[1]
+                            server.mark_dead(msg)
+                            pending_keys = state[1]
+                            notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
+                            sockets.pop(sock)
+            return notstored
+
 
 class DynamicResolvingMemcachedClient(BaseCacheClient, ThreadLocalDynamicResolvingClient):
     def __init__(self, client_class, client_addresses, client_args):
@@ -481,10 +1031,10 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         if not decode:
             if force_all_pages and npages > 1:
-                if multi_method is not None:
+                if npages > 2 and multi_method is not None:
                     pages.update( multi_method(xrange(1,npages), key_prefix=short_key+"|") )
                 else:
-                    pages.update([ method("%s|%d" % (short_key,i)) for i in xrange(1,npages) ])
+                    pages.update([ (i,method("%s|%d" % (short_key,i))) for i in xrange(1,npages) ])
             return pages, ttl - now
         elif ttl_skip is not None and ttl < ttl_skip:
             return default, -1
@@ -494,10 +1044,10 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             return default, -1
         
         if npages > 1:
-            if multi_method:
+            if npages > 2 and multi_method:
                 pages.update( multi_method(xrange(1,npages), key_prefix=short_key+"|") )
             else:
-                pages.update([ method("%s|%d" % (short_key,i)) for i in xrange(1,npages) ])
+                pages.update([ (i,method("%s|%d" % (short_key,i))) for i in xrange(1,npages) ])
         
         try:
             cached_key, cached_value = self.decode_pages(pages, key)
@@ -532,7 +1082,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     def renew(self, key, ttl):
         short_key,exact = self.shorten_key(key)
         raw_pages, store_ttl = self._getTtl(key, NONE, False, short_key = short_key, 
-            method = self.client.gets)
+            method = self.client.gets, force_all_pages = True)
         if raw_pages is not NONE and store_ttl < ttl:
             now = time.time()
             for i,page in raw_pages.iteritems():

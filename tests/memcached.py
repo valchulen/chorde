@@ -52,6 +52,9 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     capacity_means_entries = False
     meaningful_capacity = False # controlled externally so it may not be consistent for testing purposes
 
+    # Big uncompressible (but ascii-compatible) value
+    BIG_VALUE = os.urandom(4 << 20).encode("base64")
+
     def setUpClient(self, **kwargs):
         from chorde.clients.memcached import MemcachedClient
         import threading
@@ -145,6 +148,43 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         client = self.client
         client.put(None, 15, 10)
         self.assertEqual(client.get(None), 15)
+
+    def testBigValue(self):
+        bigval = self.BIG_VALUE
+        client = self.client
+        client.put("bigkey1", bigval, 60)
+        self.assertEqual(client.get("bigkey1"), bigval)
+
+    def testRenewBigValue(self):
+        bigval = self.BIG_VALUE
+        client = self.client
+        client.put("bigkey2", bigval, 10)
+        client.renew("bigkey2", 120)
+        self.assertGreater(client.getTtl("bigkey2")[1], 10)
+
+    def testContainsBigValue(self):
+        bigval = self.BIG_VALUE
+        client = self.client
+        client.put("bigkey3", bigval, 10)
+        self.assertTrue(client.contains("bigkey3"))
+
+    def testContainsBigValueTTLExact(self):
+        bigval = self.BIG_VALUE
+        client = self.client
+        client.put("bigkey3", bigval, 10)
+        self.assertTrue(client.contains("bigkey3"))
+
+    def testContainsBigValueTTLInexact(self):
+        bigval = self.BIG_VALUE
+        client = self.client
+        bigkey = "bigkey3" * 500
+        client.put(bigkey, bigval, 10)
+
+        # Force re-decoding
+        if hasattr(client, 'encoding_cache'):
+            client.encoding_cache.cache = None
+        
+        self.assertTrue(client.contains(bigkey, 1))
 
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
@@ -253,6 +293,11 @@ class FastMemcacheTest(CacheClientTestMixIn, TestCase):
     testSpacedStringKey = None
     testSpacedLongStringKey = None
     testObjectKey = None
+    testBigValue = None
+    testRenewBigValue = None
+    testContainsBigValue = None
+    testContainsBigValueTTLExact = None
+    testContainsBigValueTTLInexact = None
 
 @skipIfNoMemcached
 class FastElastiCacheTest(FastMemcacheTest):
