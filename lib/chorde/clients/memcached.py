@@ -1080,7 +1080,16 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 pages.update([ (i,method("%s|%d" % (short_key,i))) for i in xrange(1,npages) ])
         
         try:
-            cached_key, cached_value = self.decode_pages(pages, key)
+            try:
+                cached_key, cached_value = self.decode_pages(pages, key)
+            except ValueError, e:
+                if npages > 1 and multi_method and e.message == "Inconsistent data in cache":
+                    # try again, maybe there was a write between gets
+                    pages.update( multi_method(xrange(npages), key_prefix=short_key+"|") )
+                    cached_key, cached_value = self.decode_pages(pages, key)
+                else:
+                    # unrecoverable
+                    raise
             
             if cached_key == key:
                 self._succeedfast_cache[key] = (cached_value, ttl), now
