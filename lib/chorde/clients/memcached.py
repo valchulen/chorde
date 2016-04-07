@@ -198,16 +198,28 @@ class MemcachedStoreClient(memcache.Client):
             socket_error_timeout = socket.timeout
             socket_error = socket.error
             POLLOUT = select.POLLOUT
-            POLLERR = select.POLLERR
+            POLLERR = select.POLLERR | select.POLLNVAL | select.POLLHUP
             poller = select.poll()
             for sock in sockets:
-                poller.register(sock, POLLOUT|POLLERR)
+                poller.register(sock, POLLOUT)
             socket_timeout = max([server.socket_timeout for server in buffers]) * 1000
             while sockets:
-                wlist = [ fdmap(sock) for sock,flags in poller.poll(socket_timeout) ]
-                if not wlist:
+                xlist = poller.poll(socket_timeout)
+                elist = [ fdmap(sock) for sock,flags in xlist if flags & POLLERR ]
+                wlist = [ fdmap(sock) for sock,flags in xlist if flags & POLLOUT ]
+                if elist:
                     for sock, (server, buf) in sockets.iteritems():
                         unsent[server] = buf
+                        if mark_dead:
+                            server.mark_dead("connection reset by peer")
+                        sockets.pop(sock)
+                        poller.unregister(sock)
+                elif not wlist:
+                    # No error, no ready socket, means timeout
+                    for sock, (server, buf) in sockets.iteritems():
+                        unsent[server] = buf
+                        if mark_dead:
+                            server.mark_dead("timeout")
                     break
                 for sock in wlist:
                     state = sockets[sock]
@@ -300,14 +312,22 @@ class MemcachedStoreClient(memcache.Client):
                 socket_timeout = max([server.socket_timeout for server in server_keys]) * 1000
                 fdmap = { sock.fileno() : sock for sock in sockets }.__getitem__
                 POLLIN = select.POLLIN
-                POLLERR = select.POLLERR
+                POLLERR = select.POLLERR | select.POLLNVAL | select.POLLHUP
                 poller = select.poll()
                 for sock in sockets:
                     poller.register(sock, POLLIN|POLLERR)
                 max_blocking_buffer = 4096
                 while sockets:
-                    rlist = [ fdmap(sock) for sock,flags in poller.poll(socket_timeout) ]
-                    if not rlist:
+                    xlist = poller.poll(socket_timeout)
+                    elist = [ fdmap(sock) for sock,flags in xlist if flags & POLLERR ]
+                    rlist = [ fdmap(sock) for sock,flags in xlist if flags & POLLIN ]
+                    if elist:
+                        for sock in sockets.iteritems():
+                            sockets[sock].mark_dead("connection reset by peer")
+                            sockets.pop(sock)
+                            poller.unregister(sock)
+                    elif not rlist:
+                        # No error, no ready socket, means timeout
                         for sock in sockets:
                             sockets[sock].mark_dead("timeout")
                         break
@@ -418,14 +438,24 @@ class MemcachedStoreClient(memcache.Client):
                 socket_timeout = max([server.socket_timeout for server in server_keys]) * 1000
                 fdmap = { sock.fileno() : sock for sock in sockets }.__getitem__
                 POLLIN = select.POLLIN
-                POLLERR = select.POLLERR
+                POLLERR = select.POLLERR | select.POLLNVAL | select.POLLHUP
                 poller = select.poll()
                 for sock in sockets:
                     poller.register(sock, POLLIN|POLLERR)
                 max_blocking_buffer = 4096
                 while sockets:
-                    rlist = [ fdmap(sock) for sock,flags in poller.poll(socket_timeout) ]
-                    if not rlist:
+                    xlist = poller.poll(socket_timeout)
+                    elist = [ fdmap(sock) for sock,flags in xlist if flags & POLLERR ]
+                    rlist = [ fdmap(sock) for sock,flags in xlist if flags & POLLIN ]
+                    if elist:
+                        for sock in sockets.iteritems():
+                            server, pending_keys = sockets[sock]
+                            server.mark_dead("connection reset by peer")
+                            sockets.pop(sock)
+                            poller.unregister(sock)
+                            notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
+                    elif not rlist:
+                        # No error, no ready socket, means timeout
                         for sock in sockets:
                             sockets[sock][0].mark_dead("timeout")
                         for sock, (server, pending_keys) in sockets.iteritems():
