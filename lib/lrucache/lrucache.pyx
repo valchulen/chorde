@@ -128,6 +128,10 @@ cdef class LRUCache:
         cdef unsigned int ix, l, r, sw, sz
         cdef _borrowed_node *ln, *rn, *swn, *bnode
 
+        if self.next_prio > 0 and node.prio == self.next_prio - 1:
+            # Nothing needs to be done, the node was recently decreased
+            return
+
         node.prio = self.next_prio
         self.next_prio = self.next_prio + 1
 
