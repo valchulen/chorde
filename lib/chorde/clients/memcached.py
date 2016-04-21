@@ -1080,7 +1080,16 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 pages.update([ (i,method("%s|%d" % (short_key,i))) for i in xrange(1,npages) ])
         
         try:
-            cached_key, cached_value = self.decode_pages(pages, key)
+            try:
+                cached_key, cached_value = self.decode_pages(pages, key)
+            except ValueError, e:
+                if npages > 1 and multi_method and e.message == "Inconsistent data in cache":
+                    # try again, maybe there was a write between gets
+                    pages.update( multi_method(xrange(npages), key_prefix=short_key+"|") )
+                    cached_key, cached_value = self.decode_pages(pages, key)
+                else:
+                    # unrecoverable
+                    raise
             
             if cached_key == key:
                 self._succeedfast_cache[key] = (cached_value, ttl), now
@@ -1110,20 +1119,32 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             return rv
 
     def renew(self, key, ttl):
-        short_key,exact = self.shorten_key(key)
-        raw_pages, store_ttl = self._getTtl(key, NONE, False, short_key = short_key, 
-            method = self.client.gets, force_all_pages = True)
-        if raw_pages is not NONE and store_ttl < ttl:
-            now = time.time()
-            for i,page in raw_pages.iteritems():
-                new_page = page[:2] + (max(ttl + now, page[2]),) + page[3:]
-                success = self.client.cas("%s|%d" % (short_key,i), new_page, ttl)
-                if success:
-                    cached = self._succeedfast_cache.get(key, NONE)
-                    if cached is not NONE:
-                        (value, _), cached_time = cached
-                        ncached = ((value, ttl + now), now)
-                        self._succeedfast_cache.cas(key, cached, ncached)
+        old_cas = getattr(self.client, 'cache_cas', None)
+        reset_cas = old_cas
+        if old_cas is not None and not old_cas:
+            self.client.cache_cas = reset_cas = True
+        try:
+            short_key,exact = self.shorten_key(key)
+            raw_pages, store_ttl = self._getTtl(key, NONE, False, short_key = short_key, 
+                method = self.client.gets, force_all_pages = True)
+            if raw_pages is not NONE and store_ttl < ttl:
+                now = time.time()
+                for i,page in raw_pages.iteritems():
+                    new_page = page[:2] + (max(ttl + now, page[2]),) + page[3:]
+                    success = self.client.cas("%s|%d" % (short_key,i), new_page, ttl)
+                    if success:
+                        cached = self._succeedfast_cache.get(key, NONE)
+                        if cached is not NONE:
+                            (value, _), cached_time = cached
+                            ncached = ((value, ttl + now), now)
+                            self._succeedfast_cache.cas(key, cached, ncached)
+                    else:
+                        # No point in going on
+                        break
+        finally:
+            if reset_cas:
+                self.client.cache_cas = old_cas
+                self.client.reset_cas()
     
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
