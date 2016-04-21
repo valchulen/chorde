@@ -1138,6 +1138,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                             (value, _), cached_time = cached
                             ncached = ((value, ttl + now), now)
                             self._succeedfast_cache.cas(key, cached, ncached)
+                    else:
+                        # No point in going on
+                        break
         finally:
             if reset_cas:
                 self.client.cache_cas = old_cas
