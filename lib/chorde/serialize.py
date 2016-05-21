@@ -238,6 +238,8 @@ def serialize_docstring(f):
         f.__doc__ = 'Synchronized\n\n' + (getattr(f, '__doc__', '') or '')
     return f
 
+_initialization_lock = Lock()
+
 def serialize(*p,**kw):
     if 'pydoc' in sys.argv[0]:
         if len(p) == 1:
@@ -344,7 +346,9 @@ def serialize(*p,**kw):
                 @wraps(f)
                 def rv(self,*pos,**kw):
                     if not hasattr(self,lockattr):
-                        setattr(self,lockattr, locktype())
+                        with _initialization_lock:
+                            if not hasattr(self,lockattr):
+                                setattr(self,lockattr, locktype())
                     lock = getattr(self,lockattr)
                     try:
                         deadlock_watchdog(f,getattr(lock, acquire))
@@ -364,7 +368,9 @@ def serialize(*p,**kw):
                 @wraps(f)
                 def rv(self,*pos,**kw):
                     if not hasattr(self,lockattr):
-                        setattr(self,lockattr, lockpooltype())
+                        with _initialization_lock:
+                            if not hasattr(self,lockattr):
+                                setattr(self,lockattr, lockpooltype())
                     lockpool = getattr(self,lockattr)
                     acq = lambda blocking=1:lockpool.acquire(keyfn(self,*pos,**kw),blocking)
                     lock = deadlock_watchdog(f,acq)
