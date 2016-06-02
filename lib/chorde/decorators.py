@@ -407,6 +407,8 @@ def cached(client, ttl,
     eget_async_lazy_recheck_kwargs = easync_lazy_recheck_kwargs.copy()
 
     EMPTY_KWARGS = {}
+    _NONE_ = _NONE
+    Future = async.Future
 
     def decor(f):
         if namespace is None:
@@ -564,7 +566,7 @@ def cached(client, ttl,
                 return f(*p, **kw)
 
             client = aclient[0]
-            __NONE = _NONE
+            __NONE = _NONE_
             rv, rvttl = client.getTtl(callkey, __NONE, **get_kwargs)
 
             if (rv is __NONE or rvttl < eff_async_ttl) and not client.contains(callkey, eff_async_ttl):
@@ -608,8 +610,8 @@ def cached(client, ttl,
 
             client = aclient[0]
             clientf = fclient[0]
-            frv = async.Future()
-            __NONE = _NONE
+            frv = Future()
+            __NONE = _NONE_
 
             if future_sync_check:
                 # Quick sync call with lazy_kwargs
@@ -697,8 +699,8 @@ def cached(client, ttl,
                 raise CacheMissError
 
             client = aclient[0]
-            frv = async.Future()
-            __NONE = _NONE
+            frv = Future()
+            __NONE = _NONE_
 
             if future_sync_check:
                 # Quick sync call with lazy_kwargs
@@ -775,8 +777,8 @@ def cached(client, ttl,
 
             client = aclient[0]
             clientf = fclient[0]
-            frv = async.Future()
-            __NONE = _NONE
+            frv = Future()
+            __NONE = _NONE_
 
             if future_sync_check:
                 # Quick sync call with lazy_kwargs
@@ -919,7 +921,7 @@ def cached(client, ttl,
                 stats.errors += 1
                 raise CacheMissError
 
-            __NONE = _NONE
+            __NONE = _NONE_
             client = aclient[0]
 
             rv, rvttl = client.getTtl(callkey, __NONE, **elazy_kwargs)
@@ -1006,7 +1008,7 @@ def cached(client, ttl,
                 stats.errors += 1
                 return
 
-            frv = async.Future()
+            frv = Future()
             _fput_deferred(frv, aclient[0], af, callkey, eff_ttl(), *p, **kw)
             return frv
         if decorate is not None:
