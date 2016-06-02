@@ -346,10 +346,10 @@ class ThreadPool:
             # (which is much more expensive than checking)
             not_empty = self.__not_empty
             if not not_empty.isSet():
-                self.__not_empty.set()
+                not_empty.set()
             empty = self.__empty
             if empty.isSet():
-                self.__empty.clear()
+                empty.clear()
         self.assert_started()
 
     @staticmethod
