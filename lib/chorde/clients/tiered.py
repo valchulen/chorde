@@ -132,16 +132,17 @@ class TieredInclusiveClient(BaseCacheClient):
         for client in self.clients:
             client.purge(*p, **kw)
     
-    def _getTtl(self, key, default = NONE, _max_tiers = None, ttl_skip = 0, promote_callback = None, **kw):
+    def _getTtl(self, key, default = NONE, _max_tiers = None, ttl_skip = 0, promote_callback = None,
+            NONE_ = NONE_, NONE = NONE, enumerate = enumerate, islice = islice,
+            **kw):
         ttl = -1
-        NONE__ = NONE_
         clients = self.clients
         if _max_tiers is not None:
             clients = islice(clients, _max_tiers)
         for i,client in enumerate(clients):
             # Yeap, separate NONE_, we must avoid CacheMissError s
-            rv, ttl = client.getTtl(key, NONE__)
-            if rv is not NONE__ and ttl >= ttl_skip:
+            rv, ttl = client.getTtl(key, NONE_)
+            if rv is not NONE_ and ttl >= ttl_skip:
                 # Cool
                 if i > 0 and ttl > ttl_skip:
                     # Um... not first-tier
@@ -165,7 +166,7 @@ class TieredInclusiveClient(BaseCacheClient):
             # Ok, gotta inspect other tiers
         else:
             # Or not
-            if rv is not NONE__:
+            if rv is not NONE_:
                 return rv, ttl
             else:
                 if default is NONE:
@@ -173,8 +174,7 @@ class TieredInclusiveClient(BaseCacheClient):
                 else:
                     return default, -1
 
-    def getTtl(self, *p, **kw):
-        return self._getTtl(*p, **kw)
+    getTtl = _getTtl
     
     def promote(self, key, default = NONE, _max_tiers = None, ttl_skip = 0, promote_callback = None, **kw):
         ttl = -1
