@@ -1309,6 +1309,10 @@ class WrappedCacheProcessor(object):
     def queuelen(self):
         return self.processor.queuelen
 
+    @property
+    def maxqueue(self):
+        return self.processor.maxqueue
+
     def do_async(self, func, *args, **kwargs):
         return self.processor.do_async(func, *args, **kwargs)
 
