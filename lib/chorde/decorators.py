@@ -1040,10 +1040,10 @@ def cached(client, ttl,
             value_callbacks.append(callback)
 
         fclient = []
-        def future_f():
-            if _initialize:
+        def future_f(initialize = True):
+            if _initialize and initialize:
                 _initialize[0]()
-            if not fclient:
+            if not fclient and initialize:
                 if aclient:
                     _client = aclient[0]
                 else:
@@ -1061,10 +1061,10 @@ def cached(client, ttl,
             return future_cached_f
 
         if not client.async:
-            def async_f():
-                if _initialize:
+            def async_f(initialize = True):
+                if _initialize and initialize:
                     _initialize[0]()
-                if not aclient:
+                if not aclient and initialize:
                     # atomic
                     aclient[:] = [async.AsyncWriteCacheClient(nclient, 
                         async_writer_queue_size, 

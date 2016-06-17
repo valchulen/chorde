@@ -827,6 +827,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         self._failfast_cache = Cache(failfast_size)
         self._succeedfast_cache = Cache(succeedfast_size)
+        self._usucceedfast_cache = Cache(succeedfast_size)
 
         super(MemcachedClient, self).__init__(client_class, client_addresses, client_args)
 
@@ -1048,8 +1049,19 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             short_key,exact = self.shorten_key(key)
 
         if method is None:
-            method = self.client.get
+            _method = self.client.get
             multi_method = self.client.get_multi
+            _usucceedfast_cache = self._usucceedfast_cache
+            _succeedfast_time = self.succeedfast_time
+            def method(k):
+                cached = _usucceedfast_cache.get(k, NONE)
+                if cached is not NONE:
+                    cached, cached_time = cached
+                    if cached_time > (now - _succeedfast_time):
+                        return cached
+                cached = _method(k)
+                _usucceedfast_cache[k] = (cached, now)
+                return cached
 
         if pages is None:
             pages = { 0 : method(short_key+"|0") }
@@ -1162,6 +1174,12 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             del self._succeedfast_cache[key]
         except:
             pass
+
+        for page in pages:
+            try:
+                del self._usucceedfast_cache[short_key+"|%s" % (page,)]
+            except:
+                pass
     
     def delete(self, key):
         # delete the first page (gambling that most entries will span only a single page)
@@ -1176,21 +1194,31 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             del page # big structure, free ASAP
             
             self.client.delete_multi(xrange(1,npages), key_prefix=short_key+"|")
+        else:
+            npages = 1
         
         try:
             del self._succeedfast_cache[key]
         except:
             pass
+
+        for page in xrange(npages):
+            try:
+                del self._usucceedfast_cache[short_key+"|%d" % (page,)]
+            except:
+                pass
     
     def clear(self):
         # We don't want to clear memcache, it might be shared
         self._failfast_cache.clear()
         self._succeedfast_cache.clear()
+        self._usucceedfast_cache.clear()
 
     def purge(self):
         # Memcache does that itself
         self._failfast_cache.clear()
         self._succeedfast_cache.clear()
+        self._usucceedfast_cache.clear()
     
     def contains(self, key, ttl = None):
         short_key,exact = self.shorten_key(key)

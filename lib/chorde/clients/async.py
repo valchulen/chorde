@@ -1047,6 +1047,53 @@ class AsyncCacheProcessorThreadPool(ThreadPool):
                 current._children = weakref.WeakKeyDictionary()
         ThreadPool.__init__(self, workers)
 
+class ProcessorStats(object):
+    __slots__ = (
+        'tasks_queued', 
+        'tasks_started', 
+        'tasks_cancelled',
+        'tasks_completed', 
+        'wait_time_sum',
+        'wait_time_min',
+        'wait_time_max',
+        'task_time_sum',
+        'task_time_min',
+        'task_time_max',
+    )
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.tasks_queued = self.tasks_started = self.tasks_cancelled = self.tasks_completed = 0
+        self.wait_time_sum = self.task_time_sum = 0
+        self.wait_time_min = self.wait_time_max = self.task_time_min = self.task_time_max = None
+
+    def on_task_queued(self):
+        self.tasks_queued += 1
+
+    def on_task_cancelled(self):
+        self.tasks_cancelled += 1
+
+    def on_task_started(self, wait_time):
+        self.tasks_started += 1
+        self.wait_time_sum += wait_time
+        wait_time_min = self.wait_time_min
+        if wait_time_min is None or wait_time_min > wait_time:
+            self.wait_time_min = wait_time
+        wait_time_max = self.wait_time_max
+        if wait_time_max is None or wait_time_max < wait_time:
+            self.wait_time_max = wait_time
+
+    def on_task_completed(self, task_time):
+        self.tasks_completed += 1
+        self.task_time_sum += task_time
+        task_time_min = self.task_time_min
+        if task_time_min is None or task_time_min > task_time:
+            self.task_time_min = task_time
+        task_time_max = self.task_time_max
+        if task_time_max is None or task_time_max < task_time:
+            self.task_time_max = task_time
+
 class AsyncCacheProcessor(object):
     """
     An async cache processor will allow asynchronous reads
@@ -1094,6 +1141,8 @@ class AsyncCacheProcessor(object):
         
         self._tit_tat = itertools.cycle(iter((True,False))).next
 
+        self.stats = ProcessorStats()
+
     @property
     def threadpool(self):
         if self._threadpool is None:
@@ -1124,6 +1173,9 @@ class AsyncCacheProcessor(object):
             else:
                 # I'm the one queueing
                 wself = self._wself
+                stats = self.stats
+                queue_time = time.time()
+                stats.on_task_queued()
                 def wrapped_action():
                     def clean():
                         if do_coalescence:
@@ -1160,6 +1212,8 @@ class AsyncCacheProcessor(object):
                                     cfuture.cancel()
 
                         if cfuture.set_running_or_notify_cancelled():
+                            start_time = time.time()
+                            stats.on_task_started(start_time - queue_time)
                             try:
                                 rv = action()
                                 clean()
@@ -1171,7 +1225,9 @@ class AsyncCacheProcessor(object):
                                 clean()
                                 # Clear up traceback to avoid leaks
                                 cfuture.exc(sys.exc_info()[:-1] + (None,))
+                            stats.on_task_completed(time.time() - start_time)
                         else:
+                            stats.on_task_cancelled()
                             clean()
                     except:
                         # Just in case, we really need to clean, or we leak cfutures
@@ -1308,6 +1364,14 @@ class WrappedCacheProcessor(object):
     @property
     def queuelen(self):
         return self.processor.queuelen
+
+    @property
+    def maxqueue(self):
+        return self.processor.maxqueue
+
+    @property
+    def stats(self):
+        return self.processor.stats
 
     def do_async(self, func, *args, **kwargs):
         return self.processor.do_async(func, *args, **kwargs)
