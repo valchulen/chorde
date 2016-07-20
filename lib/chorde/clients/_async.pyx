@@ -12,17 +12,19 @@ CacheMissError = base.CacheMissError
 CancelledError = base.CancelledError
 TimeoutError = base.TimeoutError
 
+@cython.freelist(100)
 cdef class ExceptionWrapper:
     cdef public object value
     cdef object __weakref__
 
-    def __init__(self, value):
+    def __cinit__(self, value):
         self.value = value
 
+@cython.freelist(100)
 cdef class WeakCallback:
     cdef object me, callback, __weakref__
 
-    def __init__(self, me, callback):
+    def __cinit__(self, me, callback):
         self.me = weakref.ref(me)
         self.callback = callback
 
@@ -32,40 +34,45 @@ cdef class WeakCallback:
         if me is not None:
             return self.callback(me)
 
+@cython.freelist(100)
 cdef class DeferExceptionCallback:
     cdef object defer, __weakref__
-    def __init__(self, defer):
+    def __cinit__(self, defer):
         self.defer = defer
     def __call__(self, value):
         self.defer.set_exception(value[1] or value[0])
 
+@cython.freelist(100)
 cdef class ValueCallback:
     cdef object callback, __weakref__
-    def __init__(self, callback):
+    def __cinit__(self, callback):
         self.callback = callback
     def __call__(self, value):
         if value is not CacheMissError and not isinstance(value, ExceptionWrapper):
             return self.callback(value)
 
+@cython.freelist(100)
 cdef class MissCallback:
     cdef object callback, __weakref__
-    def __init__(self, callback):
+    def __cinit__(self, callback):
         self.callback = callback
     def __call__(self, value):
         if value is CacheMissError:
             return self.callback(value)
 
+@cython.freelist(100)
 cdef class ExceptionCallback:
     cdef object callback, __weakref__
-    def __init__(self, callback):
+    def __cinit__(self, callback):
         self.callback = callback
     def __call__(self, value):
         if isinstance(value, ExceptionWrapper):
             return self.callback(value)
 
+@cython.freelist(100)
 cdef class AnyCallback:
     cdef object on_value, on_miss, on_exc, __weakref__
-    def __init__(self, on_value, on_miss, on_exc):
+    def __cinit__(self, on_value, on_miss, on_exc):
         self.on_value = on_value
         self.on_miss = on_miss
         self.on_exc = on_exc
@@ -80,9 +87,10 @@ cdef class AnyCallback:
             if self.on_value is not None:
                 return self.on_value(value)
 
+@cython.freelist(100)
 cdef class DoneCallback:
     cdef object callback, __weakref__
-    def __init__(self, callback):
+    def __cinit__(self, callback):
         self.callback = callback
     def __call__(self, value):
         return self.callback()
@@ -166,7 +174,7 @@ cdef class Future:
         Shorthand for setting an exception result from an exc_info tuple
         as returned by sys.exc_info()
         """
-        self.set(ExceptionWrapper(exc_info))
+        self.set(ExceptionWrapper.__new__(ExceptionWrapper, exc_info))
 
     def _exc_nothreads(self, exc_info):
         """
@@ -174,7 +182,7 @@ cdef class Future:
         as returned by sys.exc_info(), without thread safety. 
         See _set_nothreads
         """
-        self._set_nothreads(ExceptionWrapper(exc_info))
+        self._set_nothreads(ExceptionWrapper.__new__(ExceptionWrapper, exc_info))
 
     def set_exception(self, exception):
         """
@@ -187,42 +195,42 @@ cdef class Future:
         When and if the operation completes without exception, the callback 
         will be invoked with its result.
         """
-        return self._on_stuff(ValueCallback(callback))
+        return self._on_stuff(ValueCallback.__new__(ValueCallback, callback))
 
     def on_miss(self, callback):
         """
         If the operation results in a cache miss, the callback will be invoked
         without arugments.
         """
-        return self._on_stuff(MissCallback(callback))
+        return self._on_stuff(MissCallback.__new__(MissCallback, callback))
 
     def on_exc(self, callback):
         """
         If the operation results in an exception, the callback will be invoked
         with an exc_info tuple as returned by sys.exc_info.
         """
-        return self._on_stuff(ExceptionCallback(callback))
+        return self._on_stuff(ExceptionCallback.__new__(ExceptionCallback, callback))
 
     def on_any(self, on_value = None, on_miss = None, on_exc = None):
         """
         Handy method to set callbacks for all kinds of results, and it's actually
         faster than calling on_X repeatedly. None callbacks will be ignored.
         """
-        return self._on_stuff(AnyCallback(on_value, on_miss, on_exc))
+        return self._on_stuff(AnyCallback.__new__(AnyCallback, on_value, on_miss, on_exc))
 
     def on_any_once(self, on_value = None, on_miss = None, on_exc = None):
         """
         Like on_any, but will only set the callback if no other callback has been set
         """
         if self._cb is None:
-            return self._on_stuff(AnyCallback(on_value, on_miss, on_exc))
+            return self._on_stuff(AnyCallback.__new__(AnyCallback, on_value, on_miss, on_exc))
 
     def on_done(self, callback):
         """
         When the operation is done, the callback will be invoked without arguments,
         regardless of the outcome. If the operation is cancelled, it won't be invoked.
         """
-        return self._on_stuff(DoneCallback(callback))
+        return self._on_stuff(DoneCallback.__new__(DoneCallback, callback))
 
     def chain(self, defer):
         """
@@ -238,7 +246,7 @@ cdef class Future:
         return self.on_any(
             defer.set_result,
             functools.partial(defer.set_exception, CacheMissError()),
-            DeferExceptionCallback(defer)
+            DeferExceptionCallback.__new__(DeferExceptionCallback, defer)
         )
 
     cpdef _on_stuff(self, callback):
@@ -255,7 +263,7 @@ cdef class Future:
         When the operatio is done, the callback will be invoked with the
         future object as argument.
         """
-        return self._on_stuff(WeakCallback(self, callback))
+        return self._on_stuff(WeakCallback.__new__(WeakCallback, self, callback))
 
     cdef int c_done(self) except -1:
         """
