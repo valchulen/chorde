@@ -21,7 +21,7 @@ class CacheMissError(KeyError):
 cdef class _node:
     # attributes in pxd
 
-    def __init__(_node self not None, unsigned int prio, unsigned int index, object key, object value):
+    def __cinit__(_node self not None, unsigned int prio, unsigned int index, object key, object value):
         self.prio = prio
         self.index = index
         self.key = key
@@ -213,7 +213,7 @@ cdef class LRUCache:
                 node = self.freelist.pop()
                 node.attach(self.next_prio, 0, key, val)
             else:
-                node = _node(self.next_prio, 0, key, val) # atomic barrier (might release GIL)
+                node = _node.__new__(_node, self.next_prio, 0, key, val) # atomic barrier (might release GIL)
             node.index = <unsigned int>PyList_GET_SIZE(<void*>self.pqueue) # from now on, atomic
             self.pqueue.append(node)
             self.emap[key] = node
