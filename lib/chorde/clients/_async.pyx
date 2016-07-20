@@ -83,7 +83,7 @@ cdef class AnyCallback:
                 return self.on_miss()
         elif isinstance(value, ExceptionWrapper):
             if self.on_exc is not None:
-                return self.on_exc(value.value)
+                return self.on_exc((<ExceptionWrapper>value).value)
         else:
             if self.on_value is not None:
                 return self.on_value(value)
