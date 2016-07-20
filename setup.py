@@ -1,4 +1,5 @@
 import sys
+import os.path
 
 try:
     from setuptools import setup, Extension
@@ -11,14 +12,10 @@ if sys.subversion[0] == 'PyPy':
 else:
     no_pyrex = False
     try:
-        from Pyrex.Distutils import build_ext
+        from Cython.Distutils import build_ext, Extension
+        from Cython.Build import cythonize
     except:
-        try:
-            from Cython.Distutils import build_ext
-        except:
-            no_pyrex = True
-
-import os.path
+        no_pyrex = True
 
 VERSION = "0.1"
 
@@ -36,14 +33,17 @@ packages = [
 
 if not no_pyrex:
     extra.update(dict(
-        ext_modules=[ 
+        ext_modules=cythonize([ 
           Extension("chorde.lrucache", ["lib/lrucache/lrucache.pyx"],
+                    depends = ["lib/lrucache/lrucache.pxd"],
+                    cython_include_dirs = [os.path.join(os.path.dirname(__file__), "lib/lrucache")],
                     extra_compile_args = [ "-O3" ] ),
                     #extra_compile_args = ["-march=pentium4","-mfpmath=sse","-msse2"] ),
           Extension("chorde.clients._async", ["lib/chorde/clients/_async.pyx"],
+                    depends = ["lib/chorde/clients/_async.pxd"],
                     extra_compile_args = [ "-O3" ] ),
                     #extra_compile_args = ["-march=pentium4","-mfpmath=sse","-msse2"] ),
-          ],
+          ]),
         cmdclass = {'build_ext': build_ext},
         data_files = [
             ('chorde', ['lib/lrucache/lrucache.pxd']),

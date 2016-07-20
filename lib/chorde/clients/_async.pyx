@@ -89,10 +89,6 @@ cdef class NONE:
     pass
 
 cdef class Future:
-    cdef list _cb
-    cdef object _value, _logger, _done_event, __weakref__
-    cdef int _running, _cancel_pending, _cancelled
-    
     def __init__(self, logger = None):
         self._cb = None
         self._value = NONE
