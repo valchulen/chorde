@@ -19,10 +19,7 @@ class CacheMissError(KeyError):
     pass
 
 cdef class _node:
-    cdef unsigned int prio
-    cdef unsigned int index
-    cdef object key
-    cdef object value
+    # attributes in pxd
 
     def __init__(_node self not None, unsigned int prio, unsigned int index, object key, object value):
         self.prio = prio
@@ -68,14 +65,7 @@ cdef class LRUCache:
     not manual ones invoked with del, pop or clear.
     """
 
-    cdef int use_freelist
-    cdef unsigned int next_prio
-    cdef readonly unsigned int size
-    cdef readonly unsigned int touch_on_read
-    cdef list pqueue
-    cdef list freelist
-    cdef dict emap
-    cdef object eviction_callback
+    # attributes in pxd
 
     def __cinit__(LRUCache self, unsigned int size, unsigned int touch_on_read = 1, object eviction_callback = None,
             preallocate = True):
@@ -283,7 +273,7 @@ cdef class LRUCache:
             elif self.touch_on_read:
                 self.c_decrease(node)
 
-    def get(LRUCache self not None, object key, object deflt = None):
+    cdef c_get(LRUCache self, object key, object deflt):
         cdef _node node
 
         if key not in self.emap:
@@ -292,6 +282,9 @@ cdef class LRUCache:
             node = self.emap[key]
             self.c_decrease(node)
             return node.value
+    
+    def get(LRUCache self not None, object key, object deflt = None):
+        return self.c_get(key, deflt)
     
     def pop(LRUCache self not None, object key, object deflt = CacheMissError):
         cdef object rv

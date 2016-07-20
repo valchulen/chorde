@@ -44,7 +44,11 @@ if not no_pyrex:
                     extra_compile_args = [ "-O3" ] ),
                     #extra_compile_args = ["-march=pentium4","-mfpmath=sse","-msse2"] ),
           ],
-        cmdclass = {'build_ext': build_ext}
+        cmdclass = {'build_ext': build_ext},
+        data_files = [
+            ('chorde', ['lib/lrucache/lrucache.pxd']),
+            ('chorde/clients', ['lib/chorde/clients/_async.pxd'])
+        ],
     ))
 
 setup(

@@ -258,11 +258,20 @@ cdef class Future:
         """
         return self._on_stuff(WeakCallback(self, callback))
 
-    def done(self):
+    cdef int c_done(self) except -1:
         """
         Return True if the operation has finished, in a result or exception or cancelled, and False if not.
         """
         if self._value is not NONE or self._cancelled:
+            return 1
+        else:
+            return 0
+
+    def done(self):
+        """
+        Return True if the operation has finished, in a result or exception or cancelled, and False if not.
+        """
+        if self.c_done():
             return True
         else:
             return False
@@ -325,7 +334,7 @@ cdef class Future:
             self._running = 1
             return True
 
-    def result(self, timeout=None, norecurse=False):
+    cdef c_result(self, timeout, int norecurse):
         """
         Return the operation's result, if any. If an exception was the result, re-raise it.
         If it was cancelled, raises CancelledError, and if timeout is specified and not None,
@@ -351,11 +360,19 @@ cdef class Future:
                 if self._done_event is None:
                     self._done_event = threading.Event()
                 if self._done_event.wait(timeout) and not norecurse:
-                    return self.result(0, norecurse=True)
+                    return self.c_result(0, 1)
                 elif self._cancelled:
                     raise CancelledError()
                 else:
                     raise TimeoutError()
+
+    def result(self, timeout=None, norecurse=False):
+        """
+        Return the operation's result, if any. If an exception was the result, re-raise it.
+        If it was cancelled, raises CancelledError, and if timeout is specified and not None,
+        and the specified time elapses without a result available, raises TimeoutError.
+        """
+        return self.c_result(timeout, norecurse)
 
     def exception(self, timeout=None):
         """
