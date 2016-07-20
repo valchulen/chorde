@@ -340,7 +340,8 @@ cdef class LRUCache:
     
     def defrag(LRUCache self not None):
         # Hold onto old lists to prevent decref from freeing them before we're done
-        cdef object pqueue, emap
+        cdef list pqueue
+        cdef dict emap
         cdef object opqueue, oemap
 
         if self.use_freelist:
