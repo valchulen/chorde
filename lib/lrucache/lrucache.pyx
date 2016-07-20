@@ -144,6 +144,8 @@ cdef class LRUCache:
                 rn = <_borrowed_node*>PyList_GET_ITEM(<void*>self.pqueue,r)
             elif l < sz:
                 ln = <_borrowed_node*>PyList_GET_ITEM(<void*>self.pqueue,l)
+            else:
+                break # just for safetey, should never happen
 
             if r < sz and rn.prio < ln.prio:
                 sw = r
