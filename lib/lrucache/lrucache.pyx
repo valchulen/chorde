@@ -240,10 +240,10 @@ cdef class LRUCache:
     cdef int c__delitem__(LRUCache self, key) except -1:
         cdef _node node, node2
 
-        if key not in self.emap:
+        node = self.emap.get(key)
+        if node is None:
             raise CacheMissError_(key)
         else:
-            node = self.emap[key]
             self.c_decrease(node)
 
             node2 = self.pqueue[-1]
@@ -265,9 +265,9 @@ cdef class LRUCache:
 
     def cas(LRUCache self not None, object key, object oldvalue, object newvalue):
         cdef _node node
-        
-        if key in self.emap:
-            node = self.emap[key]
+
+        node = self.emap.get(key)
+        if node is not None:
             if node.value is oldvalue:
                 node.value = newvalue
                 self.c_decrease(node)
@@ -277,10 +277,10 @@ cdef class LRUCache:
     cdef c_get(LRUCache self, object key, object deflt):
         cdef _node node
 
-        if key not in self.emap:
+        node = self.emap.get(key)
+        if node is None:
             return deflt
         else:
-            node = self.emap[key]
             self.c_decrease(node)
             return node.value
     
@@ -305,11 +305,11 @@ cdef class LRUCache:
         cdef _node node
         cdef object rv
 
-        if key not in self.emap:
+        node = self.emap.get(key)
+        if node is None:
             self.c__setitem__(key, deflt)
             return deflt
         else:
-            node = self.emap[key]
             rv = node.value
             self.c_decrease(node)
             return rv
