@@ -17,6 +17,7 @@ cdef extern from *:
 class CacheMissError(KeyError):
     """Error raised when a cache miss occurs"""
     pass
+cdef object CacheMissError_ = CacheMissError
 
 cdef class _node:
     # attributes in pxd
@@ -225,10 +226,10 @@ cdef class LRUCache:
     cdef object c__getitem__(LRUCache self, key):
         cdef _node node
 
-        if key not in self.emap:
-            raise CacheMissError(key)
+        node = self.emap.get(key)
+        if node is None:
+            raise CacheMissError_(key)
         else:
-            node = self.emap[key]
             if self.touch_on_read:
                 self.c_decrease(node)
             return node.value
@@ -240,7 +241,7 @@ cdef class LRUCache:
         cdef _node node, node2
 
         if key not in self.emap:
-            raise CacheMissError(key)
+            raise CacheMissError_(key)
         else:
             node = self.emap[key]
             self.c_decrease(node)
@@ -286,12 +287,12 @@ cdef class LRUCache:
     def get(LRUCache self not None, object key, object deflt = None):
         return self.c_get(key, deflt)
     
-    def pop(LRUCache self not None, object key, object deflt = CacheMissError):
+    def pop(LRUCache self not None, object key, object deflt = CacheMissError_):
         cdef object rv
 
         if key not in self.emap:
-            if deflt is CacheMissError:
-                raise CacheMissError(key)
+            if deflt is CacheMissError_:
+                raise CacheMissError_(key)
             else:
                 rv = deflt
         else:
