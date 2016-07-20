@@ -3,6 +3,8 @@ import weakref
 import threading
 import logging
 
+import cython
+
 from chorde.clients import base
 
 cdef object CacheMissError, CancelledError, TimeoutError
@@ -88,8 +90,9 @@ cdef class DoneCallback:
 cdef class NONE:
     pass
 
+@cython.freelist(100)
 cdef class Future:
-    def __init__(self, logger = None):
+    def __cinit__(self, logger = None):
         self._cb = None
         self._value = NONE
         self._logger = logger
@@ -98,7 +101,7 @@ cdef class Future:
         self._cancel_pending = 0
         self._cancelled = 0
 
-    def _set_nothreads(self, value):
+    cpdef _set_nothreads(self, value):
         """
         Like set(), but assuming no threading is involved. It won't wake waiting threads,
         nor will it try to be thread-safe. Safe to call when the calling
@@ -106,7 +109,7 @@ cdef class Future:
         """
         self.set(value)
     
-    def set(self, value):
+    cpdef set(self, value):
         """
         Set the future's result as either a value, an exception wrappedn in ExceptionWrapper, or
         a cache miss if given CacheMissError (the class itself)
@@ -238,7 +241,7 @@ cdef class Future:
             DeferExceptionCallback(defer)
         )
 
-    def _on_stuff(self, callback):
+    cpdef _on_stuff(self, callback):
         if self._value is NONE:
             if self._cb is None:
                 self._cb = list()

@@ -5,3 +5,7 @@ cdef class Future:
 
     cdef int c_done(self) except -1
     cdef c_result(self, timeout, int norecurse)
+
+    cpdef _set_nothreads(self, value)
+    cpdef set(self, value)
+    cpdef _on_stuff(self, callback)
