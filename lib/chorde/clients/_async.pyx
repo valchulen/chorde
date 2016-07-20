@@ -355,11 +355,13 @@ cdef class Future:
         and the specified time elapses without a result available, raises TimeoutError.
         """
         cdef object value
+        cdef ExceptionWrapper exc_value
         
         if self._value is not NONE:
             value = self._value
             if isinstance(value, ExceptionWrapper):
-                raise value.value[0], value.value[1], value.value[2]
+                exc_value = <ExceptionWrapper>value
+                raise exc_value.value[0], exc_value.value[1], exc_value.value[2]
             elif value is CacheMissError:
                 raise CacheMissErrorCached
             else:
