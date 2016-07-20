@@ -7,11 +7,15 @@ import cython
 
 from chorde.clients import base
 
-cdef object CacheMissError, CancelledError, TimeoutError, wref, CacheMissErrorCached, functools_partial
+cdef object CacheMissError, CancelledError, TimeoutError
+cdef object CacheMissErrorCached, CancelledErrorCached, TimeoutErrorCached
+cdef object wref, functools_partial
 CacheMissError = base.CacheMissError
 CancelledError = base.CancelledError
 TimeoutError = base.TimeoutError
 CacheMissErrorCached = CacheMissError()
+CancelledErrorCached = CancelledError()
+TimeoutErrorCached = TimeoutError()
 wref = weakref.ref
 functools_partial = functools.partial
 
@@ -337,7 +341,7 @@ cdef class Future:
             self._running = 0
 
             # Notify waiters and callbacks
-            self.set_exception(CancelledError()) 
+            self.set_exception(CancelledErrorCached) 
             
             return False
         else:
@@ -357,14 +361,14 @@ cdef class Future:
             if isinstance(value, ExceptionWrapper):
                 raise value.value[0], value.value[1], value.value[2]
             elif value is CacheMissError:
-                raise CacheMissError()
+                raise CacheMissErrorCached
             else:
                 return value
         elif self._cancelled:
-            raise CancelledError()
+            raise CancelledErrorCached
         else:
             if timeout is not None and timeout == 0:
-                raise TimeoutError()
+                raise TimeoutErrorCached
             else:
                 # Wait for it
                 if self._done_event is None:
@@ -372,9 +376,9 @@ cdef class Future:
                 if self._done_event.wait(timeout) and not norecurse:
                     return self.c_result(0, 1)
                 elif self._cancelled:
-                    raise CancelledError()
+                    raise CancelledErrorCached
                 else:
-                    raise TimeoutError()
+                    raise TimeoutErrorCached
 
     def result(self, timeout=None, norecurse=False):
         """
@@ -402,7 +406,7 @@ cdef class Future:
             else:
                 return None
         elif self._cancelled:
-            raise CancelledError()
+            raise CancelledErrorCached
         else:
             try:
                 self.result()
