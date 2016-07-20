@@ -7,11 +7,13 @@ import cython
 
 from chorde.clients import base
 
-cdef object CacheMissError, CancelledError, TimeoutError, wref
+cdef object CacheMissError, CancelledError, TimeoutError, wref, CacheMissErrorCached, functools_partial
 CacheMissError = base.CacheMissError
 CancelledError = base.CancelledError
 TimeoutError = base.TimeoutError
+CacheMissErrorCached = CacheMissError()
 wref = weakref.ref
+functools_partial = functools.partial
 
 @cython.freelist(100)
 cdef class ExceptionWrapper:
@@ -246,7 +248,7 @@ cdef class Future:
         """
         return self.on_any(
             defer.set_result,
-            functools.partial(defer.set_exception, CacheMissError()),
+            functools_partial(defer.set_exception, CacheMissErrorCached),
             DeferExceptionCallback.__new__(DeferExceptionCallback, defer)
         )
 
