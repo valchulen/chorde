@@ -413,7 +413,7 @@ cdef class Future:
             raise CancelledErrorCached
         else:
             try:
-                self.result()
+                self.c_result(timeout, 0)
                 return None
             except CancelledError:
                 raise
