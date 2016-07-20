@@ -311,7 +311,8 @@ cdef class LRUCache:
             return deflt
         else:
             rv = node.value
-            self.c_decrease(node)
+            if self.touch_on_read:
+                self.c_decrease(node)
             return rv
 
     def update(LRUCache self not None, object iterOrDict):
