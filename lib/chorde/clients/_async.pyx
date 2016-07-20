@@ -7,10 +7,11 @@ import cython
 
 from chorde.clients import base
 
-cdef object CacheMissError, CancelledError, TimeoutError
+cdef object CacheMissError, CancelledError, TimeoutError, wref
 CacheMissError = base.CacheMissError
 CancelledError = base.CancelledError
 TimeoutError = base.TimeoutError
+wref = weakref.ref
 
 @cython.freelist(100)
 cdef class ExceptionWrapper:
@@ -25,7 +26,7 @@ cdef class WeakCallback:
     cdef object me, callback, __weakref__
 
     def __cinit__(self, me, callback):
-        self.me = weakref.ref(me)
+        self.me = wref(me)
         self.callback = callback
 
     def __call__(self, value):
