@@ -116,13 +116,6 @@ cdef class Future:
         nor will it try to be thread-safe. Safe to call when the calling
         thread is the only one owning references to this future, and much faster.
         """
-        self.set(value)
-    
-    cpdef set(self, value):
-        """
-        Set the future's result as either a value, an exception wrappedn in ExceptionWrapper, or
-        a cache miss if given CacheMissError (the class itself)
-        """
         cdef object old, cbs
         
         if self._value is not NONE:
@@ -149,6 +142,13 @@ cdef class Future:
                         error = logging.error
                     error("Error in async callback", exc_info = True)
         self._running = 0
+    
+    cpdef set(self, value):
+        """
+        Set the future's result as either a value, an exception wrappedn in ExceptionWrapper, or
+        a cache miss if given CacheMissError (the class itself)
+        """
+        self._set_nothreads(value)
 
         if self._done_event is not None:
             # wake up waiting threads
