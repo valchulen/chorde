@@ -3,25 +3,36 @@ import weakref
 import threading
 import logging
 
+import cython
+
 from chorde.clients import base
 
 cdef object CacheMissError, CancelledError, TimeoutError
+cdef object CacheMissErrorCached, CancelledErrorCached, TimeoutErrorCached
+cdef object wref, functools_partial
 CacheMissError = base.CacheMissError
 CancelledError = base.CancelledError
 TimeoutError = base.TimeoutError
+CacheMissErrorCached = CacheMissError()
+CancelledErrorCached = CancelledError()
+TimeoutErrorCached = TimeoutError()
+wref = weakref.ref
+functools_partial = functools.partial
 
+@cython.freelist(100)
 cdef class ExceptionWrapper:
     cdef public object value
     cdef object __weakref__
 
-    def __init__(self, value):
+    def __cinit__(self, value):
         self.value = value
 
+@cython.freelist(100)
 cdef class WeakCallback:
     cdef object me, callback, __weakref__
 
-    def __init__(self, me, callback):
-        self.me = weakref.ref(me)
+    def __cinit__(self, me, callback):
+        self.me = wref(me)
         self.callback = callback
 
     def __call__(self, value):
@@ -30,40 +41,45 @@ cdef class WeakCallback:
         if me is not None:
             return self.callback(me)
 
+@cython.freelist(100)
 cdef class DeferExceptionCallback:
     cdef object defer, __weakref__
-    def __init__(self, defer):
+    def __cinit__(self, defer):
         self.defer = defer
     def __call__(self, value):
         self.defer.set_exception(value[1] or value[0])
 
+@cython.freelist(100)
 cdef class ValueCallback:
     cdef object callback, __weakref__
-    def __init__(self, callback):
+    def __cinit__(self, callback):
         self.callback = callback
     def __call__(self, value):
         if value is not CacheMissError and not isinstance(value, ExceptionWrapper):
             return self.callback(value)
 
+@cython.freelist(100)
 cdef class MissCallback:
     cdef object callback, __weakref__
-    def __init__(self, callback):
+    def __cinit__(self, callback):
         self.callback = callback
     def __call__(self, value):
         if value is CacheMissError:
             return self.callback(value)
 
+@cython.freelist(100)
 cdef class ExceptionCallback:
     cdef object callback, __weakref__
-    def __init__(self, callback):
+    def __cinit__(self, callback):
         self.callback = callback
     def __call__(self, value):
         if isinstance(value, ExceptionWrapper):
             return self.callback(value)
 
+@cython.freelist(100)
 cdef class AnyCallback:
     cdef object on_value, on_miss, on_exc, __weakref__
-    def __init__(self, on_value, on_miss, on_exc):
+    def __cinit__(self, on_value, on_miss, on_exc):
         self.on_value = on_value
         self.on_miss = on_miss
         self.on_exc = on_exc
@@ -73,14 +89,15 @@ cdef class AnyCallback:
                 return self.on_miss()
         elif isinstance(value, ExceptionWrapper):
             if self.on_exc is not None:
-                return self.on_exc(value.value)
+                return self.on_exc((<ExceptionWrapper>value).value)
         else:
             if self.on_value is not None:
                 return self.on_value(value)
 
+@cython.freelist(100)
 cdef class DoneCallback:
     cdef object callback, __weakref__
-    def __init__(self, callback):
+    def __cinit__(self, callback):
         self.callback = callback
     def __call__(self, value):
         return self.callback()
@@ -88,12 +105,9 @@ cdef class DoneCallback:
 cdef class NONE:
     pass
 
+@cython.freelist(100)
 cdef class Future:
-    cdef list _cb
-    cdef object _value, _logger, _done_event, __weakref__
-    cdef int _running, _cancel_pending, _cancelled
-    
-    def __init__(self, logger = None):
+    def __cinit__(self, logger = None):
         self._cb = None
         self._value = NONE
         self._logger = logger
@@ -102,18 +116,11 @@ cdef class Future:
         self._cancel_pending = 0
         self._cancelled = 0
 
-    def _set_nothreads(self, value):
+    cpdef _set_nothreads(self, value):
         """
         Like set(), but assuming no threading is involved. It won't wake waiting threads,
         nor will it try to be thread-safe. Safe to call when the calling
         thread is the only one owning references to this future, and much faster.
-        """
-        self.set(value)
-    
-    def set(self, value):
-        """
-        Set the future's result as either a value, an exception wrappedn in ExceptionWrapper, or
-        a cache miss if given CacheMissError (the class itself)
         """
         cdef object old, cbs
         
@@ -141,6 +148,13 @@ cdef class Future:
                         error = logging.error
                     error("Error in async callback", exc_info = True)
         self._running = 0
+    
+    cpdef set(self, value):
+        """
+        Set the future's result as either a value, an exception wrappedn in ExceptionWrapper, or
+        a cache miss if given CacheMissError (the class itself)
+        """
+        self._set_nothreads(value)
 
         if self._done_event is not None:
             # wake up waiting threads
@@ -167,7 +181,7 @@ cdef class Future:
         Shorthand for setting an exception result from an exc_info tuple
         as returned by sys.exc_info()
         """
-        self.set(ExceptionWrapper(exc_info))
+        self.set(ExceptionWrapper.__new__(ExceptionWrapper, exc_info))
 
     def _exc_nothreads(self, exc_info):
         """
@@ -175,7 +189,7 @@ cdef class Future:
         as returned by sys.exc_info(), without thread safety. 
         See _set_nothreads
         """
-        self._set_nothreads(ExceptionWrapper(exc_info))
+        self._set_nothreads(ExceptionWrapper.__new__(ExceptionWrapper, exc_info))
 
     def set_exception(self, exception):
         """
@@ -188,42 +202,42 @@ cdef class Future:
         When and if the operation completes without exception, the callback 
         will be invoked with its result.
         """
-        return self._on_stuff(ValueCallback(callback))
+        return self._on_stuff(ValueCallback.__new__(ValueCallback, callback))
 
     def on_miss(self, callback):
         """
         If the operation results in a cache miss, the callback will be invoked
         without arugments.
         """
-        return self._on_stuff(MissCallback(callback))
+        return self._on_stuff(MissCallback.__new__(MissCallback, callback))
 
     def on_exc(self, callback):
         """
         If the operation results in an exception, the callback will be invoked
         with an exc_info tuple as returned by sys.exc_info.
         """
-        return self._on_stuff(ExceptionCallback(callback))
+        return self._on_stuff(ExceptionCallback.__new__(ExceptionCallback, callback))
 
     def on_any(self, on_value = None, on_miss = None, on_exc = None):
         """
         Handy method to set callbacks for all kinds of results, and it's actually
         faster than calling on_X repeatedly. None callbacks will be ignored.
         """
-        return self._on_stuff(AnyCallback(on_value, on_miss, on_exc))
+        return self._on_stuff(AnyCallback.__new__(AnyCallback, on_value, on_miss, on_exc))
 
     def on_any_once(self, on_value = None, on_miss = None, on_exc = None):
         """
         Like on_any, but will only set the callback if no other callback has been set
         """
         if self._cb is None:
-            return self._on_stuff(AnyCallback(on_value, on_miss, on_exc))
+            return self._on_stuff(AnyCallback.__new__(AnyCallback, on_value, on_miss, on_exc))
 
     def on_done(self, callback):
         """
         When the operation is done, the callback will be invoked without arguments,
         regardless of the outcome. If the operation is cancelled, it won't be invoked.
         """
-        return self._on_stuff(DoneCallback(callback))
+        return self._on_stuff(DoneCallback.__new__(DoneCallback, callback))
 
     def chain(self, defer):
         """
@@ -238,11 +252,11 @@ cdef class Future:
         """
         return self.on_any(
             defer.set_result,
-            functools.partial(defer.set_exception, CacheMissError()),
-            DeferExceptionCallback(defer)
+            functools_partial(defer.set_exception, CacheMissErrorCached),
+            DeferExceptionCallback.__new__(DeferExceptionCallback, defer)
         )
 
-    def _on_stuff(self, callback):
+    cpdef _on_stuff(self, callback):
         if self._value is NONE:
             if self._cb is None:
                 self._cb = list()
@@ -256,13 +270,22 @@ cdef class Future:
         When the operatio is done, the callback will be invoked with the
         future object as argument.
         """
-        return self._on_stuff(WeakCallback(self, callback))
+        return self._on_stuff(WeakCallback.__new__(WeakCallback, self, callback))
+
+    cdef int c_done(self) except -1:
+        """
+        Return True if the operation has finished, in a result or exception or cancelled, and False if not.
+        """
+        if self._value is not NONE or self._cancelled:
+            return 1
+        else:
+            return 0
 
     def done(self):
         """
         Return True if the operation has finished, in a result or exception or cancelled, and False if not.
         """
-        if self._value is not NONE or self._cancelled:
+        if self.c_done():
             return True
         else:
             return False
@@ -318,12 +341,46 @@ cdef class Future:
             self._running = 0
 
             # Notify waiters and callbacks
-            self.set_exception(CancelledError()) 
+            self.set_exception(CancelledErrorCached) 
             
             return False
         else:
             self._running = 1
             return True
+
+    cdef c_result(self, timeout, int norecurse):
+        """
+        Return the operation's result, if any. If an exception was the result, re-raise it.
+        If it was cancelled, raises CancelledError, and if timeout is specified and not None,
+        and the specified time elapses without a result available, raises TimeoutError.
+        """
+        cdef object value
+        cdef ExceptionWrapper exc_value
+        
+        if self._value is not NONE:
+            value = self._value
+            if isinstance(value, ExceptionWrapper):
+                exc_value = <ExceptionWrapper>value
+                raise exc_value.value[0], exc_value.value[1], exc_value.value[2]
+            elif value is CacheMissError:
+                raise CacheMissErrorCached
+            else:
+                return value
+        elif self._cancelled:
+            raise CancelledErrorCached
+        else:
+            if timeout is not None and timeout == 0:
+                raise TimeoutErrorCached
+            else:
+                # Wait for it
+                if self._done_event is None:
+                    self._done_event = threading.Event()
+                if self._done_event.wait(timeout) and not norecurse:
+                    return self.c_result(0, 1)
+                elif self._cancelled:
+                    raise CancelledErrorCached
+                else:
+                    raise TimeoutErrorCached
 
     def result(self, timeout=None, norecurse=False):
         """
@@ -331,31 +388,7 @@ cdef class Future:
         If it was cancelled, raises CancelledError, and if timeout is specified and not None,
         and the specified time elapses without a result available, raises TimeoutError.
         """
-        cdef object value
-        
-        if self._value is not NONE:
-            value = self._value
-            if isinstance(value, ExceptionWrapper):
-                raise value.value[0], value.value[1], value.value[2]
-            elif value is CacheMissError:
-                raise CacheMissError()
-            else:
-                return value
-        elif self._cancelled:
-            raise CancelledError()
-        else:
-            if timeout is not None and timeout == 0:
-                raise TimeoutError()
-            else:
-                # Wait for it
-                if self._done_event is None:
-                    self._done_event = threading.Event()
-                if self._done_event.wait(timeout) and not norecurse:
-                    return self.result(0, norecurse=True)
-                elif self._cancelled:
-                    raise CancelledError()
-                else:
-                    raise TimeoutError()
+        return self.c_result(timeout, norecurse)
 
     def exception(self, timeout=None):
         """
@@ -365,20 +398,22 @@ cdef class Future:
         a result available, raises TimeoutError.
         """
         cdef object value
+        cdef ExceptionWrapper exc_value
         
         if self._value is not NONE:
             value = self._value
             if isinstance(value, ExceptionWrapper):
-                return value.value[1] or value.value[0]
+                exc_value = <ExceptionWrapper>value
+                return exc_value.value[1] or exc_value.value[0]
             elif value is CacheMissError:
                 return CacheMissError
             else:
                 return None
         elif self._cancelled:
-            raise CancelledError()
+            raise CancelledErrorCached
         else:
             try:
-                self.result()
+                self.c_result(timeout, 0)
                 return None
             except CancelledError:
                 raise

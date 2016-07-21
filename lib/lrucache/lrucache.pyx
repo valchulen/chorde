@@ -17,14 +17,12 @@ cdef extern from *:
 class CacheMissError(KeyError):
     """Error raised when a cache miss occurs"""
     pass
+cdef object CacheMissError_ = CacheMissError
 
 cdef class _node:
-    cdef unsigned int prio
-    cdef unsigned int index
-    cdef object key
-    cdef object value
+    # attributes in pxd
 
-    def __init__(_node self not None, unsigned int prio, unsigned int index, object key, object value):
+    def __cinit__(_node self not None, unsigned int prio, unsigned int index, object key, object value):
         self.prio = prio
         self.index = index
         self.key = key
@@ -68,14 +66,7 @@ cdef class LRUCache:
     not manual ones invoked with del, pop or clear.
     """
 
-    cdef int use_freelist
-    cdef unsigned int next_prio
-    cdef readonly unsigned int size
-    cdef readonly unsigned int touch_on_read
-    cdef list pqueue
-    cdef list freelist
-    cdef dict emap
-    cdef object eviction_callback
+    # attributes in pxd
 
     def __cinit__(LRUCache self, unsigned int size, unsigned int touch_on_read = 1, object eviction_callback = None,
             preallocate = True):
@@ -153,6 +144,8 @@ cdef class LRUCache:
                 rn = <_borrowed_node*>PyList_GET_ITEM(<void*>self.pqueue,r)
             elif l < sz:
                 ln = <_borrowed_node*>PyList_GET_ITEM(<void*>self.pqueue,l)
+            else:
+                break # just for safetey, should never happen
 
             if r < sz and rn.prio < ln.prio:
                 sw = r
@@ -223,7 +216,7 @@ cdef class LRUCache:
                 node = self.freelist.pop()
                 node.attach(self.next_prio, 0, key, val)
             else:
-                node = _node(self.next_prio, 0, key, val) # atomic barrier (might release GIL)
+                node = _node.__new__(_node, self.next_prio, 0, key, val) # atomic barrier (might release GIL)
             node.index = <unsigned int>PyList_GET_SIZE(<void*>self.pqueue) # from now on, atomic
             self.pqueue.append(node)
             self.emap[key] = node
@@ -235,10 +228,10 @@ cdef class LRUCache:
     cdef object c__getitem__(LRUCache self, key):
         cdef _node node
 
-        if key not in self.emap:
-            raise CacheMissError(key)
+        node = self.emap.get(key)
+        if node is None:
+            raise CacheMissError_(key)
         else:
-            node = self.emap[key]
             if self.touch_on_read:
                 self.c_decrease(node)
             return node.value
@@ -249,10 +242,10 @@ cdef class LRUCache:
     cdef int c__delitem__(LRUCache self, key) except -1:
         cdef _node node, node2
 
-        if key not in self.emap:
-            raise CacheMissError(key)
+        node = self.emap.get(key)
+        if node is None:
+            raise CacheMissError_(key)
         else:
-            node = self.emap[key]
             self.c_decrease(node)
 
             node2 = self.pqueue[-1]
@@ -274,31 +267,34 @@ cdef class LRUCache:
 
     def cas(LRUCache self not None, object key, object oldvalue, object newvalue):
         cdef _node node
-        
-        if key in self.emap:
-            node = self.emap[key]
+
+        node = self.emap.get(key)
+        if node is not None:
             if node.value is oldvalue:
                 node.value = newvalue
                 self.c_decrease(node)
             elif self.touch_on_read:
                 self.c_decrease(node)
 
-    def get(LRUCache self not None, object key, object deflt = None):
+    cdef c_get(LRUCache self, object key, object deflt):
         cdef _node node
 
-        if key not in self.emap:
+        node = self.emap.get(key)
+        if node is None:
             return deflt
         else:
-            node = self.emap[key]
             self.c_decrease(node)
             return node.value
     
-    def pop(LRUCache self not None, object key, object deflt = CacheMissError):
+    def get(LRUCache self not None, object key, object deflt = None):
+        return self.c_get(key, deflt)
+    
+    def pop(LRUCache self not None, object key, object deflt = CacheMissError_):
         cdef object rv
 
         if key not in self.emap:
-            if deflt is CacheMissError:
-                raise CacheMissError(key)
+            if deflt is CacheMissError_:
+                raise CacheMissError_(key)
             else:
                 rv = deflt
         else:
@@ -311,13 +307,14 @@ cdef class LRUCache:
         cdef _node node
         cdef object rv
 
-        if key not in self.emap:
+        node = self.emap.get(key)
+        if node is None:
             self.c__setitem__(key, deflt)
             return deflt
         else:
-            node = self.emap[key]
             rv = node.value
-            self.c_decrease(node)
+            if self.touch_on_read:
+                self.c_decrease(node)
             return rv
 
     def update(LRUCache self not None, object iterOrDict):
@@ -346,7 +343,8 @@ cdef class LRUCache:
     
     def defrag(LRUCache self not None):
         # Hold onto old lists to prevent decref from freeing them before we're done
-        cdef object pqueue, emap
+        cdef list pqueue
+        cdef dict emap
         cdef object opqueue, oemap
 
         if self.use_freelist:

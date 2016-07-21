@@ -24,7 +24,8 @@
     ".ini", 
     ".pyx", 
     ".pxi", 
-    ".rst"
+    ".rst", 
+    ".pxd"
   ], 
   "project-type": "", 
   "postExecScript": "", 
