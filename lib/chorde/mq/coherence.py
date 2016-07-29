@@ -668,7 +668,7 @@ class CoherenceManager(object):
 
         # Check for recent notifications
         recent = self.recent_done.get(key)
-        if recent is not None and (time.time() - recent) < (poll_interval * 0.001):
+        if recent is not None and (time.time() - recent) < (poll_interval * 1.01):
             # don't wait then
             return True
         
@@ -702,7 +702,7 @@ class CoherenceManager(object):
             while timeout is None or timeout > 0:
                 # Check for recent self-notifications
                 recent = self.recent_done.get(key)
-                if recent is not None and (time.time() - recent) < (poll_interval * 0.001):
+                if recent is not None and (time.time() - recent) < (poll_interval * 1.01):
                     # don't wait then
                     success = True
                     break
