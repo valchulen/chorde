@@ -128,7 +128,7 @@ class CachedDecoratorTest(DecoratorTestCase):
 
     def test_promote_callback(self):
         # If a namespace is provided, should create the key with that
-        namespace = 'my_namespace'
+        namespace = 'my_namespace2'
         promotions = []
         @self.decorator(5, namespace=namespace)
         def get_random():
