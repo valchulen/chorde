@@ -711,6 +711,12 @@ class CoherenceManager(object):
                     break
                 elif timeout is not None:
                     timeout -= poll_interval
+                # Re-check for recent self-notifications
+                recent = self.recent_done.get(key)
+                if recent is not None and (time.time() - recent) < (poll_interval * 1.01):
+                    # don't wait then
+                    success = True
+                    break
                 # Request confirmation of pending status
                 if not self.query_pending(key, lambda:1, poll_interval, False):
                     success = True
