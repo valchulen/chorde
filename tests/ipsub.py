@@ -234,7 +234,7 @@ class IPSubTest(unittest.TestCase):
         time.sleep(0.1)
         self.assertEqual(len(updates), 2)
         self.assertEqual(len(replies), 2)
-        self.assertEqual([r[-1].bytes for r in replies], updates)
+        self.assertEqual([r[-1] for r in replies], updates)
 
 
 def _check_start_ipsub(port1, port2):

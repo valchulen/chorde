@@ -109,23 +109,6 @@ class BrokerReply(object):
 
 class BaseIPSub(object):
     # Implementations are free to provide alternative versions as static/classmethods
-    #
-    # The following callables can be used to support zero-copy of message payloads
-    # Their defaults work with frames that implement the buffer interphase (buffers, bytearray, byte strings)
-    #
-    # _getbuffer: given a frame of the payload, extract a buffer with its contents 
-    # _getbytes: given a frame of the payload, extract a byte string with its contents
-    # _getslice: given a frame of the payload, extract a byte string with a slice of its contents
-    # _getprefix: given the first frame of the payload, extract a byte string with its contents
-    # _flen: given a frame of the payload, report its byte length
-    _getbuffer = buffer
-    _getbytes = bytes
-    @classmethod
-    def _getslice(cls, x, start, end):
-        cls.bytes(cls.buffer(x, start, end))
-    _getprefix = bytes
-    _flen = len
-    
     def __init__(self):
         self.logger = logging.getLogger('chorde.ipsub')
         
@@ -237,7 +220,7 @@ class BaseIPSub(object):
             return
         
         if event in IDENTITY_EVENTS and len(update) > 1:
-            identity = self._getbytes(update[1])
+            identity = update[1]
         else:
             identity = None
 
@@ -247,10 +230,10 @@ class BaseIPSub(object):
         if not self._ndebug:
             if identity is None and event != EVENT_UPDATE_SENT:
                 prefix = None
-            elif self._flen(update[0]) < MAX_PREFIX:
-                prefix = self._getprefix(update[0])
+            elif len(update[0]) < MAX_PREFIX:
+                prefix = update[0]
             else:
-                prefix = self._getslice(update[0], 0, MAX_PREFIX)
+                prefix = update[0][:MAX_PREFIX]
             if identity is None or identity == self.identity:
                 self.logger.debug("IPSub: (from %r) %s (prefix %r)", self.identity, EVENT_NAMES[event], prefix)
             else:
@@ -263,10 +246,10 @@ class BaseIPSub(object):
         if listeners:
             if identity is None:
                 prefix = None
-            elif self._flen(update[0]) < MAX_PREFIX:
-                prefix = self._getprefix(update[0])
+            elif len(update[0]) < MAX_PREFIX:
+                prefix = update[0]
             else:
-                prefix = self._getslice(update[0], 0, MAX_PREFIX)
+                prefix = update[0][:MAX_PREFIX]
             called = set()
             rrv = rv = None
             for cb_prefix, callbacks in listeners.items():
@@ -310,36 +293,36 @@ class BaseIPSub(object):
         """
         raise NotImplementedError
         
-    def publish_json(self, prefix, payload, copy = False, timeout = None):
+    def publish_json(self, prefix, payload, timeout = None):
         """
         Publish the message using the 'json' encoding. See publish.
         """
-        self.publish(prefix, ['json',ENCODINGS['json'](payload)], copy, timeout)
+        self.publish(prefix, ['json',ENCODINGS['json'](payload)], timeout)
 
-    def publish_pyobj(self, prefix, payload, copy = False, timeout = None):
+    def publish_pyobj(self, prefix, payload, timeout = None):
         """
         Publish the message using the 'pyobj' encoding. See publish.
         """
-        self.publish(prefix, ['pyobj',ENCODINGS['pyobj'](payload)], copy, timeout)
+        self.publish(prefix, ['pyobj',ENCODINGS['pyobj'](payload)], timeout)
 
-    def publish_bytes(self, prefix, payload, copy = False, timeout = None):
+    def publish_bytes(self, prefix, payload, timeout = None):
         """
         Publish the message using the 'bytes' encoding. See publish.
         """
-        self.publish(prefix, ['bytes',ENCODINGS['bytes'](payload)], copy, timeout)
+        self.publish(prefix, ['bytes',ENCODINGS['bytes'](payload)], timeout)
 
-    def publish_unicode(self, prefix, payload, copy = False, timeout = None):
+    def publish_unicode(self, prefix, payload, timeout = None):
         """
         Publish the message using the 'utf8' encoding. See publish.
         """
-        self.publish(prefix, ['utf8',ENCODINGS['utf8'](payload)], copy, timeout)
+        self.publish(prefix, ['utf8',ENCODINGS['utf8'](payload)], timeout)
 
-    def publish_encode(self, prefix, encoding, payload, copy = False, timeout = None):
+    def publish_encode(self, prefix, encoding, payload, timeout = None):
         """
         Publish the message using a custom encoding (must be registered with register_encoding).
         See publish, register_encoding.
         """
-        self.publish(prefix, self.encode_payload(encoding, payload), copy, timeout)
+        self.publish(prefix, self.encode_payload(encoding, payload), timeout)
 
     @staticmethod
     def register_encoding(name, encoder, decoder, stream_decoder):
@@ -392,11 +375,9 @@ class BaseIPSub(object):
 
     @classmethod
     def decode_payload(cls, payload):
-        fbuffer = cls._getbuffer
-        encoding = payload[-2].bytes
+        encoding = payload[-2]
         payload = payload[-1]
-        payload = cStringIO.StringIO(fbuffer(payload))
-        return STREAMDECODINGS[encoding](payload)
+        return DECODINGS[encoding](payload)
 
     def publish(self, prefix, payload, copy = False, timeout = None):
         """

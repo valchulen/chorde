@@ -19,8 +19,6 @@ except ImportError:
 from chorde.clients import CacheMissError
 from chorde.clients import inproc
 
-from .compat import fbuffer, bbytes
-
 P2P_HWM = 10
 INPROC_HWM = 1 # Just for wakeup signals
 PENDING_TIMEOUT = 10.0
@@ -453,12 +451,12 @@ class CoherenceManager(object):
         ctx = ipsub_.context
         waiter, waiter_id = _mkwaiter(ctx, zmq.PAIR, "qpw")
         try:
-            def signaler(prefix, event, message, req = map(fbuffer,req)):
-                if map(fbuffer,message[0][2:]) == req:
+            def signaler(prefix, event, message, req = req):
+                if message[0][2:] == req:
                     # This is our message
                     signaler = ctx.socket(zmq.PAIR)
                     signaler.connect(waiter_id)
-                    signaler.send(message[1][-1], copy = False)
+                    signaler.send(message[1][-1])
                     signaler.close()
                     return False
                 else:
@@ -476,7 +474,7 @@ class CoherenceManager(object):
                 waiter.poll(timeout/4)
             if waiter.poll(1):
                 try:
-                    rv = json.load(cStringIO.StringIO(fbuffer(waiter.recv(copy=False))))
+                    rv = json.loads(waiter.recv())
                 except ValueError:
                     # It happens here that the IPSub returns its OK reply, when
                     # there are no registered brokers on our namespace. Means it's up to us.

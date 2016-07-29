@@ -6,12 +6,10 @@ import logging
 import Queue
 import threading
 import thread
-import operator
 import random
 from abc import ABCMeta, abstractmethod
 
 from .base import *
-from ..compat import fbuffer, bbytes
 
 __ALL__ = (
     'ZMQIPSub',
@@ -43,11 +41,6 @@ class BootstrapNow(Exception):
     pass
 
 class ZMQIPSub(BaseIPSub):
-    _getbuffer = staticmethod(fbuffer)
-    _getbytes = operator.attrgetter('bytes')
-    _getslice = staticmethod(lambda x, start, end, fbuffer=fbuffer, bbytes=bbytes : bbytes(fbuffer(x, start, end)))
-    _getprefix = staticmethod(lambda x : getattr(x, 'bytes', x) )
-            
     class FSM(object):
         class State(object):
             __metaclass__ = ABCMeta
@@ -131,7 +124,6 @@ class ZMQIPSub(BaseIPSub):
                 POLLOUT = zmq.POLLOUT
                 POLLIN = zmq.POLLIN
                 HEARTBEAT_ = FRAME_HEARTBEAT
-                F = False
                 poller_poll = poller.poll
                 poller_register = poller.register
                 pull_recv_multipart = pull.recv_multipart
@@ -145,8 +137,6 @@ class ZMQIPSub(BaseIPSub):
                 dict_ = dict
                 random_ = random.random
                 tic_count = 100
-                buffer_ = buffer
-                fbuffer_ = fbuffer
                 hb_period_base = owner.heartbeat_avg_period * 2
                 hb_period_spread = hb_period_base * 2
                 hb_timeout = owner.heartbeat_push_timeout
@@ -197,11 +187,11 @@ class ZMQIPSub(BaseIPSub):
                         # Then put incoming stuff on the queue
                         for socket, what in activity.iteritems():
                             if socket is pull:
-                                pack = pull_recv_multipart(copy = F)
+                                pack = pull_recv_multipart()
                                 if len_(pack) > 1:
                                     # ^ else Wakeup call, ignore
                                     put_nowait(pack)
-                                elif fbuffer_(pack[0]) == buffer_("tic"):
+                                elif pack[0] == "tic":
                                     owner._tic()
                                     tic_count = 100
                                 del pack
@@ -246,7 +236,6 @@ class ZMQIPSub(BaseIPSub):
                 POLLIN = zmq.POLLIN
                 HEARTBEAT_ = FRAME_HEARTBEAT
                 T = True
-                F = False
                 poller_poll = poller.poll
                 poller_register = poller.register
                 poller_unregister = poller.unregister
@@ -259,8 +248,6 @@ class ZMQIPSub(BaseIPSub):
                 dict_ = dict
                 random_ = random.random
                 tic_count = 100
-                buffer_ = buffer
-                fbuffer_ = fbuffer
                 hb_period_base = owner.heartbeat_avg_period / 2
                 hb_period_spread = hb_period_base * 2
 
@@ -290,11 +277,11 @@ class ZMQIPSub(BaseIPSub):
                         # Then put incoming stuff on the queue
                         for socket, what in activity.iteritems():
                             if socket is pull:
-                                pack = pull_recv_multipart(copy = F)
+                                pack = pull_recv_multipart()
                                 if len_(pack) > 1:
                                     # ^ else Wakeup call, ignore
                                     put_nowait(pack)
-                                elif fbuffer_(pack[0]) == buffer_("tic"):
+                                elif pack[0] == "tic":
                                     owner._tic()
                                     tic_count = 100
                                 del pack
@@ -518,7 +505,7 @@ class ZMQIPSub(BaseIPSub):
             # So what...
             return
         
-        socket.send_multipart(update, copy = False)
+        socket.send_multipart(update)
 
         if not noreply:
             # Remember, we'll wait for a reply
@@ -528,7 +515,7 @@ class ZMQIPSub(BaseIPSub):
         self._notify_all(EVENT_UPDATE_SENT, update)
 
     def _recv_update(self, socket):
-        update = socket.recv_multipart(copy = False)
+        update = socket.recv_multipart()
 
         if not self._check_heartbeat(update):
             # Notify listeners
@@ -538,11 +525,11 @@ class ZMQIPSub(BaseIPSub):
 
     def _recv_update_reply(self, socket):
         # Check format without copying, assertion failures result in re-bootstrapping
-        reply = socket.recv_multipart(copy = False)
+        reply = socket.recv_multipart()
 
         if ( MIN_UPDATE_REPLY_FRAMES <= len(reply) <= MAX_UPDATE_REPLY_FRAMES
                  and len(reply[0]) <= MAX_UPDATE_REPLY_FIRSTFRAME ):
-             reply_code = reply[0].bytes
+             reply_code = reply[0]
              if reply_code not in FRAME_VALID_UPDATE_REPLIES:
                  # Must be a reply payload, which implicitly means OK
                  reply_code = FRAME_UPDATE_OK
@@ -556,16 +543,15 @@ class ZMQIPSub(BaseIPSub):
     def _check_heartbeat(self, update):
         HEARTBEAT_ = FRAME_HEARTBEAT
         
-        # Fast, non-copying check for a heartbeat frame
+        # check for a heartbeat frame
         return (
             len(update) == 1 
-            and (len(update[0])) == len(HEARTBEAT_) 
-            and update[0].bytes == HEARTBEAT_
+            and update[0] == HEARTBEAT_
         )
 
     def _handle_update_request(self, socket, 
             isinstance=isinstance, BrokerReply=BrokerReply):
-        update = socket.recv_multipart(copy = False)
+        update = socket.recv_multipart()
         if self._check_heartbeat(update):
             # Got a heartbeat, reply in kind
             socket.send(FRAME_HEARTBEAT)
@@ -581,13 +567,13 @@ class ZMQIPSub(BaseIPSub):
             # Notify listeners
             rv = self._notify_all(EVENT_INCOMING_UPDATE, update)
             if isinstance(rv, BrokerReply):
-                socket.send_multipart(rv.reply, copy = False)
+                socket.send_multipart(rv.reply)
             elif dropped:
                 socket.send(FRAME_UPDATE_DROPPED)
             else:
                 socket.send(FRAME_UPDATE_OK)
 
-    def publish(self, prefix, payload, copy = False, timeout = None, _ident = thread.get_ident):
+    def publish(self, prefix, payload, timeout = None, _ident = thread.get_ident):
         parts = [ prefix, self.identity ] + payload
         if _ident() == self.fsm_thread_id:
             try:
@@ -599,7 +585,7 @@ class ZMQIPSub(BaseIPSub):
             if timeout is None:
                 timeout = self.heartbeat_push_timeout
             if push.poll(timeout, zmq.POLLOUT):
-                push.send_multipart(parts, copy = copy)
+                push.send_multipart(parts)
             else:
                 self.logger.error("While handling IPSub publication: Push socket timeout, update lost")
 
