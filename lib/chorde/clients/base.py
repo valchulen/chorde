@@ -408,10 +408,10 @@ class NamespaceWrapper(DecoratedWrapper):
     def contains(self, key, ttl = None, **kw):
         return self.client.contains(self._key_decorator(key), ttl, **kw)
 
-    def clear(self):
+    def clear(self, revmark_ttl=0):
         # Cannot clear a shared client, so, instead, switch revisions
         self.revision += 1
-        self.client.put((self.namespace, 'REVMARK'), self.revision, 3600)
+        self.client.put((self.namespace, 'REVMARK'), self.revision, revmark_ttl)
 
     def __str__(self):
         return "<%s namespace %r/%r on %r>" % (self.__class__.__name__, self.namespace, self.revision, self.client)
