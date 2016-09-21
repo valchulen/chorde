@@ -15,6 +15,8 @@ except ImportError:
         pass
 
 class NONE: pass
+# 100 years ttl
+INFINITY =  3600 * 24 * 30 * 12 * 100
 
 class BaseCacheClient(object):
     """
@@ -389,7 +391,7 @@ class NamespaceWrapper(DecoratedWrapper):
     A namespace wrapper client will decorate keys with a namespace, making it possible
     to share one client among many sub-clients without key collisions.
     """
-    def __init__(self, namespace, client, revmark_ttl=0):
+    def __init__(self, namespace, client, revmark_ttl=INFINITY):
         super(NamespaceWrapper, self).__init__(client)
         self.namespace = namespace
         self.revision = client.get((namespace,'REVMARK'), 0)
