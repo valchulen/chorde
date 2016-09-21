@@ -389,11 +389,12 @@ class NamespaceWrapper(DecoratedWrapper):
     A namespace wrapper client will decorate keys with a namespace, making it possible
     to share one client among many sub-clients without key collisions.
     """
-    def __init__(self, namespace, client):
+    def __init__(self, namespace, client, revmark_ttl=0):
         super(NamespaceWrapper, self).__init__(client)
         self.namespace = namespace
         self.revision = client.get((namespace,'REVMARK'), 0)
         self.key_undecorator = operator.itemgetter(2)
+        self.revmark_ttl = revmark_ttl
 
     key_decorator = property(
         operator.attrgetter('_key_decorator'),
@@ -408,10 +409,10 @@ class NamespaceWrapper(DecoratedWrapper):
     def contains(self, key, ttl = None, **kw):
         return self.client.contains(self._key_decorator(key), ttl, **kw)
 
-    def clear(self, revmark_ttl=0):
+    def clear(self):
         # Cannot clear a shared client, so, instead, switch revisions
         self.revision += 1
-        self.client.put((self.namespace, 'REVMARK'), self.revision, revmark_ttl)
+        self.client.put((self.namespace, 'REVMARK'), self.revision, self.revmark_ttl)
 
     def __str__(self):
         return "<%s namespace %r/%r on %r>" % (self.__class__.__name__, self.namespace, self.revision, self.client)
