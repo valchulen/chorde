@@ -129,7 +129,8 @@ class DynamicResolvingClient(object):
             # Generate dynamic list
             servers = []
             static_addresses = self._static_client_addresses or set()
-            expiration = time.time() + 60
+            dyn_expiration = time.time() + 60
+            expiration = dyn_expiration + 86400
             allstatic = True if self._static_client_addresses is None else False
             for entry in self._client_addresses:
                 if entry in static_addresses:
@@ -139,18 +140,21 @@ class DynamicResolvingClient(object):
                         # Custom callable, just call it
                         sentries = [ x for e in entry() for x in self.expand_entry(e) ]
                         dynamic = True
+                        expiration = min(expiration, dyn_expiration)
                     else:
                         sentries = self.expand_entry(entry)
                         dynamic = False
                         if set(sentries) != set([entry]):
                             # expand_entry made it nonstatic
                             allstatic = False
+                            expiration = min(expiration, dyn_expiration)
 
                     for entry in sentries:
                         host = self.extract_host(entry)
 
                         if entry and host is not None:
-                            if list(hosts_dnsquery(host, 'A')):
+                            addrs = list(hosts_dnsquery(host, 'A'))
+                            if addrs:
                                 # Locally defined host, don't check CNAME
                                 addrs = []
                             else:
