@@ -137,15 +137,18 @@ class DynamicResolvingClient(object):
                 else:
                     if callable(entry):
                         # Custom callable, just call it
-                        sentries = entry()
+                        sentries = [ x for e in entry() for x in self.expand_entry(e) ]
                         dynamic = True
                     else:
                         sentries = self.expand_entry(entry)
                         dynamic = False
+                        if set(sentries) != set([entry]):
+                            # expand_entry made it nonstatic
+                            allstatic = False
 
                     for entry in sentries:
                         host = self.extract_host(entry)
-    
+
                         if entry and host is not None:
                             if list(hosts_dnsquery(host, 'A')):
                                 # Locally defined host, don't check CNAME
