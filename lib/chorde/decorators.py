@@ -570,8 +570,12 @@ def cached(client, ttl,
             rv, rvttl = client.getTtl(callkey, __NONE, **get_kwargs)
 
             if (rv is __NONE or rvttl < eff_async_ttl) and not client.contains(callkey, eff_async_ttl):
-                if renew_time is not None and rv is not __NONE:
-                    nclient.renew(callkey, eff_async_ttl + renew_time)
+                if renew_time is not None:
+                    if rv is not __NONE:
+                        nclient.renew(callkey, eff_async_ttl + renew_time)
+                    elif placeholder_value_fn_cell:
+                        placeholder = placeholder_value_fn_cell[0](*p, **kw)
+                        nclient.add(callkey, placeholder, eff_async_ttl + renew_time)
                 # Launch background update
                 _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
             elif rv is not __NONE:
@@ -634,6 +638,9 @@ def cached(client, ttl,
                                 nclient.renew(callkey, eff_async_ttl + renew_time)
                             _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_miss():
+                        if renew_time is not None and placeholder_value_fn_cell:
+                            placeholder = placeholder_value_fn_cell[0](*p, **kw)
+                            nclient.add(callkey, placeholder, eff_async_ttl + renew_time)
                         _fput_deferred(frv, client, af, callkey, eff_ttl(), *p, **kw)
                     def on_exc(exc_info):
                         stats.errors += 1
@@ -653,6 +660,9 @@ def cached(client, ttl,
                             # just promote
                             nclient.promote(callkey, ttl_skip = eff_async_ttl, **get_kwargs)
                     def on_miss():  # lint:ok
+                        if renew_time is not None and placeholder_value_fn_cell:
+                            placeholder = placeholder_value_fn_cell[0](*p, **kw)
+                            nclient.add(callkey, placeholder, eff_async_ttl + renew_time)
                         _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
@@ -730,6 +740,9 @@ def cached(client, ttl,
                     def on_miss():
                         # Ok, real miss, report it and start the computation
                         frv.miss()
+                        if renew_time is not None and placeholder_value_fn_cell:
+                            placeholder = placeholder_value_fn_cell[0](*p, **kw)
+                            nclient.add(callkey, placeholder, eff_async_ttl + renew_time)
                         _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_exc(exc_info):
                         stats.errors += 1
@@ -753,6 +766,9 @@ def cached(client, ttl,
                             # just promote
                             nclient.promote(callkey, ttl_skip = eff_async_ttl, **get_kwargs)
                     def on_miss():  # lint:ok
+                        if renew_time is not None and placeholder_value_fn_cell:
+                            placeholder = placeholder_value_fn_cell[0](*p, **kw)
+                            nclient.add(callkey, placeholder, eff_async_ttl + renew_time)
                         _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
                     def on_exc(exc_info):  # lint:ok
                         stats.errors += 1
@@ -1039,6 +1055,10 @@ def cached(client, ttl,
         def on_value_f(callback):
             value_callbacks.append(callback)
 
+        placeholder_value_fn_cell = []
+        def placeholder_value_f(fn):
+            placeholder_value_fn_cell[:] = [fn]
+
         fclient = []
         def future_f(initialize = True):
             if _initialize and initialize:
@@ -1090,6 +1110,7 @@ def cached(client, ttl,
             async_cached_f._value_callbacks = value_callbacks
             async_cached_f.on_promote = on_promote_f
             async_cached_f.on_value = on_value_f
+            async_cached_f.placeholder_value = placeholder_value_f
             cached_f.async = async_f
             cached_f.lazy = lazy_cached_f
             cached_f.refresh = refresh_f
@@ -1118,6 +1139,7 @@ def cached(client, ttl,
         cached_f._value_callbacks = value_callbacks
         cached_f.on_promote = on_promote_f
         cached_f.on_value = on_value_f
+        cached_f.placeholder_value = placeholder_value_f
         
         future_cached_f.clear = lambda : fclient[0].clear()
         future_cached_f.client = None
@@ -1137,6 +1159,7 @@ def cached(client, ttl,
         future_cached_f._value_callbacks = value_callbacks
         future_cached_f.on_promote = on_promote_f
         future_cached_f.on_value = on_value_f
+        future_cached_f.placeholder_value = placeholder_value_f
 
         decorated_functions.add(cached_f)
         return cached_f
