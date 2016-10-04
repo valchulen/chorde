@@ -186,6 +186,15 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         
         self.assertTrue(client.contains(bigkey, 1))
 
+    def testTTLTooBig(self):
+        client = self.client
+        k = "abra cadabra"
+        # 100 years from 1970
+        client.put(k, "patadecabra3", 86400 * 365 * 100)
+        self.assertEqual(client.get(k), "patadecabra3")
+
+
+
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
 
