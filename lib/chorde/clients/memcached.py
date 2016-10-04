@@ -18,6 +18,8 @@ from .inproc import Cache
 _RENEW = object()
 
 STATS_CACHE_TIME = 1
+# memcache doesn't allow TTL bigger than 2038
+MAX_MEMCACHE_TTL = 86400 * 365 * 67
 
 try:
     import cPickle
@@ -1162,8 +1164,8 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         # set_multi all pages in one roundtrip
         short_key,exact = self.shorten_key(key)
         pages = dict([(page,data) for page,data in enumerate(self.encode_pages(
-            short_key, key, ttl+time.time(), value))])
-        self.client.set_multi(pages, ttl, key_prefix=short_key+"|")
+            short_key, key, min(ttl+time.time(), MAX_MEMCACHE_TTL), value))])
+        self.client.set_multi(pages, min(ttl, MAX_MEMCACHE_TTL), key_prefix=short_key+"|")
         
         try:
             del self._failfast_cache[key]
@@ -1394,7 +1396,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
 
     def _enqueue_put(self, key, value, ttl):
         # Atomic insert
-        value = value, ttl
+        value = value, min(ttl, MAX_MEMCACHE_TTL)
         self.queueset[key] = value
         self.workev.set()
 
