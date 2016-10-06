@@ -187,11 +187,13 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         self.assertTrue(client.contains(bigkey, 1))
 
     def testTTLTooBig(self):
+        from chorde.clients.memcached import MAX_MEMCACHE_TTL 
         client = self.client
         k = "abra cadabra"
-        # 100 years from 1970
-        client.put(k, "patadecabra3", 86400 * 365 * 100)
+        client.put(k, "patadecabra3", MAX_MEMCACHE_TTL * 2)
         self.assertEqual(client.get(k), "patadecabra3")
+        ttl = int(client.getTtl(k)[1])
+        self.assertEqual(ttl, int(MAX_MEMCACHE_TTL - time.time()))
 
 
 
