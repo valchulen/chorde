@@ -19,7 +19,7 @@ _RENEW = object()
 
 STATS_CACHE_TIME = 1
 # memcache doesn't allow TTL bigger than 2038
-MAX_MEMCACHE_TTL = 86400 * 365 * 67
+MAX_MEMCACHE_TTL = 0x7FFFFFFF
 
 try:
     import cPickle
@@ -1396,7 +1396,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
 
     def _enqueue_put(self, key, value, ttl):
         # Atomic insert
-        value = value, min(ttl, MAX_MEMCACHE_TTL)
+        value = value, ttl
         self.queueset[key] = value
         self.workev.set()
 
@@ -1470,6 +1470,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                 if plan:
                     for ttl, batch in plan.iteritems():
                         try:
+                            ttl = min(ttl, MAX_MEMCACHE_TTL)
                             client.set_multi(batch, ttl)
                         except:
                             logging.error("Exception in background writer", exc_info = True)
@@ -1481,6 +1482,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                             nttl = ttl + quicknow
                             if kttl < nttl:
                                 value = encode(key, nttl, value)
+                                ttl = min(ttl, MAX_MEMCACHE_TTL)
                                 client.cas(key, value, ttl)
                 
                 # Let us be suicidal
