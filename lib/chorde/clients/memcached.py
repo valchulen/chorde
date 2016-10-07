@@ -18,6 +18,8 @@ from .inproc import Cache
 _RENEW = object()
 
 STATS_CACHE_TIME = 1
+# memcache doesn't allow TTL bigger than 2038
+MAX_MEMCACHE_TTL = 0x7FFFFFFF - 1
 
 try:
     import cPickle
@@ -1163,7 +1165,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         short_key,exact = self.shorten_key(key)
         pages = dict([(page,data) for page,data in enumerate(self.encode_pages(
             short_key, key, ttl+time.time(), value))])
-        self.client.set_multi(pages, ttl, key_prefix=short_key+"|")
+        self.client.set_multi(pages, min(ttl, MAX_MEMCACHE_TTL), key_prefix=short_key+"|")
         
         try:
             del self._failfast_cache[key]
@@ -1468,6 +1470,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                 if plan:
                     for ttl, batch in plan.iteritems():
                         try:
+                            ttl = min(ttl, MAX_MEMCACHE_TTL)
                             client.set_multi(batch, ttl)
                         except:
                             logging.error("Exception in background writer", exc_info = True)
@@ -1479,6 +1482,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                             nttl = ttl + quicknow
                             if kttl < nttl:
                                 value = encode(key, nttl, value)
+                                ttl = min(ttl, MAX_MEMCACHE_TTL)
                                 client.cas(key, value, ttl)
                 
                 # Let us be suicidal

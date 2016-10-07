@@ -186,6 +186,16 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         
         self.assertTrue(client.contains(bigkey, 1))
 
+    def testTTLTooBig(self):
+        from chorde.clients.memcached import MAX_MEMCACHE_TTL 
+        client = self.client
+        k = "abra cadabra"
+        client.put(k, "patadecabra3", MAX_MEMCACHE_TTL * 2)
+        self.assertEqual(client.get(k), "patadecabra3")
+        self.assertTrue(MAX_MEMCACHE_TTL * 2 - 1 <= client.getTtl(k)[1] <= MAX_MEMCACHE_TTL * 2)
+
+
+
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
 
