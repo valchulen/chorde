@@ -192,8 +192,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         k = "abra cadabra"
         client.put(k, "patadecabra3", MAX_MEMCACHE_TTL * 2)
         self.assertEqual(client.get(k), "patadecabra3")
-        ttl = int(client.getTtl(k)[1])
-        self.assertEqual(ttl, int(MAX_MEMCACHE_TTL - time.time()))
+        self.assertTrue(MAX_MEMCACHE_TTL * 2 - 1 <= client.getTtl(k)[1] <= MAX_MEMCACHE_TTL * 2)
 
 
 
