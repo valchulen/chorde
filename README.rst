@@ -7,6 +7,16 @@ Dependencies:
 * dnspython  *(for dynamic dns-based load-balancing of MemcachedClient)*
 * cython or pyrex *(for optimizations in InprocCacheClient)*
 
+Optional features
+=================
+
+When declaring dependencies in your project, you can reference the following optional features:
+
+* mq *(everything under chorde.mq, mostly pulls pyzmq)*
+* shmem *(shared memory utils, needed for optimized files cache clients)*
+* memcache
+* elasticache
+
 Basic Usage:
 ============
 
