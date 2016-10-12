@@ -427,6 +427,54 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         val = get_random()
         self.assertEquals(get_random.future().peek().result(), val)
 
+    def test_future_lazy_placeholder(self):
+        # Should start calculating the value in background
+        ev = threading.Event()
+        ev2 = threading.Event()
+        @cached(self.client, ttl=50, 
+            future_sync_check=True, async_lazy_recheck=True,
+            renew_time = 20)
+        def get_nain():
+            ev.wait(5)
+            return 9
+        @get_nain.placeholder_value
+        def nain_minus_one():
+            ev2.set()
+            return 8
+        rv = get_nain.future().lazy()
+        self.assertRaises(CacheMissError, rv.result)
+        ev2.wait(1)
+        time.sleep(0.1) # the even is the function call, let the write happen
+        rv2 = get_nain.future().lazy()
+        self.assertEquals(rv2.result(5), 8)
+        ev.set()
+        time.sleep(0.1) # the even is the function call, let the write happen
+        rv = get_nain.future().lazy()
+        self.assertEquals(rv.result(5), 9)
+
+    def test_future_placeholder(self):
+        # Should start calculating the value in background
+        ev = threading.Event()
+        ev2 = threading.Event()
+        @cached(self.client, ttl=50, 
+            future_sync_check=True, async_lazy_recheck=True,
+            renew_time = 20)
+        def get_nain():
+            ev.wait(5)
+            return 9
+        @get_nain.placeholder_value
+        def nain_minus_one():
+            ev2.set()
+            return 8
+        rv = get_nain.future()()
+        self.assertFalse(rv.done())
+        ev2.wait(1)
+        time.sleep(0.1) # the even is the function call, let the write happen
+        rv2 = get_nain.future()()
+        self.assertEquals(rv2.result(5), 8)
+        ev.set()
+        self.assertEquals(rv.result(5), 9)
+
     def test_future_refresh(self):
         # Should refresh the cache value
         @cached(self.client, ttl=10)
