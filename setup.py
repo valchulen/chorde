@@ -67,7 +67,7 @@ setup(
   test_suite = 'tests',
   
   classifiers=[
-            "Development Status :: 1 - Planning",
+            "Development Status :: 4 - Beta",
             "Intended Audience :: Developers",
             "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
             "Programming Language :: Python",
