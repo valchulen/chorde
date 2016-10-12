@@ -22,6 +22,29 @@ VERSION = "0.1"
 with open(os.path.join(os.path.dirname(__file__), 'README.rst')) as readme_file:
     readme = readme_file.read()
 
+import re
+import os.path
+_extras_requirements = [
+    ( re.compile(r'pyzmq'), ['mq'] ),
+    ( re.compile(r'numpy'), ['shmem'] ),
+    ( re.compile(r'memcache'), ['memcache','elasticache'] ),
+    ( re.compile(r'dnspython'), ['memcache','elasticache'] ),
+]
+with open(os.path.join(os.path.dirname(__file__), 'requirements.txt')) as requirements_file:
+    all_requirements = list(filter(bool, [ r.strip() for r in requirements_file ]))
+# Compute extras_requires and main requirements
+requirements = []
+extras_requirements = {}
+for req in all_requirements:
+    isbase = True
+    for pat, extnames in _extras_requirements:
+        if pat.match(req):
+            isbase = False
+            for extname in extnames:
+                extras_requirements.setdefault(extname, []).append(req)
+    if isbase:
+        requirements.append(req)
+
 extra = {}
 
 packages = [
@@ -65,6 +88,9 @@ setup(
   
   tests_require = 'nose',
   test_suite = 'tests',
+
+  install_requires = requirements,
+  extras_require = extras_requirements,
   
   classifiers=[
             "Development Status :: 4 - Beta",
