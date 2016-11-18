@@ -1000,6 +1000,10 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 raise ValueError, "Inconsistent data in cache"
             data[page] = pagedata
         
+        # if there is any page missing
+        if any(page_data is None for page_data in data):
+            raise ValueError, "Inconsistent data in cache"
+
         # free up memory if possible
         if canclear:
             pages.clear()
