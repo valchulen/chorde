@@ -378,6 +378,3 @@ class NamespaceFastMemcacheTest(NamespaceWrapperTestMixIn, FastMemcacheTest):
         self.rclient.client.flush_all()
 
     testStats = None
-
-
-
