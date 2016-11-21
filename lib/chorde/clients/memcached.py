@@ -1001,8 +1001,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             data[page] = pagedata
         
         # if there is any page missing
-        if any(page_data is None for page_data in data):
-            raise ValueError, "Inconsistent data in cache"
+        for page_data in data:
+            if page_data is None:
+                raise ValueError, "Inconsistent data in cache"
 
         # free up memory if possible
         if canclear:
