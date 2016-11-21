@@ -683,7 +683,12 @@ except ImportError:
     
         def __init__(self, value):
             self.value = value
-    
+
+        def reraise(self):
+            exc = self.value
+            del self.value
+            raise exc[0], exc[1], exc[2]
+
     class Future(object):  # lint:ok
         __slots__ = (
             '_cb', '_value', '_logger', '_running', '_cancel_pending', '_cancelled', '_done_event', 
