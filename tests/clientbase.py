@@ -102,6 +102,14 @@ class CacheClientTestMixIn:
         client.put(4, 10, 10)
         self.assertTrue(client.contains(4))
 
+    def testContainsSkip(self):
+        client = self.client
+        self.assertFalse(client.contains(4))
+        client.put(4, 10, 10)
+        time.sleep(0.1)
+        self.assertTrue(client.contains(4))
+        self.assertFalse(client.contains(4, 10))
+
     def testGetTtl(self):
         client = self.client
         client.put(4, 10, 10)
@@ -109,6 +117,14 @@ class CacheClientTestMixIn:
         v,ttl = client.getTtl(4)
         self.assertEqual(v, 10)
         self.assertTrue(ttl < 10)
+
+    def testGetTtlSkip(self):
+        client = self.client
+        client.put(4, 10, 10)
+        time.sleep(0.1)
+        v,ttl = client.getTtl(4, None, ttl_skip = 10)
+        self.assertEqual(v, None)
+        self.assertTrue(ttl < 0)
 
     def testGetTtlPromoteCB(self):
         client = self.client
