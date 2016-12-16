@@ -16,9 +16,7 @@ def monkey_patch_tornado():
     original_futures = concurrent.FUTURES
     if isinstance(original_futures, tuple):
         # on tornado 4.X it could be a tuple or just one class
-        new_futures = list(original_futures)
-        new_futures.append(Future)
-        new_futures = tuple(new_futures)
+        new_futures = original_futures + (Future,)
     else:
         new_futures = (original_futures, Future)
 
