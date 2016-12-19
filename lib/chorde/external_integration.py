@@ -14,10 +14,10 @@ def monkey_patch_tornado():
     from tornado import concurrent
     from .clients.async import Future
     original_futures = concurrent.FUTURES
-    if Future in original_futures:
-        # already mocked so nothing to do
-        return
     if isinstance(original_futures, tuple):
+        if Future in original_futures:
+            # already mocked so nothing to do
+            return
         # on tornado 4.X it could be a tuple or just one class
         new_futures = original_futures + (Future,)
     else:
