@@ -27,6 +27,11 @@ cdef class ExceptionWrapper:
     def __cinit__(self, value):
         self.value = value
 
+    def reraise(self):
+        exc = self.value
+        del self.value
+        raise exc[0], exc[1], exc[2]
+
 @cython.freelist(100)
 cdef class WeakCallback:
     cdef object me, callback, __weakref__

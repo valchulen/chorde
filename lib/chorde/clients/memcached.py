@@ -1000,6 +1000,11 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 raise ValueError, "Inconsistent data in cache"
             data[page] = pagedata
         
+        # if there is any page missing
+        for page_data in data:
+            if page_data is None:
+                raise ValueError, "Inconsistent data in cache"
+
         # free up memory if possible
         if canclear:
             pages.clear()
@@ -1080,7 +1085,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 else:
                     pages.update([ (i,method("%s|%d" % (short_key,i))) for i in xrange(1,npages) ])
             return pages, ttl - now
-        elif ttl_skip is not None and ttl < ttl_skip:
+        elif ttl_skip is not None and (ttl - now) < ttl_skip:
             return default, -1
         # Check failfast cache, before making a huge effort decoding for not
         # When there's a key collision, this avoids misses being expensive

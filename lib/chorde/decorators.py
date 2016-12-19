@@ -1052,8 +1052,10 @@ def cached(client, ttl,
             get_kwargs.setdefault('promote_callback', _promote_callback)
             elazy_kwargs.setdefault('promote_callback', _promote_callback)
             eget_async_lazy_recheck_kwargs.setdefault('promote_callback', _promote_callback)
+            return callback
         def on_value_f(callback):
             value_callbacks.append(callback)
+            return callback
 
         placeholder_value_fn_cell = []
         def placeholder_value_f(fn):

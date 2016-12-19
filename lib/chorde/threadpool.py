@@ -48,16 +48,19 @@ class WorkerThread(threading.Thread):
         if wait:
             self.join()
 
-class ExceptionWrapper(object):
-    __slots__ = ('exc',)
+try:
+    from clients._async import ExceptionWrapper
+except ImportError:
+    class ExceptionWrapper(object):  # lint:ok
+        __slots__ = ('exc',)
 
-    def __init__(self, exc):
-        self.exc = exc
+        def __init__(self, exc):
+            self.exc = exc
 
-    def reraise(self):
-        exc = self.exc
-        del self.exc
-        raise exc[0], exc[1], exc[2]
+        def reraise(self):
+            exc = self.exc
+            del self.exc
+            raise exc[0], exc[1], exc[2]
 
 class WaitIter:
     def __init__(self, event, queues, timeout = 5):

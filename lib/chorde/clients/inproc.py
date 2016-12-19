@@ -184,12 +184,18 @@ class InprocCacheClient(base.BaseCacheClient):
         except CacheMissError:
             pass
 
-    def getTtl(self, key, default = base.NONE, baseNONE = base.NONE, time=time.time, ttl_skip=None, 
-            promote_callback=None):
+    def getTtl(self, key, default = base.NONE, ttl_skip=None, 
+            promote_callback=None, baseNONE = base.NONE, time=time.time):
         rv = self.store.get(key, baseNONE)
         if rv is not baseNONE:
             rv, ttl = rv
-            return rv, ttl - time()
+            ttl = ttl - time()
+            if ttl_skip is None or ttl >= ttl_skip:
+                return rv, ttl
+            elif default is baseNONE:
+                raise CacheMissError, key
+            else:
+                return default, -1
         elif default is baseNONE:
             raise CacheMissError, key
         else:
