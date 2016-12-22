@@ -196,3 +196,13 @@ There is a better way to integrate with tornado >= 4.0
 
     from chorde.external_integration import monkey_patch_tornado
     monkey_patch_tornado()
+
+	import tornado.web
+	import tornado.gen
+
+	...
+
+	@tornado.gen.coroutine
+	def get(self):
+		some_result = yield some_func.future()(some_args)
+
