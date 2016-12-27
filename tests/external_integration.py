@@ -47,3 +47,13 @@ class TestTornadoIntegration(AsyncTestCase):
         monkey_patch_tornado()
         rv = yield self.foo()
         self.assertEqual(1, rv)
+
+    @gen_test
+    def test_patched_more_than_once(self):
+        monkey_patch_tornado()
+        monkey_patch_tornado()
+        rv = yield self.foo()
+        self.assertEqual(1, rv)
+
+        self.assertEqual(1, concurrent.FUTURES.count(Future))
+
