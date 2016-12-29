@@ -168,8 +168,8 @@ In general, the terms are:
   * refresh: immediately recompute the value.
 
 
-Using decorators with tornado coroutines
-----------------------------------------
+Integration with other libraries
+--------------------------------
 
 The decorators' future() interface is especially suited for integration with other libraries that can talk to
 futures. Chorde's futures, however, are not directly compatible with other libraries', but they can easily be
@@ -188,3 +188,21 @@ wrapped like so:
 	@tornado.gen.coroutine
 	def get(self):
 		some_result = yield WF(some_func.future()(some_args))
+
+
+There is a better way to integrate with tornado >= 4.0
+
+.. code:: python
+
+    from chorde.external_integration import monkey_patch_tornado
+    monkey_patch_tornado()
+
+    import tornado.web
+    import tornado.gen
+
+    ...
+
+    @tornado.gen.coroutine
+    def get(self):
+        some_result = yield some_func.future()(some_args)
+

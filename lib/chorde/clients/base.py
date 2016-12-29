@@ -301,50 +301,58 @@ class DecoratedWrapper(BaseCacheClient):
         return self.client.usage
 
     def wait(self, key, timeout = None):
-        if self.key_decorator:
-            key = self.key_decorator(key)
+        key_decorator = self.key_decorator
+        if key_decorator:
+            key = key_decorator(key)
         return self.client.wait(key, timeout)
     
     def put(self, key, value, ttl, **kw):
-        if self.key_decorator:
-            key = self.key_decorator(key)
-        if self.value_decorator:
+        key_decorator = self.key_decorator
+        if key_decorator:
+            key = key_decorator(key)
+        value_decorator = self.value_decorator
+        if value_decorator:
             if hasattr(value, 'undefer'):
-                value_decorator = self.value_decorator
                 callable_ = value.callable_
                 value.callable_ = lambda *p, **kw: value_decorator(callable_(*p, **kw))
             else:
-                value = self.value_decorator(value)
+                value = value_decorator(value)
         return self.client.put(key, value, ttl, **kw)
 
     def put_coherently(self, key, ttl, expired, future, callable_, **kw):
-        if self.key_decorator:
-            key = self.key_decorator(key)
-        if self.value_decorator:
-            value_decorator = self.value_decorator
+        key_decorator = self.key_decorator
+        if key_decorator:
+            key = key_decorator(key)
+        value_decorator = self.value_decorator
+        if value_decorator:
             callable_ = lambda *p, **kw: value_decorator(callable_(*p, **kw))
         return self.client.put_coherently(key, ttl, expired, future, callable_, **kw)
 
     def renew(self, key, ttl, **kw):
-        if self.key_decorator:
-            key = self.key_decorator(key)
+        key_decorator = self.key_decorator
+        if key_decorator:
+            key = key_decorator(key)
         return self.client.renew(key, ttl, **kw)
 
     def add(self, key, value, ttl, **kw):
-        if self.key_decorator:
-            key = self.key_decorator(key)
-        if self.value_decorator:
-            value = self.value_decorator(value)
+        key_decorator = self.key_decorator
+        if key_decorator:
+            key = key_decorator(key)
+        value_decorator = self.value_decorator
+        if value_decorator:
+            value = value_decorator(value)
         return self.client.add(key, value, ttl, **kw)
 
     def delete(self, key):
-        if self.key_decorator:
-            key = self.key_decorator(key)
+        key_decorator = self.key_decorator
+        if key_decorator:
+            key = key_decorator(key)
         return self.client.delete(key)
 
     def expire(self, key):
-        if self.key_decorator:
-            key = self.key_decorator(key)
+        key_decorator = self.key_decorator
+        if key_decorator:
+            key = key_decorator(key)
         return self.client.expire(key)
 
     def getTtl(self, key, default = NONE, **kw):
@@ -358,8 +366,10 @@ class DecoratedWrapper(BaseCacheClient):
                     promote_callback(key_undecorator(key), value, ttl)
                 kw['promote_callback'] = undecorating_callback
         rv, ttl = self.client.getTtl(key, default, **kw)
-        if rv is not default and self.value_undecorator is not None:
-            rv = self.value_undecorator(rv)
+        if rv is not default:
+            value_undecorator = self.value_undecorator
+            if value_undecorator is not None:
+                rv = value_undecorator(rv)
         return rv, ttl
 
     def promote(self, key, *p, **kw):
