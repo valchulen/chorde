@@ -306,8 +306,17 @@ class AsyncCacheWriterPool:
                  or (hasattr(self.defer_threadpool, 'in_worker') and self.defer_threadpool.in_worker()) ):
             # Oops, recursive call, bad idea
             # Run inline
-            self.queueset[key] = value, ttl, (kw or None)
-            self._writer(self._wself, key)
+            queueset = self.queueset
+            if key in queueset:
+                delayed = self._coalesce(key, value, ttl, **kw)
+                if delayed is not None:
+                    # delayed callback, invoke now that we're outside the critical section
+                    delayed()
+                else:
+                    self._writer(self._wself, key)
+            else:
+                self.queueset[key] = value, ttl, (kw or None)
+                self._writer(self._wself, key)
         else:
             if key not in self.queueset:
                 if self.overflow:
@@ -342,7 +351,41 @@ class AsyncCacheWriterPool:
                     delayed.append(future.cancel)
         self.queueset.clear()
         return delayed
-    
+
+    def _coalesce(self, key, value, ttl, **kw):
+        delayed = None
+        queueset = self.queueset
+        if hasattr(value, 'undefer'):
+            # Queued one wins, we just have to chain the futures if any
+            future = getattr(value, 'future', None)
+            if future is not None and hasattr(future, 'add_done_callback'):
+                queue_value = queueset.get(key)
+                if queue_value is not None:
+                    # Ok, they'll wanna get the value when it's done
+                    queue_value = queue_value[0]
+                    if hasattr(queue_value, 'undefer'):
+                        queue_future = getattr(queue_value, 'future', None)
+                        if queue_future is not None:
+                            delayed = functools.partial(queue_future.chain, future)
+                        else:
+                            queue_value.future = future
+                    else:
+                        # Why not
+                        delayed = functools.partial(future.set, queue_value)
+        else:
+            # New one wins, we just have to chain any queued future
+            queue_value = queueset.get(key)
+            if queue_value is not None:
+                # Ok, they'll wanna get the value when it's done
+                queue_value = queue_value[0]
+                if hasattr(queue_value, 'undefer'):
+                    queue_future = getattr(queue_value, 'future', None)
+                    if queue_future is not None:
+                        # Delay the callback, we're in a critical section here
+                        delayed = functools.partial(queue_future.set, value)
+            queueset[key] = value, ttl, (kw or None)
+        return delayed
+
     @serialize
     def _enqueue(self, key, value, ttl, isinstance=isinstance, getattr=getattr, hasattr=hasattr, **kw):
         delayed = None
@@ -386,35 +429,7 @@ class AsyncCacheWriterPool:
                             # Delay the callback, we're in a critical section here
                             delayed = functools.partial(future.set, working)
         else:
-            if hasattr(value, 'undefer'):
-                # Queued one wins, we just have to chain the futures if any
-                future = getattr(value, 'future', None)
-                if future is not None and hasattr(future, 'add_done_callback'):
-                    queue_value = queueset.get(key)
-                    if queue_value is not None:
-                        # Ok, they'll wanna get the value when it's done
-                        queue_value = queue_value[0]
-                        if hasattr(queue_value, 'undefer'):
-                            queue_future = getattr(queue_value, 'future', None)
-                            if queue_future is not None:
-                                delayed = functools.partial(queue_future.chain, future)
-                            else:
-                                queue_value.future = future
-                        else:
-                            # Why not
-                            delayed = functools.partial(future.set, queue_value)
-            else:
-                # New one wins, we just have to chain any queued future
-                queue_value = queueset.get(key)
-                if queue_value is not None:
-                    # Ok, they'll wanna get the value when it's done
-                    queue_value = queue_value[0]
-                    if hasattr(queue_value, 'undefer'):
-                        queue_future = getattr(queue_value, 'future', None)
-                        if queue_future is not None:
-                            # Delay the callback, we're in a critical section here
-                            delayed = functools.partial(queue_future.set, value)
-                queueset[key] = value, ttl, (kw or None)
+            delayed = self._coalesce(key, value, ttl, **kw)
         return delayed
     
     def waitkey(self, key, timeout=None):
