@@ -128,6 +128,35 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
         self.assertTrue(self.client.contains(3))
         self.assertEquals(self.client.get(3), 2)
     
+    def testReentrantChainFutures(self):
+        from chorde.clients.async import Defer, Future
+        def sleepit():
+            time.sleep(0.1)
+            return 2
+        def sleepit2():
+            time.sleep(0.1)
+            return 3
+        d1 = Defer(sleepit)
+        d2 = Defer(sleepit2)
+        d1.future = Future()
+        d2.future = Future()
+        client = self.client
+        client.put(1, sleepit, 120) # Delay the pool
+        def putit():
+            client.put(4, d2, 120)
+            return 4
+        d3 = Defer(putit)
+        d3.future = Future()
+        self.client.put(3, d3, 120)
+        self.client.put(4, d1, 120)
+        self.assertTrue(self.client.contains(3))
+        self.assertEquals(d3.future.result(1), 4)
+        self.assertTrue(self.client.contains(4))
+        self.assertEquals(d1.future.result(1), 2)
+        self.assertEquals(d2.future.result(1), 2)
+        self.assertTrue(self.client.contains(4))
+        self.assertEquals(self.client.get(4), 2)
+    
     def testStepFutures(self):
         from chorde.clients.async import Defer, Future
         def sleepit():
