@@ -1179,7 +1179,16 @@ class AsyncCacheProcessor(object):
 
         do_coalescence = coalesce is not None and coalesce_key is not NONE
         if do_coalescence:
-            cfuture = coalesce.setdefault(coalesce_key, future)
+            waction = weakref.ref(action)
+            cfuture, cwaction = coalesce.setdefault(coalesce_key, (future, waction))
+            if cwaction() is None:
+                # Dead action, discard, reinsert
+                cfuture = future
+                try:
+                    del coalesce[coalesce_key]
+                except:
+                    pass
+                cfuture, cwaction = coalesce.setdefault(coalesce_key, (future, waction))
 
         if cfuture is future:
             if self.maxqueue is not None and self.queuelen > (self.maxqueue*2):
