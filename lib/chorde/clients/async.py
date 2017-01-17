@@ -1189,6 +1189,7 @@ class AsyncCacheProcessor(object):
                 except:
                     pass
                 cfuture, cwaction = coalesce.setdefault(coalesce_key, (future, waction))
+                self.logger.warning("Found zombie task in coalesce buffer with key %r", coalesce_key)
 
         if cfuture is future:
             if self.maxqueue is not None and self.queuelen > (self.maxqueue*2):
