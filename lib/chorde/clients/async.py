@@ -1194,12 +1194,12 @@ class AsyncCacheProcessor(object):
         if cfuture is future:
             if self.maxqueue is not None and self.queuelen > (self.maxqueue*2):
                 # Stop filling it
-                cfuture.cancel()
                 if do_coalescence:
                     try:
                         del coalesce[coalesce_key]
                     except:
                         pass
+                cfuture.cancel()
             else:
                 # I'm the one queueing
                 wself = self._wself
