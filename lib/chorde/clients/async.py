@@ -1181,7 +1181,7 @@ class AsyncCacheProcessor(object):
         if do_coalescence:
             waction = weakref.ref(action)
             cfuture, cwaction = coalesce.setdefault(coalesce_key, (future, waction))
-            if cwaction() is None:
+            if cfuture is not future and cwaction() is None:
                 # Dead action, discard, reinsert
                 cfuture = future
                 try:
