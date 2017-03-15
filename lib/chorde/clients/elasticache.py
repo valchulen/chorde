@@ -64,6 +64,7 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
         except memcache._ConnectionDeadError:
             # retry once
             try:
+                server, key = self._get_server(key)
                 if server.connect():
                     return _unsafe_get()
                 return None
@@ -85,12 +86,17 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
 
 class ElastiCacheClientMixin:
     def expand_entry(self, entry):
+        last_expansions = getattr(self, '_last_entry_expansions', None)
+        if last_expansions is None:
+            self._last_entry_expansions = last_expansions = {}
         get_cluster = getattr(self._client_class, 'get_cluster_from_config_entrypoint',
             ElastiCacheStoreClient.get_cluster_from_config_entrypoint)
         try:
-            return get_cluster(entry)
+            expanded = get_cluster(entry, fallback = last_expansions.get(entry))
         except:
-            return (entry,)
+            expanded = (entry,)
+        last_expansions[entry] = expanded
+        return expanded
 
 class ElastiCacheClient(ElastiCacheClientMixin, memcached.MemcachedClient):
     pass
