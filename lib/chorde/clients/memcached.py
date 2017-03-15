@@ -154,6 +154,11 @@ class MemcachedStoreClient(memcache.Client):
     except dead server keys are remapped not by falling to the next bucekt, but rather
     by re-hashing the key hash and performing a new lookup. This better distributes the
     dead node's keys among all remaining nodes.
+
+    Should server nodes be poorly mapped into the hash space by any chance,
+    the class attribute SERVER_HASH_SALT can be overridden to shuffle the servers into
+    a new configuration (unlikely to suffer from the same problem). Any arbitrary string
+    will be included in the computation of the server hash when dividing the hash space.
     """
 
     SERVER_HASH_SALT = 'saltval'
