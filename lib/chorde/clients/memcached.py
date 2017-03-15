@@ -4,6 +4,7 @@ import hashlib
 import itertools
 import logging
 import memcache
+import bisect
 import random
 import time
 import weakref
@@ -145,6 +146,50 @@ except:
     lz4_decompress_fn = None
 
 class MemcachedStoreClient(memcache.Client):
+    SERVER_HASH_SALT = 'saltval'
+
+    # Consistent hashing
+    def _init_buckets(self):
+        super(MemcachedStoreClient, self)._init_buckets()
+        server_hashes = sorted([
+            (memcache.serverHashFunction("%s:%s:%s" % (server.ip, server.port, self.SERVER_HASH_SALT)), i)
+            for i,server in enumerate(self.servers)
+        ])
+        self.server_hashes = [ h for h,i in server_hashes ]
+        self.server_indexes = [ i for h,i in server_hashes ] + [ server_hashes[0][1] ]
+        self.server_hashes_function = self.server_hash_function = getattr(
+            self, 'server_hash_function', memcache.serverHashFunction)
+
+    def _get_server(self, key):
+        server_hash_function = self.server_hash_function
+        if self.server_hashes_function is not server_hash_function:
+            # Re-initialize hash ring
+            self._init_buckets()
+
+        if isinstance(key, tuple):
+            serverhash, key = key
+        else:
+            serverhash = server_hash_function(key)
+
+        server_hashes = self.server_hashes
+        server_indexes = self.server_indexes
+        if server_hashes:
+            server_ix = server_indexes[bisect.bisect_left(server_hashes, serverhash)]
+        else:
+            server_ix = 0
+
+        for i in xrange(self._SERVER_RETRIES):
+            server = self.buckets[serverhash % len(self.buckets)]
+            if server.connect():
+                #print "(using server %s)" % server,
+                return server, key
+            serverhash = server_hash_function(str(serverhash) + str(i))
+            if server_hashes:
+                server_ix = server_indexes[bisect.bisect_left(server_hashes, serverhash)]
+            else:
+                break
+        return None, None
+
     # A faster check_key
     def check_key(self, key, key_extra_len=0,
             isinstance = isinstance, tuple = tuple, str = str, 
