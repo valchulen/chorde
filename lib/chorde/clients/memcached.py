@@ -166,6 +166,15 @@ class MemcachedStoreClient(memcache.Client):
     # Consistent hashing
     def _init_buckets(self):
         super(MemcachedStoreClient, self)._init_buckets()
+
+        # Build a server hash ring
+        #
+        # server_hashes will have all sorted hashes, and server_indexes
+        # their corresponding bucket index. Since it's a ring (that will
+        # be probed with bisect_left), should the lookup hash be higher than
+        # the last server hash, it will be mapped to the first's bucket,
+        # closing the ring
+
         server_hashes = sorted([
             (memcache.serverHashFunction("%s:%s:%s" % (server.ip, server.port, self.SERVER_HASH_SALT)), i)
             for i,server in enumerate(self.servers)
