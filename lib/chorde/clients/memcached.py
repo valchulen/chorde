@@ -181,7 +181,6 @@ class MemcachedStoreClient(memcache.Client):
         for i in xrange(self._SERVER_RETRIES):
             server = self.buckets[serverhash % len(self.buckets)]
             if server.connect():
-                #print "(using server %s)" % server,
                 return server, key
             serverhash = server_hash_function(str(serverhash) + str(i))
             if server_hashes:
