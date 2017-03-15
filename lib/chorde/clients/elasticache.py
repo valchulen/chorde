@@ -14,7 +14,7 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
     """
 
     @classmethod
-    def get_cluster_from_config_entrypoint(cls, entrypoint):
+    def get_cluster_from_config_entrypoint(cls, entrypoint, fallback = None):
         c = cls([entrypoint])
         cluster_description = c.get("AmazonElastiCache:cluster")
         if not cluster_description:
@@ -23,7 +23,7 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
             cluster_description = cluster_description.split()
         if not cluster_description or len(cluster_description) <= 1:
             # Default, go directly to the configuration entry point
-            return [entrypoint]
+            return [entrypoint] if fallback is None else fallback
         else:
             cluster_nodes = cluster_description[1:]
             return [ 
@@ -92,10 +92,9 @@ class ElastiCacheClientMixin:
         get_cluster = getattr(self._client_class, 'get_cluster_from_config_entrypoint',
             ElastiCacheStoreClient.get_cluster_from_config_entrypoint)
         try:
-            expanded = get_cluster(entry, fallback = last_expansions.get(entry))
+            expanded = last_expansions[entry] = get_cluster(entry, fallback = last_expansions.get(entry))
         except:
-            expanded = (entry,)
-        last_expansions[entry] = expanded
+            expanded = last_expansions.get(entry, (entry,))
         return expanded
 
 class ElastiCacheClient(ElastiCacheClientMixin, memcached.MemcachedClient):
