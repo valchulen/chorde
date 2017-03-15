@@ -146,6 +146,16 @@ except:
     lz4_decompress_fn = None
 
 class MemcachedStoreClient(memcache.Client):
+    """
+    Subclass of memcache.Client that improves on the basic client by implementing
+    consistent hashing, and asynchronous put/get_multi
+
+    Consistent hashing is implemented as in https://en.wikipedia.org/wiki/Consistent_hashing,
+    except dead server keys are remapped not by falling to the next bucekt, but rather
+    by re-hashing the key hash and performing a new lookup. This better distributes the
+    dead node's keys among all remaining nodes.
+    """
+
     SERVER_HASH_SALT = 'saltval'
 
     # Consistent hashing
