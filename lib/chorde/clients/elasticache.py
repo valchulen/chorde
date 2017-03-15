@@ -64,7 +64,6 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
         except memcache._ConnectionDeadError:
             # retry once
             try:
-                server, key = self._get_server(key)
                 if server.connect():
                     return _unsafe_get()
                 return None
