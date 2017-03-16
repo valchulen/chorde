@@ -175,8 +175,10 @@ class MemcachedStoreClient(memcache.Client):
         # the last server hash, it will be mapped to the first's bucket,
         # closing the ring
 
+        server_hash_function = self.server_hashes_function = self.server_hash_function = getattr(
+            self, 'server_hash_function', memcache.serverHashFunction)
         server_hashes = sorted([
-            (memcache.serverHashFunction("%s:%s:%s" % (server.ip, server.port, self.SERVER_HASH_SALT)), i)
+            (server_hash_function("%s:%s:%s" % (server.ip, server.port, self.SERVER_HASH_SALT)), i)
             for i,server in enumerate(self.servers)
         ])
         if server_hashes:
@@ -185,8 +187,6 @@ class MemcachedStoreClient(memcache.Client):
         else:
             self.server_hashes = []
             self.server_indexes = []
-        self.server_hashes_function = self.server_hash_function = getattr(
-            self, 'server_hash_function', memcache.serverHashFunction)
 
     def _get_server(self, key):
         server_hash_function = self.server_hash_function
