@@ -47,6 +47,16 @@ class K:
     pass
 
 @skipIfNoMemcached
+class MemcacheStoreTest(TestCase):
+    def testEmptyServerList(self):
+        from chorde.clients.memcached import MemcachedClient
+        import threading
+        client = MemcachedClient([], 
+            checksum_key = "test",
+            encoding_cache = threading.local() )
+        self.assertRaises(CacheMissError, client.get, 4)
+
+@skipIfNoMemcached
 class MemcacheTest(CacheClientTestMixIn, TestCase):
     is_lru = False
     capacity_means_entries = False
