@@ -204,7 +204,7 @@ class MemcachedStoreClient(memcache.Client):
         if server_hashes:
             server_ix = server_indexes[bisect.bisect_left(server_hashes, serverhash)]
         else:
-            server_ix = 0
+            return None, None
 
         for i in xrange(self._SERVER_RETRIES):
             server = self.buckets[serverhash % len(self.buckets)]
