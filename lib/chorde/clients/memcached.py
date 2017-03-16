@@ -179,8 +179,12 @@ class MemcachedStoreClient(memcache.Client):
             (memcache.serverHashFunction("%s:%s:%s" % (server.ip, server.port, self.SERVER_HASH_SALT)), i)
             for i,server in enumerate(self.servers)
         ])
-        self.server_hashes = [ h for h,i in server_hashes ]
-        self.server_indexes = [ i for h,i in server_hashes ] + [ server_hashes[0][1] ]
+        if server_hashes:
+            self.server_hashes = [ h for h,i in server_hashes ]
+            self.server_indexes = [ i for h,i in server_hashes ] + [ server_hashes[0][1] ]
+        else:
+            self.server_hashes = []
+            self.server_indexes = []
         self.server_hashes_function = self.server_hash_function = getattr(
             self, 'server_hash_function', memcache.serverHashFunction)
 
