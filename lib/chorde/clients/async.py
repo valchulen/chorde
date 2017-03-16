@@ -1179,17 +1179,27 @@ class AsyncCacheProcessor(object):
 
         do_coalescence = coalesce is not None and coalesce_key is not NONE
         if do_coalescence:
-            cfuture = coalesce.setdefault(coalesce_key, future)
+            waction = weakref.ref(action)
+            cfuture, cwaction = coalesce.setdefault(coalesce_key, (future, waction))
+            if cfuture is not future and cwaction() is None:
+                # Dead action, discard, reinsert
+                cfuture = future
+                try:
+                    del coalesce[coalesce_key]
+                except:
+                    pass
+                cfuture, cwaction = coalesce.setdefault(coalesce_key, (future, waction))
+                self.logger.warning("Found zombie task in coalesce buffer with key %r", coalesce_key)
 
         if cfuture is future:
             if self.maxqueue is not None and self.queuelen > (self.maxqueue*2):
                 # Stop filling it
-                cfuture.cancel()
                 if do_coalescence:
                     try:
                         del coalesce[coalesce_key]
                     except:
                         pass
+                cfuture.cancel()
             else:
                 # I'm the one queueing
                 wself = self._wself
