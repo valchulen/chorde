@@ -965,8 +965,12 @@ def cached(client, ttl,
                 else:
                     _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
             elif rv is not __NONE:
-                if rvttl < eff_async_ttl and async_expire:
-                    async_expire(callkey)
+                if rvttl < eff_async_ttl:
+                    if async_expire:
+                        async_expire(callkey)
+                    else:
+                        # means client.contains(callkey, eff_async_ttl), so promote
+                        client.promote(callkey, ttl_skip = eff_async_ttl, **get_kwargs)
                 stats.hits += 1
             else:
                 stats.misses += 1
