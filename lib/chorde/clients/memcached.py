@@ -282,7 +282,8 @@ class MemcachedStoreClient(memcache.Client):
                 elist = [ fdmap(sock) for sock,flags in xlist if flags & POLLERR ]
                 wlist = [ fdmap(sock) for sock,flags in xlist if flags & POLLOUT ]
                 if elist:
-                    for sock, (server, buf) in sockets.iteritems():
+                    for sock in elist:
+                        server, buf = sockets[sock]
                         unsent[server] = buf
                         if mark_dead:
                             server.mark_dead("connection reset by peer")
@@ -396,7 +397,7 @@ class MemcachedStoreClient(memcache.Client):
                     elist = [ fdmap(sock) for sock,flags in xlist if flags & POLLERR ]
                     rlist = [ fdmap(sock) for sock,flags in xlist if flags & POLLIN ]
                     if elist:
-                        for sock in sockets.iteritems():
+                        for sock in elist:
                             sockets[sock].mark_dead("connection reset by peer")
                             sockets.pop(sock)
                             poller.unregister(sock)
@@ -522,7 +523,7 @@ class MemcachedStoreClient(memcache.Client):
                     elist = [ fdmap(sock) for sock,flags in xlist if flags & POLLERR ]
                     rlist = [ fdmap(sock) for sock,flags in xlist if flags & POLLIN ]
                     if elist:
-                        for sock in sockets.iteritems():
+                        for sock in elist:
                             server, pending_keys = sockets[sock]
                             server.mark_dead("connection reset by peer")
                             sockets.pop(sock)
