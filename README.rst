@@ -206,3 +206,4 @@ There is a better way to integrate with tornado >= 4.0
     def get(self):
         some_result = yield some_func.future()(some_args)
 
+
