@@ -1244,7 +1244,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 self.client.reset_cas()
 
     def _page_prefix(self, first_page, short_key):
-        return short_key+("|%02x|" % (first_page[3] & 0xFF))
+        return short_key+("|%04x|" % (first_page[3] & 0xFF))
 
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
