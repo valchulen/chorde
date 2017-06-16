@@ -1066,7 +1066,6 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             if (    pageno != page 
                  or version != ref_version 
                  or npages != ref_npages 
-                 or ttl != ref_ttl
                  or not (0 <= page < ref_npages) 
                  or data[page] is not None
                  or not isinstance(pagedata,str) ):
@@ -1145,18 +1144,22 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         if pages is None:
             pages = { 0 : method(short_key+"|0") }
-        if pages[0] is None or not isinstance(pages[0],valid_sequence_types) or len(pages[0]) != 5:
+
+        first_page = pages[0]
+        if first_page is None or not isinstance(pages[0],valid_sequence_types) or len(pages[0]) != 5:
             return default, -1
         
-        ttl = pages[0][2]
-        npages = pages[0][0]
+        ttl = first_page[2]
+        npages = first_page[0]
+
+        page_prefix = self._page_prefix(first_page, short_key)
 
         if not decode:
             if force_all_pages and npages > 1:
                 if npages > 2 and multi_method is not None:
-                    pages.update( multi_method(xrange(1,npages), key_prefix=short_key+"|") )
+                    pages.update( multi_method(xrange(1,npages), key_prefix=page_prefix) )
                 else:
-                    pages.update([ (i,method("%s|%d" % (short_key,i))) for i in xrange(1,npages) ])
+                    pages.update([ (i,method("%s%d" % (page_prefix,i))) for i in xrange(1,npages) ])
             return pages, ttl - now
         elif ttl_skip is not None and (ttl - now) < ttl_skip:
             return default, -1
@@ -1167,9 +1170,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         
         if npages > 1:
             if npages > 2 and multi_method:
-                pages.update( multi_method(xrange(1,npages), key_prefix=short_key+"|") )
+                pages.update( multi_method(xrange(1,npages), key_prefix=page_prefix) )
             else:
-                pages.update([ (i,method("%s|%d" % (short_key,i))) for i in xrange(1,npages) ])
+                pages.update([ (i,method("%s%d" % (page_prefix,i))) for i in xrange(1,npages) ])
         
         try:
             try:
@@ -1177,7 +1180,11 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             except ValueError, e:
                 if npages > 1 and multi_method and e.message == "Inconsistent data in cache":
                     # try again, maybe there was a write between gets
-                    pages.update( multi_method(xrange(npages), key_prefix=short_key+"|") )
+                    pages.clear()
+                    pages[0] = method(short_key+"|0")
+                    npages = first_page[0]
+                    page_prefix = self._page_prefix(first_page, short_key)
+                    pages.update( multi_method(xrange(1,npages), key_prefix=page_prefix) )
                     cached_key, cached_value = self.decode_pages(pages, key)
                 else:
                     # unrecoverable
@@ -1218,33 +1225,45 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         try:
             short_key,exact = self.shorten_key(key)
             raw_pages, store_ttl = self._getTtl(key, NONE, False, short_key = short_key, 
-                method = self.client.gets, force_all_pages = True)
+                method = self.client.gets)
             if raw_pages is not NONE and store_ttl < ttl:
+                # Only the TTL on the first page matters, so avoid touching all pages
                 now = time.time()
-                for i,page in raw_pages.iteritems():
-                    new_page = page[:2] + (max(ttl + now, page[2]),) + page[3:]
-                    success = self.client.cas("%s|%d" % (short_key,i), new_page, ttl)
-                    if success:
-                        cached = self._succeedfast_cache.get(key, NONE)
-                        if cached is not NONE:
-                            (value, _), cached_time = cached
-                            ncached = ((value, ttl + now), now)
-                            self._succeedfast_cache.cas(key, cached, ncached)
-                    else:
-                        # No point in going on
-                        break
+                page = raw_pages[0]
+                new_page = page[:2] + (max(ttl + now, page[2]),) + page[3:]
+                success = self.client.cas(short_key+"|0", new_page, ttl)
+                if success:
+                    cached = self._succeedfast_cache.get(key, NONE)
+                    if cached is not NONE:
+                        (value, _), cached_time = cached
+                        ncached = ((value, ttl + now), now)
+                        self._succeedfast_cache.cas(key, cached, ncached)
         finally:
             if reset_cas:
                 self.client.cache_cas = old_cas
                 self.client.reset_cas()
-    
+
+    def _page_prefix(self, first_page, short_key):
+        return short_key+("|%02x|" % (first_page[3] & 0xFF))
+
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
         short_key,exact = self.shorten_key(key)
         pages = dict([(page,data) for page,data in enumerate(self.encode_pages(
             short_key, key, ttl+time.time(), value))])
-        self.client.set_multi(pages, min(ttl, MAX_MEMCACHE_TTL), key_prefix=short_key+"|")
-        
+        if len(pages) > 1:
+            # Multipage, extract first page to do it last (provides atomicity)
+            first_page = pages.pop(0)
+
+            # Build a version prefix, upload pages with a set_multi
+            page_prefix = self._page_prefix(first_page, short_key)
+            self.client.set_multi(pages, min(ttl, MAX_MEMCACHE_TTL), key_prefix=page_prefix)
+
+            pages[0] = first_page
+
+        # First page with a simple set
+        self.client.set(short_key+"|0", pages[0], min(ttl, MAX_MEMCACHE_TTL))
+
         try:
             del self._failfast_cache[key]
         except:
@@ -1257,37 +1276,30 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         for page in pages:
             try:
-                del self._usucceedfast_cache[short_key+"|%s" % (page,)]
+                if page:
+                    page_key = "%s%d" % (page_prefix, page)
+                else:
+                    page_key = short_key + "|0"
+                del self._usucceedfast_cache[page_key]
             except:
                 pass
     
     def delete(self, key):
-        # delete the first page (gambling that most entries will span only a single page)
-        # then query for the second, and if present, delete all the other pages
-        # in a single roundtrip, for a combined total of 3 roundtrips.
+        # delete the first page
+        # let all other pages just expire
         short_key,exact = self.shorten_key(key)
         self.client.delete(short_key+"|0")
-        
-        page = self.client.get(short_key+"|1")
-        if page is not None:
-            npages = page[0]
-            del page # big structure, free ASAP
-            
-            self.client.delete_multi(xrange(1,npages), key_prefix=short_key+"|")
-        else:
-            npages = 1
-        
+
         try:
             del self._succeedfast_cache[key]
         except:
             pass
 
-        for page in xrange(npages):
-            try:
-                del self._usucceedfast_cache[short_key+"|%d" % (page,)]
-            except:
-                pass
-    
+        try:
+            del self._usucceedfast_cache[short_key+"|0"]
+        except:
+            pass
+
     def clear(self):
         # We don't want to clear memcache, it might be shared
         self._failfast_cache.clear()
@@ -1331,6 +1343,12 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 if store_ttl <= ttl:
                     return False
                 elif exact:
+                    # Lets at least make sure subpages also exist
+                    npages = pages[0][0]
+                    if npages > 1:
+                        for page in xrange(1, npages):
+                            if not self.client.append(short_key+("|%d" % page)):
+                                return False
                     return True
                 else:
                     # Must validate the key, so we must decode

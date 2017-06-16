@@ -204,12 +204,24 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         self.assertEqual(client.get(k), "patadecabra3")
         self.assertTrue(MAX_MEMCACHE_TTL * 2 - 1 <= client.getTtl(k)[1] <= MAX_MEMCACHE_TTL * 2)
 
+    def testBigValueMissingFirstPage(self):
+        bigval = self.BIG_VALUE
+        client = self.client
+        client.put("bigkey1", bigval, 60)
+        shorten_key, _ = client.shorten_key('bigkey1')
+        client.client.delete(shorten_key + '|0')
+
+        with self.assertRaises(CacheMissError):
+            client.get("bigkey1")
+
     def testBigValueMissingOnePage(self):
         bigval = self.BIG_VALUE
         client = self.client
         client.put("bigkey1", bigval, 60)
         shorten_key, _ = client.shorten_key('bigkey1')
-        client.client.delete(shorten_key + '|1')
+        page = client.client.get(shorten_key + '|0')
+        page_prefix = client._page_prefix(page, shorten_key)
+        client.client.delete(page_prefix + '1')
 
         with self.assertRaises(CacheMissError):
             client.get("bigkey1")
@@ -238,7 +250,7 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
 
     testStats = unittest.skip("not applicable")(MemcacheTest.testStats)
 
-    def testBigValueMissingOnePage(self):
+    def testBigValueMissingFirstPage(self):
         # Override the test with specific things for this implementation
         bigval = self.BIG_VALUE
         client = self.client
@@ -246,7 +258,22 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
         decorated_key = client.key_decorator('bigkey1')
         shorten_key, _ = client.client.shorten_key(decorated_key)
 
-        client.client.client.delete(shorten_key + '|1')
+        client.client.client.delete(shorten_key + '|0')
+
+        with self.assertRaises(CacheMissError):
+            client.get("bigkey1")
+
+    def testBigValueMissingOnePage(self):
+        # Override the test with specific things for this implementation
+        bigval = self.BIG_VALUE
+        client = self.client
+        client.put("bigkey1", bigval, 60)
+        decorated_key = client.key_decorator('bigkey1')
+        shorten_key, _ = client.client.shorten_key(decorated_key)
+        page = client.client.client.get(shorten_key + '|0')
+        page_prefix = client.client._page_prefix(page, shorten_key)
+
+        client.client.client.delete(page_prefix + '1')
 
         with self.assertRaises(CacheMissError):
             client.get("bigkey1")
