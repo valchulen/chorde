@@ -1181,7 +1181,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 if npages > 1 and multi_method and e.message == "Inconsistent data in cache":
                     # try again, maybe there was a write between gets
                     pages.clear()
-                    pages[0] = method(short_key+"|0")
+                    pages[0] = first_page = method(short_key+"|0")
                     npages = first_page[0]
                     page_prefix = self._page_prefix(first_page, short_key)
                     pages.update( multi_method(xrange(1,npages), key_prefix=page_prefix) )
