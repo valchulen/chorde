@@ -1146,7 +1146,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             pages = { 0 : method(short_key+"|0") }
 
         first_page = pages[0]
-        if first_page is None or not isinstance(pages[0],valid_sequence_types) or len(pages[0]) != 5:
+        if first_page is None or not isinstance(first_page,valid_sequence_types) or len(first_page) != 5:
             return default, -1
         
         ttl = first_page[2]
