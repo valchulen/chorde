@@ -13,6 +13,8 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
     Tested to work with python-memcache 1.31+
     """
 
+    FORCE_IS_DYNAMIC = True
+
     @classmethod
     def get_cluster_from_config_entrypoint(cls, entrypoint, fallback = None):
         c = cls([entrypoint])
