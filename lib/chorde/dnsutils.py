@@ -94,6 +94,8 @@ def dnsquery_if_hostname(host, typ):
             return dnsquery(host, typ)
 
 class DynamicResolvingClient(object):
+    FORCE_IS_DYNAMIC = False
+
     def __init__(self, client_class, client_addresses, client_args={}):
         self._client_class = client_class
         self._client_args = client_args
@@ -143,8 +145,8 @@ class DynamicResolvingClient(object):
                         expiration = min(expiration, dyn_expiration)
                     else:
                         sentries = self.expand_entry(entry)
-                        dynamic = False
-                        if set(sentries) != set([entry]):
+                        dynamic = self.FORCE_IS_DYNAMIC
+                        if dynamic or set(sentries) != set([entry]):
                             # expand_entry made it nonstatic
                             allstatic = False
                             expiration = min(expiration, dyn_expiration)
