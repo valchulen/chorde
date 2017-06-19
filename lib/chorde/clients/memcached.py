@@ -1348,9 +1348,11 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                     return False
                 elif exact:
                     # Lets at least make sure subpages also exist
-                    npages = raw_pages[0][0]
+                    first_page = raw_pages[0]
+                    npages = first_page[0]
+                    page_prefix = self._page_prefix(first_page, short_key)
                     for page in xrange(1, npages):
-                        if not self.client.append(short_key+("|%d" % page)):
+                        if not self.client.append("%s%d" % (page_prefix,page),""):
                             return False
                     return True
                 else:
