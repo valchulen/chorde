@@ -855,14 +855,6 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if checksum_key is None:
             raise ValueError, "MemcachedClient requires a checksum key for security checks"
         
-        # make room for the hash prefix
-        max_backing_key_length -= len(sPickle.checksum_algo_name) + 1
-        
-        max_backing_key_length = min(
-            max_backing_key_length,
-            memcache.SERVER_MAX_KEY_LENGTH)
-        
-        self.max_backing_key_length = max_backing_key_length - 16 # 16-bytes for page suffix
         self.max_backing_value_length = max_backing_value_length - 256 # 256-bytes for page header and other overhead
         self.last_seen_stamp = 0
         self.namespace = namespace
@@ -883,8 +875,19 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             self.client_unpickler = client_unpickler
             self.client_pickler_key = client_pickler_key
 
+        self.version_prefix = '2,'
+
         self.pickler = pickler or cPickle
         self.key_pickler = key_pickler or self.pickler
+
+        # make room for the hash prefix
+        max_backing_key_length -= len(self.client_pickler_key) + len(self.version_prefix)
+        
+        max_backing_key_length = min(
+            max_backing_key_length,
+            memcache.SERVER_MAX_KEY_LENGTH)
+        
+        self.max_backing_key_length = max_backing_key_length - 16 # 16-bytes for page suffix
         
         if self.namespace:
             self.max_backing_key_length -= len(self.namespace)+1
@@ -985,7 +988,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if self.namespace:
             key = "%s|%s" % (self.namespace,key)
         
-        return "%s%s" % (self.client_pickler_key, key), exact
+        return "%s%s%s" % (self.client_pickler_key, self.version_prefix, key), exact
     
     def get_version_stamp(self, short_key = None):
         if short_key is None:
@@ -1274,12 +1277,12 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         except:
             pass
 
-        for page in pages:
+        for pageno in pages:
+            if pageno:
+                page_key = "%s%d" % (page_prefix, pageno)
+            else:
+                page_key = short_key + "|0"
             try:
-                if page:
-                    page_key = "%s%d" % (page_prefix, page)
-                else:
-                    page_key = short_key + "|0"
                 del self._usucceedfast_cache[page_key]
             except:
                 pass
@@ -1288,7 +1291,8 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         # delete the first page
         # let all other pages just expire
         short_key,exact = self.shorten_key(key)
-        self.client.delete(short_key+"|0")
+        page_key = short_key+"|0"
+        self.client.delete(page_key)
 
         try:
             del self._succeedfast_cache[key]
@@ -1296,7 +1300,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             pass
 
         try:
-            del self._usucceedfast_cache[short_key+"|0"]
+            del self._usucceedfast_cache[page_key]
         except:
             pass
 
@@ -1345,10 +1349,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 elif exact:
                     # Lets at least make sure subpages also exist
                     npages = pages[0][0]
-                    if npages > 1:
-                        for page in xrange(1, npages):
-                            if not self.client.append(short_key+("|%d" % page)):
-                                return False
+                    for page in xrange(1, npages):
+                        if not self.client.append(short_key+("|%d" % page)):
+                            return False
                     return True
                 else:
                     # Must validate the key, so we must decode
