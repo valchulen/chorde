@@ -1260,12 +1260,30 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
             # Build a version prefix, upload pages with a set_multi
             page_prefix = self._page_prefix(first_page, short_key)
-            self.client.set_multi(pages, min(ttl, MAX_MEMCACHE_TTL), key_prefix=page_prefix)
+            not_stored = self.client.set_multi(pages, min(ttl, MAX_MEMCACHE_TTL), key_prefix=page_prefix)
+
+            if not_stored:
+                # Abort
+                self.client.delete_multi(pages.keys(), key_prefix=page_prefix)
+                return False
 
             pages[0] = first_page
 
+            # Backup old page metadata to expire previous pages and allow memcache to free them earlier
+            old_page = self.client.get(short_key+"|0")
+            if old_page:
+                # Only the metadata is interesting, get rid of the data (which is BIG)
+                old_page = old_page[:-1] + (None,)
+        else:
+            old_page = None
+
         # First page with a simple set
-        self.client.set(short_key+"|0", pages[0], min(ttl, MAX_MEMCACHE_TTL))
+        success = self.client.set(short_key+"|0", pages[0], min(ttl, MAX_MEMCACHE_TTL))
+
+        # Delete old versions' content pages, if any are left over (no longer reachable)
+        if success and old_page:
+            old_page_prefix = self._page_prefix(old_page, short_key)
+            self.client.delete_multi(xrange(1,old_page[0]), key_prefix=old_page_prefix)
 
         try:
             del self._failfast_cache[key]
