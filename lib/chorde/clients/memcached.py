@@ -1284,6 +1284,12 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if success and old_page:
             old_page_prefix = self._page_prefix(old_page, short_key)
             self.client.delete_multi(xrange(1,old_page[0]), key_prefix=old_page_prefix)
+        elif not success and len(pages) > 1:
+            # Roll back content pages
+            first_page = pages.pop(0)
+            page_prefix = self._page_prefix(first_page, short_key)
+            self.client.delete_multi(pages.keys(), key_prefix=page_prefix)
+            return False
 
         try:
             del self._failfast_cache[key]
