@@ -194,20 +194,20 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def testContainsBigValueTTLExact(self):
         bigval = self.BIG_VALUE
         client = self.client
-        client.put("bigkey3", bigval, 10)
-        self.assertTrue(client.contains("bigkey3"))
+        client.put("bigkey3", bigval, 100)
+        self.assertTrue(client.contains("bigkey3", 50))
 
     def testContainsBigValueTTLInexact(self):
         bigval = self.BIG_VALUE
         client = self.client
         bigkey = "bigkey3" * 500
-        client.put(bigkey, bigval, 10)
+        client.put(bigkey, bigval, 100)
 
         # Force re-decoding
         if hasattr(client, 'encoding_cache'):
             client.encoding_cache.cache = None
         
-        self.assertTrue(client.contains(bigkey, 1))
+        self.assertTrue(client.contains(bigkey, 50))
 
     def testTTLTooBig(self):
         from chorde.clients.memcached import MAX_MEMCACHE_TTL 
