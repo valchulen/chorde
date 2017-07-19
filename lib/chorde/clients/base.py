@@ -225,6 +225,10 @@ class ReadWriteSyncAdapter(BaseCacheClient):
     def getTtl(self, key, default = NONE, **kw):
         return self.client.getTtl(key, default, **kw)
 
+    @serialize_read
+    def getTtlMulti(self, keys, default = NONE, **kw):
+        return self.client.getTtlMulti(keys, default, **kw)
+
     @serialize_write
     def promote(self, *p, **kw):
         return self.client.promote(*p, **kw)
@@ -287,6 +291,10 @@ class SyncAdapter(BaseCacheClient):
     @serialize
     def getTtl(self, key, default = NONE, **kw):
         return self.client.getTtl(key, default, **kw)
+
+    @serialize
+    def getTtlMulti(self, keys, default = NONE, **kw):
+        return self.client.getTtlMulti(keys, default, **kw)
 
     @serialize_write
     def promote(self, *p, **kw):
@@ -409,6 +417,24 @@ class DecoratedWrapper(BaseCacheClient):
                 rv = value_undecorator(rv)
         return rv, ttl
 
+    def getTtlMulti(self, keys, default = NONE, **kw):
+        key_decorator = self.key_decorator
+        key_undecorator = self.key_undecorator
+        if key_decorator is not None:
+            if key_undecorator is not None and 'promote_callback' in kw:
+                promote_callback = kw['promote_callback']
+                def undecorating_callback(key, value, ttl):
+                    promote_callback(key_undecorator(key), value, ttl)
+                kw['promote_callback'] = undecorating_callback
+            keys = map(key_decorator, keys)
+        value_undecorator = self.value_undecorator
+        for gkey, (rv, ttl) in self.client.getTtlMulti(keys, default, **kw):
+            if rv is not default and value_undecorator is not None:
+                rv = value_undecorator(rv)
+            if key_undecorator is not None:
+                gkey = key_undecorator(gkey)
+            yield gkey, (rv, ttl)
+
     def promote(self, key, *p, **kw):
         key_decorator = self.key_decorator
         if key_decorator is not None:
@@ -454,6 +480,20 @@ class NamespaceWrapper(DecoratedWrapper):
 
     def getTtl(self, key, default = NONE, **kw):
         return self.client.getTtl(self._key_decorator(key), default, **kw)
+
+    def getTtlMulti(self, keys, default = NONE, **kw):
+        # Specialized implementation of DecoratedWrapper
+        key_decorator = self._key_decorator
+        key_undecorator = self.key_undecorator
+        if key_decorator is not None:
+            if 'promote_callback' in kw:
+                promote_callback = kw['promote_callback']
+                def undecorating_callback(key, value, ttl):
+                    promote_callback(key_undecorator(key), value, ttl)
+                kw['promote_callback'] = undecorating_callback
+            keys = map(key_decorator, keys)
+        for gkey, (rv, ttl) in self.client.getTtlMulti(keys, default, **kw):
+            yield key_undecorator(gkey), (rv, ttl)
 
     def contains(self, key, ttl = None, **kw):
         return self.client.contains(self._key_decorator(key), ttl, **kw)
