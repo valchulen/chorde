@@ -892,7 +892,7 @@ def cached(client, ttl,
                 logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
-            nclient.delete(callkey)
+            nclient.expire(callkey)
         if decorate is not None:
             expire_f = decorate(expire_f)
         
