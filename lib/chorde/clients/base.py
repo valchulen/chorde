@@ -118,6 +118,43 @@ class BaseCacheClient(object):
         else:
             return rv
 
+    def getMulti(self, keys, default = NONE, **kw):
+        """
+        Params:
+
+            keys: An iterable of keys to fetch
+
+            default: The default value to return when a miss occurs
+
+        Returns: An iterator over the respective (key, value) pairs. When a
+            miss occurs, the default is returned in every case (instead of
+            an exception). It's up to the caller to check for a default
+            return value. The order of iteration may not match the given
+            iterator.
+        """
+        for key, (rv, ttl) in self.getTtlMulti(keys, default, **kw):
+            yield key, rv
+
+    def getTtlMulti(self, keys, default = NONE, **kw):
+        """
+        Params:
+
+            keys: An iterable of keys to fetch
+
+            default: The default value to return when a miss occurs
+
+        Returns: An iterator over the respective (key, (value, ttl)) tuples.
+            When a miss occurs, the default is returned in every case (instead
+            of an exception). It's up to the caller to check for a default
+            return value. The order of iteration may not match the given
+            iterator.
+        """
+        for key in keys:
+            try:
+                yield key, self.getTtl(key, default, **kw)
+            except CacheMissError:
+                yield key, (default, -1)
+
     @abstractmethod
     def clear(self):
         raise NotImplementedError
