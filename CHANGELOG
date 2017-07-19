@@ -1,0 +1,18 @@
+# Change Log
+
+All notable changes to this project will be documented here.
+
+## [0.2.0] - Unreleased
+### Added
+- Support for getMulti and getTtlMulti to all clients,
+  with optimized versions for memcached
+
+- Change pybloomfiltermap version to 0.3.14j
+
+## [0.1.0]
+
+Initial release
+
+
+[Note]
+This changelog format is taken from http://keepachangelog.com/.
