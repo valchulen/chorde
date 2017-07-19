@@ -132,7 +132,8 @@ class TieredInclusiveClient(BaseCacheClient):
         for client in self.clients:
             client.purge(*p, **kw)
     
-    def _getTtl(self, key, default = NONE, _max_tiers = None, ttl_skip = 0, promote_callback = None,
+    def _getTtl(self, key, default = NONE, _max_tiers = None, ttl_skip = 0,
+            promote_callback = None, return_stale = True,
             NONE_ = NONE_, NONE = NONE, enumerate = enumerate, islice = islice,
             **kw):
         ttl = -1
@@ -166,7 +167,7 @@ class TieredInclusiveClient(BaseCacheClient):
             # Ok, gotta inspect other tiers
         else:
             # Or not
-            if rv is not NONE_:
+            if rv is not NONE_ and (return_stale or ttl_skip is None or ttl >= ttl_skip):
                 return rv, ttl
             else:
                 if default is NONE:
@@ -175,7 +176,59 @@ class TieredInclusiveClient(BaseCacheClient):
                     return default, -1
 
     getTtl = _getTtl
-    
+
+    def _getTtlMulti(self, keys, default = NONE, _max_tiers = None, ttl_skip = 0, promote_callback = None,
+            NONE_ = NONE_, NONE = NONE, enumerate = enumerate, islice = islice,
+            **kw):
+
+        default_rv = (default, -1)
+        stale = {}
+        clients = self.clients
+        if _max_tiers is not None:
+            clients = islice(clients, _max_tiers)
+        for i,client in enumerate(clients):
+            # Yeap, separate NONE_, we must avoid CacheMissError s
+            nkeys = []
+            nkeys_append = nkeys.append
+            mrv = client.getTtlMulti(keys, NONE_)
+            for key, (rv, ttl) in mrv:
+                if rv is not NONE_ and ttl >= ttl_skip:
+                    # Cool
+                    if i > 0 and ttl > ttl_skip:
+                        # Um... not first-tier
+                        # Move the entry up the ladder
+                        for i in xrange(i-1, -1, -1):
+                            try:
+                                self.clients[i].put(key, rv, ttl)
+                            except:
+                                # Ignore, go to the next
+                                logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
+                        if promote_callback:
+                            try:
+                                promote_callback(key, rv, ttl)
+                            except:
+                                # Ignore
+                                logging.getLogger('chorde').error("Error on promote callback", exc_info = True)
+                    yield key, (rv, ttl)
+                else:
+                    if rv is not NONE_:
+                        # remember stale response
+                        stale[key] = (rv, ttl)
+                    if not i:
+                        self.l1_misses += 1
+                    nkeys_append(key)
+
+            keys = nkeys
+            del nkeys
+            if not keys:
+                break
+            # Ok, gotta inspect other tiers
+        else:
+            for key in keys:
+                yield key, stale.get(key, default_rv)
+
+    getTtlMulti = _getTtlMulti
+
     def promote(self, key, default = NONE, _max_tiers = None, ttl_skip = 0, promote_callback = None, **kw):
         ttl = -1
         NONE__ = NONE_

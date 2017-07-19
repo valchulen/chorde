@@ -132,8 +132,12 @@ class BaseCacheClient(object):
             return value. The order of iteration may not match the given
             iterator.
         """
+        ttl_skip = kw.get('ttl_skip', 0) or 0
         for key, (rv, ttl) in self.getTtlMulti(keys, default, **kw):
-            yield key, rv
+            if ttl < ttl_skip:
+                yield key, default
+            else:
+                yield key, rv
 
     def getTtlMulti(self, keys, default = NONE, **kw):
         """

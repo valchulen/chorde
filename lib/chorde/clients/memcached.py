@@ -1108,7 +1108,8 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     
     def _getTtl(self, key, default, decode = True, ttl_skip = None, promote_callback = None, 
             short_key = None, pages = None, method = None, multi_method = None,
-            force_all_pages = False, valid_sequence_types = (list, tuple) ):
+            force_all_pages = False, valid_sequence_types = (list, tuple),
+            return_stale = False ):
         now = time.time()
 
         if decode:
@@ -1164,7 +1165,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 else:
                     pages.update([ (i,method("%s%d" % (page_prefix,i))) for i in xrange(1,npages) ])
             return pages, ttl - now
-        elif ttl_skip is not None and (ttl - now) < ttl_skip:
+        elif not return_stale and (ttl_skip is not None and (ttl - now) < ttl_skip):
             return default, -1
         # Check failfast cache, before making a huge effort decoding for not
         # When there's a key collision, this avoids misses being expensive
@@ -1209,7 +1210,8 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
     def _getTtlMulti(self, keys, default, decode = True, ttl_skip = None, promote_callback = None, 
             short_keys = None, pages = None, method = None, multi_method = None,
-            force_all_pages = False, valid_sequence_types = (list, tuple) ):
+            force_all_pages = False, valid_sequence_types = (list, tuple),
+            return_stale = False ):
         now = time.time()
 
         if decode:
@@ -1229,10 +1231,8 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                         # Ok
                         cached, ttl = cached
                         yield key, (cached, ttl - now)
-                    else:
-                        nkeys_append(key)
-                else:
-                    nkeys_append(key)
+                        continue
+                nkeys_append(key)
             keys = nkeys
             del nkeys
 
@@ -1286,11 +1286,14 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             key = key_map[short_key]
             npages = first_page[0]
 
+            ttl = first_page[2]
+
             if not decode and not force_all_pages:
                 # yield now
-                ttl = first_page[2]
                 yield key, ({ 0 : first_page }, ttl - now)
                 continue
+            elif not return_stale and ttl_skip is not None and (ttl - now) < ttl_skip:
+                yield key, (default, -1)
 
             if npages > 1:
                 page_prefix = self._page_prefix(first_page, short_key)
@@ -1334,7 +1337,8 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                         short_key = short_key, pages = key_pages,
                         method = method, multi_method = multi_method,
                         force_all_pages = force_all_pages,
-                        valid_sequence_types = valid_sequence_types)
+                        valid_sequence_types = valid_sequence_types,
+                        return_stale = return_stale)
                 except CacheMissError:
                     yield key, (default, -1)
 
@@ -1342,7 +1346,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         # This trampoline is necessary to avoid re-entrancy issues when this client
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
-        return self._getTtl(key, default, ttl_skip = ttl_skip, **kw)
+        return self._getTtl(key, default, ttl_skip = ttl_skip, return_stale = True, **kw)
 
     def get(self, key, default=NONE, **kw):
         rv, ttl = self._getTtl(key, default, ttl_skip = 0, **kw)
@@ -1362,7 +1366,8 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         # This trampoline is necessary to avoid re-entrancy issues when this client
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
-        return self._getTtlMulti(keys, default, ttl_skip = 0, **kw)
+        ttl_skip = kw.pop('ttl_skip', 0) or 0
+        return self._getTtlMulti(keys, default, ttl_skip = ttl_skip, return_stale = True, **kw)
 
     def renew(self, key, ttl):
         old_cas = getattr(self.client, 'cache_cas', None)
@@ -1819,9 +1824,6 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         
         if value is None:
             return default, -1
-        
-        if ttl_skip is not None and ttl < ttl_skip:
-            return default, -1
         else:
             return value, ttl
 
@@ -1839,9 +1841,8 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             for key in keys:
                 value = queueset_get(key, workset_get(key, NONE))
                 if value is not NONE and value is not _RENEW:
-                    if ttl_skip is None or value[1] >= ttl_skip:
-                        yield key, value
-                        continue
+                    yield key, value
+                    continue
 
                 # Check failfast cache, before contacting the remote client
                 if failfast_cache is not None and failfast_cache.get(key) > (now - failfast_time):
@@ -1884,7 +1885,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             elif self._failfast_cache is not None:
                 self._failfast_cache[raw_key] = now
 
-            if value is None or (ttl_skip is not None and ttl < ttl_skip):
+            if value is None:
                 yield raw_key, (default, -1)
             else:
                 yield raw_key, (value, ttl)

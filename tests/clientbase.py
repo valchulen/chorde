@@ -136,8 +136,20 @@ class CacheClientTestMixIn:
         client.put(4, 10, 10)
         time.sleep(0.1)
         v,ttl = client.getTtl(4, None, ttl_skip = 10)
-        self.assertEqual(v, None)
-        self.assertTrue(ttl < 0)
+        self.assertEqual(v, 10)
+        self.assertTrue(ttl >= 0)
+
+    def testGetTtlSkipMulti(self):
+        client = self.client
+        client.put(4, 10, 10)
+        client.put(5, 11, 20)
+        time.sleep(0.1)
+        rv = dict(client.getTtlMulti([4,5], None, ttl_skip = 10))
+        rv[5] = (rv[5][0], min(rv[5][1], 12))
+        rv[4] = (rv[4][0], max(rv[4][1], 10))
+        self.assertItemsEqual(
+            [(4, (10, 10)), (5, (11, 12))],
+            rv.items())
 
     def testGetTtlPromoteCB(self):
         client = self.client

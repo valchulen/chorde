@@ -576,7 +576,7 @@ class FilesCacheClient(base.BaseCacheClient):
                 pass
 
     def _getTtl(self, key, default = base.NONE, baseNONE = base.NONE, ttl_skip=None, 
-            promote_callback = None, decode=True):
+            promote_callback = None, decode=True, return_stale=False):
         key = self.key_pickler(key)
         kpath = self._mkpath(key)
         targetpath = os.path.join(self.basepath, *kpath)
@@ -601,7 +601,7 @@ class FilesCacheClient(base.BaseCacheClient):
                 ttl = os.path.getmtime(keypath)
                 rttl = ttl - time.time()
 
-                if ttl_skip is not None and rttl < ttl_skip:
+                if not return_stale and (ttl_skip is not None and rttl < ttl_skip):
                     return default, -1
                 elif decode:
                     try:
@@ -639,7 +639,7 @@ class FilesCacheClient(base.BaseCacheClient):
         # This trampoline is necessary to avoid re-entrancy issues when this client
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
-        return self._getTtl(key, default, ttl_skip = ttl_skip, **kw)
+        return self._getTtl(key, default, ttl_skip = ttl_skip, return_stale = True, **kw)
 
     def get(self, key, default=NONE, **kw):
         rv, ttl = self._getTtl(key, default, ttl_skip = 0, **kw)
@@ -649,7 +649,7 @@ class FilesCacheClient(base.BaseCacheClient):
             return rv
     
     def contains(self, key, ttl = None):
-        rv, ettl = self._getTtl(key, ttl_skip = 0, decode = False)
+        rv, ettl = self._getTtl(key, ttl_skip = 0, decode = False, return_stale = False)
         if ettl < 0:
             return False
         else:
