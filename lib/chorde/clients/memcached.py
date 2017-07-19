@@ -1776,8 +1776,8 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
     def decode(self, value):
         value, ttl = self.pickler.loads(value)
         return value, ttl
-    
-    def _getTtl(self, key, default, ttl_skip = None, promote_callback = None, encoded = False, raw_key = None):
+
+    def _getTtl(self, key, default, ttl_skip = None, encoded = False, raw_key = None):
         # Quick check for a concurrent put
         if encoded:
             value = NONE
@@ -1825,12 +1825,88 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         else:
             return value, ttl
 
+    def _getTtlMulti(self, keys, default, ttl_skip = None, encoded = False, raw_keys = None):
+        now = time.time()
+
+        # Quick check for a concurrent put
+        if not encoded:
+            queueset_get = self.queueset.get
+            workset_get = self.workset.get
+            nkeys = []
+            nkeys_append = nkeys.append
+            failfast_cache = self._failfast_cache
+            failfast_time = self.failfast_time
+            for key in keys:
+                value = queueset_get(key, workset_get(key, NONE))
+                if value is not NONE and value is not _RENEW:
+                    if ttl_skip is None or value[1] >= ttl_skip:
+                        yield key, value
+                        continue
+
+                # Check failfast cache, before contacting the remote client
+                if failfast_cache is not None and failfast_cache.get(key) > (now - failfast_time):
+                    yield key, (default, -1)
+                    continue
+
+                nkeys_append(key)
+            keys = nkeys
+            del nkeys
+
+        if not keys:
+            # All hits in the write queue or failfast cache
+            return
+
+        # Not in queue, get from memcached, and decode
+        if not encoded:
+            raw_keys = keys
+            keys = map(self.encode_key, keys)
+            key_map = dict(zip(keys, raw_keys))
+
+        values = self.client.get_multi(keys)
+
+        for key, value in values.iteritems():
+            raw_key = key_map[key]
+            if value is not None:
+                try:
+                    value, ttl = self.decode(value)
+                    ttl -= now
+                except ValueError:
+                    if self._failfast_cache is not None:
+                        self._failfast_cache[raw_key] = now
+                    yield raw_key, (default, -1)
+                    continue
+                except:
+                    logging.warning("Error decoding cached data (%r)", value, exc_info=True)
+                    if self._failfast_cache is not None:
+                        self._failfast_cache[raw_key] = now
+                    yield raw_key, (default, -1)
+                    continue
+            elif self._failfast_cache is not None:
+                self._failfast_cache[raw_key] = now
+
+            if value is None or (ttl_skip is not None and ttl < ttl_skip):
+                yield raw_key, (default, -1)
+            else:
+                yield raw_key, (value, ttl)
+
+        if len(values) != len(raw_keys):
+            # Some missing keys...
+            for key, raw_key in key_map.iteritems():
+                if key not in values:
+                    yield raw_key, (default, -1)
+
     def getTtl(self, key, default = NONE, ttl_skip = None, **kw):
         # This trampoline is necessary to avoid re-entrancy issues when this client
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
-        return self._getTtl(key, default, ttl_skip = ttl_skip, **kw)
-    
+        return self._getTtl(key, default, ttl_skip = ttl_skip)
+
+    def getTtlMulti(self, keys, default = NONE, ttl_skip = None, **kw):
+        # This trampoline is necessary to avoid re-entrancy issues when this client
+        # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
+        # to avoid locking the wrapper's mutex.
+        return self._getTtlMulti(keys, default, ttl_skip = ttl_skip)
+
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
         self._enqueue_put(key, value, ttl)
