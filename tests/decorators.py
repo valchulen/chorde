@@ -222,6 +222,17 @@ class CachedDecoratorTest(DecoratorTestCase):
         time.sleep(0.1)
         self.assertFalse(get_random.client.contains(key()))
 
+    def test_expire(self):
+        # Should delete cache entry
+        key = lambda: 'test_expire'
+        @self.decorator(ttl=10, key=key)
+        def get_random():
+            return random.random()
+        get_random()
+        get_random.expire()
+        time.sleep(0.1)
+        self.assertFalse(get_random.client.contains(key()))
+
     def test_refresh(self):
         # Should refresh the cache value
         @self.decorator(ttl=10)

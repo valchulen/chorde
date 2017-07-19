@@ -178,6 +178,9 @@ def cached(client, ttl,
         invalidate(...): mimicking the underlying function's signature, it will, instead of invoking the function,
             invalidate cached entries sharing the call's key.
 
+        expire(...): like invalidate, but the key is just marked as out-of-date, requiring immediate refresh,
+            but not completely invalid.
+
         put(_cache_put, ...): mimicking the underlying function's signature after the first positional argument,
             except for one keyword argument _cache_put, it will forcibly set the cached value for that key to
             be what's supplied in _cache_put. Although there will be no invocation of the target function,
@@ -880,6 +883,46 @@ def cached(client, ttl,
             future_invalidate_f = decorate(future_invalidate_f)
         
         @wraps(of)
+        def expire_f(*p, **kw):
+            if _initialize:
+                _initialize[0]()
+            try:
+                callkey = key(*p, **kw)
+            except:
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
+                stats.errors += 1
+                return
+            nclient.delete(callkey)
+        if decorate is not None:
+            expire_f = decorate(expire_f)
+        
+        @wraps(of)
+        def async_expire_f(*p, **kw):
+            if _initialize:
+                _initialize[0]()
+            try:
+                callkey = key(*p, **kw)
+            except:
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
+                stats.errors += 1
+                return
+            aclient[0].expire(callkey)
+        if decorate is not None:
+            async_expire_f = decorate(async_expire_f)
+        
+        @wraps(of)
+        def future_expire_f(*p, **kw):
+            try:
+                callkey = key(*p, **kw)
+            except:
+                logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
+                stats.errors += 1
+                return
+            return fclient[0].expire(callkey)
+        if decorate is not None:
+            future_expire_f = decorate(future_expire_f)
+        
+        @wraps(of)
         def put_f(*p, **kw):
             value = kw.pop('_cache_put')
             put_kwargs = kw.pop('_cache_put_kwargs', None)
@@ -1105,6 +1148,7 @@ def cached(client, ttl,
             async_cached_f.refresh = async_refresh_f
             async_cached_f.peek = peek_cached_f
             async_cached_f.invalidate = invalidate_f
+            async_cached_f.expire = async_expire_f
             async_cached_f.uncached = of
             async_cached_f.put = async_put_f
             async_cached_f.ttl = ttl
@@ -1122,6 +1166,7 @@ def cached(client, ttl,
             cached_f.refresh = refresh_f
             cached_f.peek = peek_cached_f
             cached_f.invalidate = invalidate_f
+            cached_f.expire = expire_f
             cached_f.put = put_f
         else:
             aclient = [nclient]
@@ -1130,6 +1175,7 @@ def cached(client, ttl,
             cached_f.refresh = async_refresh_f
             cached_f.peek = peek_cached_f
             cached_f.invalidate = invalidate_f
+            cached_f.expire = expire_f
             cached_f.put = async_put_f
 
         cached_f.future = future_f
@@ -1154,6 +1200,7 @@ def cached(client, ttl,
         future_cached_f.refresh = future_refresh_f
         future_cached_f.peek = future_peek_cached_f
         future_cached_f.invalidate = future_invalidate_f
+        future_cached_f.expire = future_expire_f
         future_cached_f.put = future_put_f
         future_cached_f.ttl = ttl
         future_cached_f.async_ttl = async_ttl
