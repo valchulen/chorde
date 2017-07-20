@@ -219,7 +219,7 @@ class TieredInclusiveClient(BaseCacheClient):
                     nkeys_append(key)
 
             keys = nkeys
-            del nkeys
+            del nkeys, nkeys_append
             if not keys:
                 break
             # Ok, gotta inspect other tiers

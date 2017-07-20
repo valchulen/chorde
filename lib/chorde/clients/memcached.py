@@ -1234,7 +1234,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                         continue
                 nkeys_append(key)
             keys = nkeys
-            del nkeys
+            del nkeys, nkeys_append
 
         if not keys:
             # All hits in the succeedfast
@@ -1851,7 +1851,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
 
                 nkeys_append(key)
             keys = nkeys
-            del nkeys
+            del nkeys, nkeys_append
 
         if not keys:
             # All hits in the write queue or failfast cache

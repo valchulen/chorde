@@ -650,6 +650,54 @@ class AsyncWriteCacheClient(BaseCacheClient):
         else:
             return value, ttl
 
+    def getTtlMulti(self, keys, default = NONE, 
+            _DELETE = _DELETE, _EXPIRE = _EXPIRE, _RENEW = _RENEW, _CLEAR = _CLEAR, 
+            NONE = NONE, _NONE = _NONE,
+            hasattr = hasattr,
+            **kw):
+        ettl = {}
+        writer = self.writer
+        default_rv = (default, -1)
+        if writer is not None: # self.is_started() inlined for speed
+            # Try to read pending writes as if they were on the cache
+            wgetTtl = writer.getTtl
+            nkeys = []
+            nkeys_append = nkeys.append
+            for key in keys:
+                value = wgetTtl(key, _NONE)
+                if value is not _NONE:
+                    value, ttl, _ = value
+                    if value is _DELETE:
+                        # Deletion means a miss... right?
+                        yield key, default_rv
+                        continue
+                    elif value is _EXPIRE:
+                        # Expiration just sets the TTL
+                        ettl[key] = -1
+                    elif value is _RENEW:
+                        ettl[key] = ttl
+                    elif not hasattr(value, 'undefer'):
+                        yield key, (value, ttl)
+                        continue
+                # Yep, _NONE when querying the writer, because we don't want
+                # to return a default if the writer doesn't have it, we must
+                # still check the client.
+                nkeys_append(key)
+            keys = nkeys
+            del nkeys, nkeys_append
+
+            # Check pending clear - after checking the queue for sorted semantics
+            if writer._contains(_CLEAR):
+                for key in keys:
+                    yield key, default_rv
+                return
+        
+        # Ok, read the cache then
+        ettlget = ettl.get
+        for key, (value, ttl) in self.client.getTtlMulti(keys, default, **kw):
+            ttl = ettlget(key, ttl)
+            yield key, (value, ttl)
+
     def promote(self, key, *p, **kw):
         if self.is_started() and self.writer.contains(key):
             return
