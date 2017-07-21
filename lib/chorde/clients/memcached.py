@@ -165,7 +165,7 @@ class MemcachedStoreClient(memcache.Client):
 
     # Consistent hashing
     def _init_buckets(self):
-        super(MemcachedStoreClient, self)._init_buckets()
+        self.buckets = list(self.servers)
 
         # Build a server hash ring
         #
@@ -207,7 +207,7 @@ class MemcachedStoreClient(memcache.Client):
             return None, None
 
         for i in xrange(self._SERVER_RETRIES):
-            server = self.buckets[serverhash % len(self.buckets)]
+            server = self.buckets[server_ix]
             if server.connect():
                 return server, key
             serverhash = server_hash_function(str(serverhash) + str(i))
