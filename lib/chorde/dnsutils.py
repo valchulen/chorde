@@ -270,4 +270,5 @@ class AsyncThreadLocalDynamicResolvingClient(ThreadLocalDynamicResolvingClient):
         return servers
 
     def refresh_servers(self):
-        return self._servers()
+        servers = self._cached_servers = self._servers()
+        return servers
