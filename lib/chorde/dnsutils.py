@@ -113,6 +113,9 @@ class DynamicResolvingClient(object):
 
     @property
     def servers(self):
+        return self._servers()
+
+    def _servers(self):
         """
         Returns a set of server names derived from client_addresses.
         When the addresses in client_addresses point to specific hosts, this will
@@ -253,3 +256,18 @@ class ThreadLocalDynamicResolvingClient(DynamicResolvingClient):
         if tl is None:
             self._tl = tl = DynamicResolvingClientLocalStore()
         return tl
+
+class AsyncThreadLocalDynamicResolvingClient(ThreadLocalDynamicResolvingClient):
+    def __init__(self, *p, **kw):
+        super(AsyncThreadLocalDynamicResolvingClient, self).__init__(*p, **kw)
+        self._cached_servers = None
+
+    @property
+    def servers(self):
+        servers = self._cached_servers
+        if servers is None:
+            servers = self._cached_servers = self._servers()
+        return servers
+
+    def refresh_servers(self):
+        return self._servers()

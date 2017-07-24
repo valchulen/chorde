@@ -38,7 +38,7 @@ except ImportError:
     pass
 
 from chorde import sPickle
-from chorde.dnsutils import ThreadLocalDynamicResolvingClient
+from chorde.dnsutils import ThreadLocalDynamicResolvingClient, AsyncThreadLocalDynamicResolvingClient
 
 try:
     try:
@@ -829,6 +829,11 @@ class DynamicResolvingMemcachedClient(BaseCacheClient, ThreadLocalDynamicResolvi
         super(DynamicResolvingMemcachedClient, self).__init__(
                 client_class, client_addresses, client_args)
 
+class AsyncDynamicResolvingMemcachedClient(BaseCacheClient, AsyncThreadLocalDynamicResolvingClient):
+    def __init__(self, client_class, client_addresses, client_args):
+        super(AsyncDynamicResolvingMemcachedClient, self).__init__(
+                client_class, client_addresses, client_args)
+
 class MemcachedClient(DynamicResolvingMemcachedClient):
     def __init__(self, 
             client_addresses, 
@@ -1406,7 +1411,7 @@ class MemcacheWriterThread(Thread):
         
         Thread.__init__(self, target=target, args=args, name=name)
 
-class FastMemcachedClient(DynamicResolvingMemcachedClient):
+class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
     """
     Like MemcachedClient, but it doesn't support massive keys or values,
     is a lot more lightweight, and is optimized for high numbers of writes
@@ -1552,6 +1557,9 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             workev = self.workev
             workev.clear()
             workset = self._dequeue_put()
+
+            # Client threads won't do this, we'll do it in the writer thread
+            self.refresh_servers()
 
             # Separate into deletions, puttions, and group by ttl
             # since put_multi can only handle one ttl.
