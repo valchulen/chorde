@@ -261,14 +261,18 @@ class AsyncThreadLocalDynamicResolvingClient(ThreadLocalDynamicResolvingClient):
     def __init__(self, *p, **kw):
         super(AsyncThreadLocalDynamicResolvingClient, self).__init__(*p, **kw)
         self._cached_servers = None
+        self._cached_servers_exptime = None
 
     @property
     def servers(self):
         servers = self._cached_servers
-        if servers is None:
-            servers = self._cached_servers = self._servers()
+        exptime = self._cached_servers_exptime
+        if servers is None or exptime is None or (exptime < time.time()):
+            servers = self.refresh_servers()
         return servers
 
     def refresh_servers(self):
+        # Expires in 5 minutes if refresh_servers isn't called
         servers = self._cached_servers = self._servers()
+        self._cached_servers_exptime = time.time() + 300
         return servers
