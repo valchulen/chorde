@@ -145,6 +145,18 @@ except:
     lz4_compress_file_class = None
     lz4_decompress_fn = None
 
+class _Host(memcache._Host):
+    def __init__(self, *args, **kwargs):
+        self.tcp_nodelay = kwargs.pop('tcp_nodelay', False)
+        memcache._Host.__init__(self, *args, **kwargs)
+
+    def _get_socket(self):
+        new_socket = self.socket is None
+        sock = memcache._Host._get_socket(self)
+        if new_socket and hasattr(socket, 'TCP_NODELAY'):
+            sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
+        return sock
+
 class MemcachedStoreClient(memcache.Client):
     """
     Subclass of memcache.Client that improves on the basic client by implementing
@@ -162,6 +174,38 @@ class MemcachedStoreClient(memcache.Client):
     """
 
     SERVER_HASH_SALT = 'saltval'
+
+    def __init__(self, *args, **kwargs):
+        """
+        See memcache.Client for more details.
+
+        Adds the following options
+
+        Params:
+
+            * tcp_nodelay: If True (default False), it will set TCP_NODELAY in the sockets
+                to lower operation latency. If latency is important, specify it as True.
+                Otherwise, leave it in its default, since TCP_NODELAY incurs some overhead.
+        """
+        self.tcp_nodelay = kwargs.pop('tcp_nodelay', False)
+        memcache.Client.__init__(self, *args, **kwargs)
+
+    def set_servers(self, servers):
+        """
+        Set the pool of servers used by this client.
+
+        @param servers: an array of servers.
+        Servers can be passed in two forms:
+            1. Strings of the form C{"host:port"}, which implies a default weight of 1.
+            2. Tuples of the form C{("host:port", weight)}, where C{weight} is
+            an integer weight value.
+        """
+        self.servers = [_Host(s, self.debug, dead_retry=self.dead_retry,
+                socket_timeout=self.socket_timeout,
+                tcp_nodelay=self.tcp_nodelay,
+                flush_on_reconnect=self.flush_on_reconnect)
+                    for s in servers]
+        self._init_buckets()
 
     # Consistent hashing
     def _init_buckets(self):

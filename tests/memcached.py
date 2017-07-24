@@ -407,6 +407,14 @@ class FastMemcacheTest(CacheClientTestMixIn, TestCase):
     testContainsBigValueTTLInexact = None
 
 @skipIfNoMemcached
+class FastLowLatencyCacheTest(FastMemcacheTest):
+    def setUpClient(self):
+        from chorde.clients.memcached import FastMemcachedClient
+        rv = FastMemcachedClient([DEFAULT_CLIENT_ADDR], tcp_nodelay = True)
+        rv.client.flush_all()
+        return rv
+
+@skipIfNoMemcached
 class FastElastiCacheTest(FastMemcacheTest):
     def setUpClient(self):
         from chorde.clients.elasticache import FastElastiCacheClient
