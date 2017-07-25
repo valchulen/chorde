@@ -153,7 +153,7 @@ class _Host(memcache._Host):
     def _get_socket(self):
         new_socket = self.socket is None
         sock = memcache._Host._get_socket(self)
-        if new_socket and hasattr(socket, 'TCP_NODELAY'):
+        if new_socket and hasattr(socket, 'TCP_NODELAY') and self.tcp_nodelay:
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
         return sock
 
