@@ -1152,7 +1152,8 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     
     def _getTtl(self, key, default, decode = True, ttl_skip = None, promote_callback = None, 
             short_key = None, pages = None, method = None, multi_method = None,
-            force_all_pages = False, valid_sequence_types = (list, tuple) ):
+            force_all_pages = False, valid_sequence_types = (list, tuple),
+            return_stale = False ):
         now = time.time()
 
         if decode:
@@ -1208,7 +1209,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 else:
                     pages.update([ (i,method("%s%d" % (page_prefix,i))) for i in xrange(1,npages) ])
             return pages, ttl - now
-        elif ttl_skip is not None and (ttl - now) < ttl_skip:
+        elif not return_stale and (ttl_skip is not None and (ttl - now) < ttl_skip):
             return default, -1
         # Check failfast cache, before making a huge effort decoding for not
         # When there's a key collision, this avoids misses being expensive
@@ -1251,11 +1252,145 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             logging.warning("Error decoding cached data", exc_info=True)
             return default, -1
 
+    def _getTtlMulti(self, keys, default, decode = True, ttl_skip = None, promote_callback = None, 
+            short_keys = None, pages = None, method = None, multi_method = None,
+            force_all_pages = False, valid_sequence_types = (list, tuple),
+            return_stale = False ):
+        now = time.time()
+
+        if decode:
+            # First, check the succeedfast, in case a recent _getTtl already fetched this
+            # This is a necessary optimization when used in tiered architectures, since
+            # promotion and other tiered operations tend to abuse of contains and getTtl,
+            # creating lots of redundant roundtrips and decoding overhead
+            sfast_get = self._succeedfast_cache.get
+            _succeedfast_time = self.succeedfast_time
+            nkeys = []
+            nkeys_append = nkeys.append
+            for key in keys:
+                cached = sfast_get(key, NONE)
+                if cached is not NONE:
+                    cached, cached_time = cached
+                    if cached_time > (now - _succeedfast_time):
+                        # Ok
+                        cached, ttl = cached
+                        yield key, (cached, ttl - now)
+                        continue
+                nkeys_append(key)
+            keys = nkeys
+            del nkeys, nkeys_append
+
+        if not keys:
+            # All hits in the succeedfast
+            return
+
+        # get the first page (gambling that most entries will span only a single page)
+        # then query for the remaining ones in a single roundtrip, if present,
+        # for a combined total of 2 roundtrips.
+        if short_keys is None:
+            shorten_key = self.shorten_key
+            short_keys = [ shorten_key(key)[0] for key in keys ]
+
+        key_map = dict(zip(short_keys, keys))
+
+        if method is None:
+            _method = self.client.get
+            multi_method = self.client.get_multi
+            _usucceedfast_cache = self._usucceedfast_cache
+            _succeedfast_time = self.succeedfast_time
+            def method(k):
+                cached = _usucceedfast_cache.get(k, NONE)
+                if cached is not NONE:
+                    cached, cached_time = cached
+                    if cached_time > (now - _succeedfast_time):
+                        return cached
+                cached = _method(k)
+                _usucceedfast_cache[k] = (cached, now)
+                return cached
+
+        if pages is None:
+            if multi_method is not None:
+                pages = multi_method([ short_key+"|0" for short_key in short_keys ])
+            else:
+                pages = { short_key : method(short_key+"|0") for short_key in short_keys }
+
+        # Fill out the remaining keys
+        remaining_keys = []
+        page_map = {}
+        for short_key in short_keys:
+            first_key = short_key+"|0"
+            first_page = pages.get(first_key)
+            if first_page is None:
+                # Miss or invalid first page, discard
+                yield key_map[short_key], (default, -1)
+                key_map.pop(short_key)
+                continue
+
+            page_map[first_key] = short_key
+            key = key_map[short_key]
+            npages = first_page[0]
+
+            ttl = first_page[2]
+
+            if not decode and not force_all_pages:
+                # yield now
+                yield key, ({ 0 : first_page }, ttl - now)
+                continue
+            elif not return_stale and ttl_skip is not None and (ttl - now) < ttl_skip:
+                yield key, (default, -1)
+
+            if npages > 1:
+                page_prefix = self._page_prefix(first_page, short_key)
+                page_keys = [ page_prefix + str(i) for i in xrange(1,npages) ]
+                remaining_keys.extend(page_keys)
+                for page_key in page_keys:
+                    page_map[page_key] = short_key
+
+        if not decode and not force_all_pages:
+            # Nothing else to do
+            return
+
+        if not key_map:
+            # Discarded all
+            return
+
+        if remaining_keys:
+            if multi_method is not None:
+                pages.update(multi_method(remaining_keys))
+            else:
+                pages.update([ (short_key, method(short_key)) for short_key in remaining_keys ])
+
+        # Sort out pages by short_key, and decode by feeding to _getTtl
+        key_pages = collections.defaultdict(dict)
+        for page_key, page in pages.iteritems():
+            key_pages[page_map[page_key]][int(page_key.rsplit('|',1)[-1])] = page
+
+        for short_key, key_pages in key_pages.iteritems():
+            key = key_map.get(short_key)
+            if key is None:
+                # Already discarded
+                continue
+
+            if not decode:
+                ttl = key_pages[0][2]
+                yield key, (key_pages, ttl - now)
+            else:
+                try:
+                    # Decode by feeding already fetched pages to _getTtl
+                    yield key, self._getTtl(key, default, ttl_skip = ttl_skip, 
+                        short_key = short_key, pages = key_pages,
+                        method = method, multi_method = multi_method,
+                        force_all_pages = force_all_pages,
+                        valid_sequence_types = valid_sequence_types,
+                        return_stale = return_stale)
+                except CacheMissError:
+                    yield key, (default, -1)
+
     def getTtl(self, key, default=NONE, ttl_skip = None, **kw):
         # This trampoline is necessary to avoid re-entrancy issues when this client
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
-        return self._getTtl(key, default, ttl_skip = ttl_skip, **kw)
+        return self._getTtl(key, default, ttl_skip = ttl_skip, return_stale = True, **kw)
 
     def get(self, key, default=NONE, **kw):
         rv, ttl = self._getTtl(key, default, ttl_skip = 0, **kw)
@@ -1263,6 +1398,20 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             raise CacheMissError, key
         else:
             return rv
+
+    def getMulti(self, keys, default=NONE, **kw):
+        # This trampoline is necessary to avoid re-entrancy issues when this client
+        # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
+        # to avoid locking the wrapper's mutex.
+        for gkey, (rv, ttl) in self._getTtlMulti(keys, default, ttl_skip = 0, **kw):
+            yield gkey, rv
+
+    def getTtlMulti(self, keys, default=NONE, **kw):
+        # This trampoline is necessary to avoid re-entrancy issues when this client
+        # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
+        # to avoid locking the wrapper's mutex.
+        ttl_skip = kw.pop('ttl_skip', 0) or 0
+        return self._getTtlMulti(keys, default, ttl_skip = ttl_skip, return_stale = True, **kw)
 
     def renew(self, key, ttl):
         old_cas = getattr(self.client, 'cache_cas', None)
@@ -1676,8 +1825,8 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
     def decode(self, value):
         value, ttl = self.pickler.loads(value)
         return value, ttl
-    
-    def _getTtl(self, key, default, ttl_skip = None, promote_callback = None, encoded = False, raw_key = None):
+
+    def _getTtl(self, key, default, ttl_skip = None, encoded = False, raw_key = None):
         # Quick check for a concurrent put
         if encoded:
             value = NONE
@@ -1719,18 +1868,90 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         
         if value is None:
             return default, -1
-        
-        if ttl_skip is not None and ttl < ttl_skip:
-            return default, -1
         else:
             return value, ttl
+
+    def _getTtlMulti(self, keys, default, ttl_skip = None, encoded = False, raw_keys = None):
+        now = time.time()
+
+        # Quick check for a concurrent put
+        if not encoded:
+            queueset_get = self.queueset.get
+            workset_get = self.workset.get
+            nkeys = []
+            nkeys_append = nkeys.append
+            failfast_cache = self._failfast_cache
+            failfast_time = self.failfast_time
+            for key in keys:
+                value = queueset_get(key, workset_get(key, NONE))
+                if value is not NONE and value is not _RENEW:
+                    yield key, value
+                    continue
+
+                # Check failfast cache, before contacting the remote client
+                if failfast_cache is not None and failfast_cache.get(key) > (now - failfast_time):
+                    yield key, (default, -1)
+                    continue
+
+                nkeys_append(key)
+            keys = nkeys
+            del nkeys, nkeys_append
+
+        if not keys:
+            # All hits in the write queue or failfast cache
+            return
+
+        # Not in queue, get from memcached, and decode
+        if not encoded:
+            raw_keys = keys
+            keys = map(self.encode_key, keys)
+            key_map = dict(zip(keys, raw_keys))
+
+        values = self.client.get_multi(keys)
+
+        for key, value in values.iteritems():
+            raw_key = key_map[key]
+            if value is not None:
+                try:
+                    value, ttl = self.decode(value)
+                    ttl -= now
+                except ValueError:
+                    if self._failfast_cache is not None:
+                        self._failfast_cache[raw_key] = now
+                    yield raw_key, (default, -1)
+                    continue
+                except:
+                    logging.warning("Error decoding cached data (%r)", value, exc_info=True)
+                    if self._failfast_cache is not None:
+                        self._failfast_cache[raw_key] = now
+                    yield raw_key, (default, -1)
+                    continue
+            elif self._failfast_cache is not None:
+                self._failfast_cache[raw_key] = now
+
+            if value is None:
+                yield raw_key, (default, -1)
+            else:
+                yield raw_key, (value, ttl)
+
+        if len(values) != len(raw_keys):
+            # Some missing keys...
+            for key, raw_key in key_map.iteritems():
+                if key not in values:
+                    yield raw_key, (default, -1)
 
     def getTtl(self, key, default = NONE, ttl_skip = None, **kw):
         # This trampoline is necessary to avoid re-entrancy issues when this client
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
-        return self._getTtl(key, default, ttl_skip = ttl_skip, **kw)
-    
+        return self._getTtl(key, default, ttl_skip = ttl_skip)
+
+    def getTtlMulti(self, keys, default = NONE, ttl_skip = None, **kw):
+        # This trampoline is necessary to avoid re-entrancy issues when this client
+        # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
+        # to avoid locking the wrapper's mutex.
+        return self._getTtlMulti(keys, default, ttl_skip = ttl_skip)
+
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
         self._enqueue_put(key, value, ttl)

@@ -64,6 +64,11 @@ class CacheClientTestMixIn:
         self.assertEqual(client.get(3, None), None)
         self.assertEqual(client.get(3, 1), 1)
 
+    def testGetMulti(self):
+        client = self.client
+        client.put(4, 10, 10)
+        self.assertItemsEqual([(3,None), (4,10), (5,None)], list(client.getMulti([3,4,5], None)))
+
     def testGetPromoteCB(self):
         from chorde.clients.inproc import InprocCacheClient
         from chorde.clients.tiered import TieredInclusiveClient
@@ -118,13 +123,33 @@ class CacheClientTestMixIn:
         self.assertEqual(v, 10)
         self.assertTrue(ttl < 10)
 
+    def testGetTtlMulti(self):
+        client = self.client
+        client.put(4, 10, 10)
+        time.sleep(0.1)
+        rv = dict(client.getTtlMulti([3, 4, 5], None))
+        rv[4] = (rv[4][0], rv[4][1] < 10)
+        self.assertItemsEqual([(3,(None,-1)), (4,(10,True)), (5,(None,-1))], rv.items())
+
     def testGetTtlSkip(self):
         client = self.client
         client.put(4, 10, 10)
         time.sleep(0.1)
         v,ttl = client.getTtl(4, None, ttl_skip = 10)
-        self.assertEqual(v, None)
-        self.assertTrue(ttl < 0)
+        self.assertEqual(v, 10)
+        self.assertTrue(ttl >= 0)
+
+    def testGetTtlSkipMulti(self):
+        client = self.client
+        client.put(4, 10, 10)
+        client.put(5, 11, 20)
+        time.sleep(0.1)
+        rv = dict(client.getTtlMulti([4,5], None, ttl_skip = 10))
+        rv[5] = (rv[5][0], min(rv[5][1], 12))
+        rv[4] = (rv[4][0], max(rv[4][1], 10))
+        self.assertItemsEqual(
+            [(4, (10, 10)), (5, (11, 12))],
+            rv.items())
 
     def testGetTtlPromoteCB(self):
         client = self.client

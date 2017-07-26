@@ -1,0 +1,23 @@
+# Change Log
+
+All notable changes to this project will be documented here.
+
+## [0.2.0] - Unreleased
+### Changed
+- Made ttl_skip not return default/CacheMissError when the
+  only available value is below the skip threshold. Instead,
+  return the available item as does TieredInclusiveCache.
+  The logic works better with lazy decorators and async
+  refresh in this way, and is more uniform across clients.
+
+### Added
+- Support for getMulti and getTtlMulti to all clients,
+  with optimized versions for memcached
+
+## [0.1.0]
+
+Initial release
+
+
+[Note]
+This changelog format is taken from http://keepachangelog.com/.
