@@ -38,7 +38,7 @@ except ImportError:
     pass
 
 from chorde import sPickle
-from chorde.dnsutils import ThreadLocalDynamicResolvingClient
+from chorde.dnsutils import ThreadLocalDynamicResolvingClient, AsyncThreadLocalDynamicResolvingClient
 
 try:
     try:
@@ -145,6 +145,18 @@ except:
     lz4_compress_file_class = None
     lz4_decompress_fn = None
 
+class _Host(memcache._Host):
+    def __init__(self, *args, **kwargs):
+        self.tcp_nodelay = kwargs.pop('tcp_nodelay', False)
+        memcache._Host.__init__(self, *args, **kwargs)
+
+    def _get_socket(self):
+        new_socket = self.socket is None
+        sock = memcache._Host._get_socket(self)
+        if new_socket and sock is not None and hasattr(socket, 'TCP_NODELAY') and self.tcp_nodelay:
+            sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
+        return sock
+
 class MemcachedStoreClient(memcache.Client):
     """
     Subclass of memcache.Client that improves on the basic client by implementing
@@ -163,9 +175,41 @@ class MemcachedStoreClient(memcache.Client):
 
     SERVER_HASH_SALT = 'saltval'
 
+    def __init__(self, *args, **kwargs):
+        """
+        See memcache.Client for more details.
+
+        Adds the following options
+
+        Params:
+
+            * tcp_nodelay: If True (default False), it will set TCP_NODELAY in the sockets
+                to lower operation latency. If latency is important, specify it as True.
+                Otherwise, leave it in its default, since TCP_NODELAY incurs some overhead.
+        """
+        self.tcp_nodelay = kwargs.pop('tcp_nodelay', False)
+        memcache.Client.__init__(self, *args, **kwargs)
+
+    def set_servers(self, servers):
+        """
+        Set the pool of servers used by this client.
+
+        @param servers: an array of servers.
+        Servers can be passed in two forms:
+            1. Strings of the form C{"host:port"}, which implies a default weight of 1.
+            2. Tuples of the form C{("host:port", weight)}, where C{weight} is
+            an integer weight value.
+        """
+        self.servers = [_Host(s, self.debug, dead_retry=self.dead_retry,
+                socket_timeout=self.socket_timeout,
+                tcp_nodelay=self.tcp_nodelay,
+                flush_on_reconnect=self.flush_on_reconnect)
+                    for s in servers]
+        self._init_buckets()
+
     # Consistent hashing
     def _init_buckets(self):
-        super(MemcachedStoreClient, self)._init_buckets()
+        self.buckets = list(self.servers)
 
         # Build a server hash ring
         #
@@ -207,7 +251,7 @@ class MemcachedStoreClient(memcache.Client):
             return None, None
 
         for i in xrange(self._SERVER_RETRIES):
-            server = self.buckets[serverhash % len(self.buckets)]
+            server = self.buckets[server_ix]
             if server.connect():
                 return server, key
             serverhash = server_hash_function(str(serverhash) + str(i))
@@ -829,6 +873,11 @@ class DynamicResolvingMemcachedClient(BaseCacheClient, ThreadLocalDynamicResolvi
         super(DynamicResolvingMemcachedClient, self).__init__(
                 client_class, client_addresses, client_args)
 
+class AsyncDynamicResolvingMemcachedClient(BaseCacheClient, AsyncThreadLocalDynamicResolvingClient):
+    def __init__(self, client_class, client_addresses, client_args):
+        super(AsyncDynamicResolvingMemcachedClient, self).__init__(
+                client_class, client_addresses, client_args)
+
 class MemcachedClient(DynamicResolvingMemcachedClient):
     def __init__(self, 
             client_addresses, 
@@ -1406,7 +1455,7 @@ class MemcacheWriterThread(Thread):
         
         Thread.__init__(self, target=target, args=args, name=name)
 
-class FastMemcachedClient(DynamicResolvingMemcachedClient):
+class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
     """
     Like MemcachedClient, but it doesn't support massive keys or values,
     is a lot more lightweight, and is optimized for high numbers of writes
@@ -1552,6 +1601,9 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             workev = self.workev
             workev.clear()
             workset = self._dequeue_put()
+
+            # Client threads won't do this, we'll do it in the writer thread
+            self.refresh_servers()
 
             # Separate into deletions, puttions, and group by ttl
             # since put_multi can only handle one ttl.

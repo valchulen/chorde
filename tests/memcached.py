@@ -56,6 +56,31 @@ class MemcacheStoreTest(TestCase):
             encoding_cache = threading.local() )
         self.assertRaises(CacheMissError, client.get, 4)
 
+    def testConsistentHashing(self):
+        from chorde.clients.memcached import MemcachedClient
+        import threading
+        c1 = MemcachedClient(["127.0.0.1:11211","127.0.0.2:11211","127.0.0.3:11211"], 
+            checksum_key = "test",
+            encoding_cache = threading.local() )
+        c2 = MemcachedClient(["127.0.0.1:11211","127.0.0.3:11211"], 
+            checksum_key = "test",
+            encoding_cache = threading.local() )
+        c3 = MemcachedClient(["127.0.0.3:11211"], 
+            checksum_key = "test",
+            encoding_cache = threading.local() )
+
+        # mock connects
+        for c in (c1, c2, c3):
+            for s in c.client.servers:
+                s.connect = lambda *p, **kw : True
+
+        s1 = c1.client._get_server("127.0.0.3:11211")[0]
+        s2 = c2.client._get_server("127.0.0.3:11211")[0]
+        s3 = c3.client._get_server("127.0.0.3:11211")[0]
+        self.assertEqual(s1.address, c1.client.servers[-1].address)
+        self.assertEqual(s2.address, c2.client.servers[-1].address)
+        self.assertEqual(s3.address, c3.client.servers[-1].address)
+
 @skipIfNoMemcached
 class MemcacheTest(CacheClientTestMixIn, TestCase):
     is_lru = False
@@ -380,6 +405,14 @@ class FastMemcacheTest(CacheClientTestMixIn, TestCase):
     testContainsBigValue = None
     testContainsBigValueTTLExact = None
     testContainsBigValueTTLInexact = None
+
+@skipIfNoMemcached
+class FastLowLatencyCacheTest(FastMemcacheTest):
+    def setUpClient(self):
+        from chorde.clients.memcached import FastMemcachedClient
+        rv = FastMemcachedClient([DEFAULT_CLIENT_ADDR], tcp_nodelay = True)
+        rv.client.flush_all()
+        return rv
 
 @skipIfNoMemcached
 class FastElastiCacheTest(FastMemcacheTest):
