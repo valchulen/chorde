@@ -1,7 +1,6 @@
 from .sPickle import SecurePickler, SecureUnpickler
 from .clients import *
 from .clients.inproc import Cache as LRUCache, CuckooCache as CuckooCache
-from ._version import __version__
 
 try:
     from .mq import *
