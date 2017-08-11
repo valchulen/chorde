@@ -60,9 +60,9 @@ class LazyCuckooCache(object):
                 if node is not None:
                     nprio = node.prio
                     if nprio > 0x4000000000000000:
-                        node.prio = 0
-                    else:
                         node.prio = nprio - 0x4000000000000000
+                    else:
+                        node.prio = 0
             self._nextprio -= 0x4000000000000000
             prio -= 0x4000000000000000
         return prio
