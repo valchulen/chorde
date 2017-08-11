@@ -40,6 +40,7 @@ class LazyCuckooCache(object):
             initial_size = size
         else:
             initial_size = min(initial_size, size)
+        initial_size = max(1, initial_size)
         self.initial_size = initial_size
         self.table = [None] * initial_size
         self.nitems = 0
@@ -84,10 +85,10 @@ class LazyCuckooCache(object):
     def rehash(self):
         otable = self.table
         size = self.size
-        if len(otable) >= size:
+        ntablesize = len(otable)
+        if ntablesize >= size:
             return False
 
-        ntablesize = len(otable)
         ntablesize += max(1, ntablesize / 2)
         if ntablesize > size:
             ntablesize = size
