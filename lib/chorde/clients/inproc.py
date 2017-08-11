@@ -25,6 +25,10 @@ except:
         "explicit synchronization. Decreased performance will be noticeable")
     del warnings
 
+import chorde.pycuckoocache
+CuckooCache = chorde.pycuckoocache.LazyCuckooCache
+assert issubclass(chorde.pycuckoocache.CacheMissError, CacheMissError)
+
 _caches_mutex = threading.RLock()
 _caches = weakref.WeakKeyDictionary()
 

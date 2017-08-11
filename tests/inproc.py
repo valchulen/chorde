@@ -17,6 +17,13 @@ class PyInprocTest(CacheClientTestMixIn, unittest.TestCase):
         from chorde import pylrucache
         return InprocCacheClient(100, store_class = pylrucache.LRUCache)
 
+class PyCuckooInprocTest(CacheClientTestMixIn, unittest.TestCase):
+    is_lru = False
+
+    def setUpClient(self):
+        from chorde.clients.inproc import InprocCacheClient, CuckooCache
+        return InprocCacheClient(100, store_class = CuckooCache)
+
 class SyncInprocTest(SyncWrapperTestMixIn, InprocTest):
     pass
 
