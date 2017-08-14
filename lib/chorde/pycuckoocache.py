@@ -25,7 +25,7 @@ class LazyCuckooCache(object):
     its size is guaranteed to never surpass the assigned limit and when
     spillover occurs, an item likely not recently used gets removed first.
 
-    The algorithm is O(1) worst coase for lookup, and amortized O(1) for
+    The algorithm is O(1) worst case for lookup, and amortized O(1) for
     update. Update can only incur more than O(1) if rehashing needs to take
     place, something that can be avoided by passing preallocate = True
 
