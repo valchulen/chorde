@@ -83,6 +83,20 @@ In case the compression becomes a bottleneck, which shouldn't be a problem unles
 it is a high-traffic cache with rarely compressible values, one can disable it.
 Check MemcachedClient's documentation for more details.
 
+To reduce roundtrips, all clients (in particular MemcachedClients) support
+getMulti and getTtlMulti, to fetch multiple keys at once:
+
+.. code:: python
+
+	from chorde.clients.memcached import MemcachedClient
+	from chorde import CacheMissError
+	c = MemcachedClient(["localhost:11211"], checksum_key = "testing")
+	c.put(3, 10, 300)
+	c.put(4, 20, 300)
+	assert {3:10, 4:20, 5:None} == dict(c.getMulti([3,4,5], None))
+
+See the documentation on clients.base for more details.
+
 Multilevel caches
 =================
 
