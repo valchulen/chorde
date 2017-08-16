@@ -140,7 +140,7 @@ class TieredInclusiveClient(BaseCacheClient):
         clients = self.clients
         if _max_tiers is not None:
             clients = islice(clients, _max_tiers)
-        for i,client in enumerate(clients):
+        for i, client in enumerate(clients):
             # Yeap, separate NONE_, we must avoid CacheMissError s
             rv, ttl = client.getTtl(key, NONE_)
             if rv is not NONE_ and ttl >= ttl_skip:
@@ -186,7 +186,7 @@ class TieredInclusiveClient(BaseCacheClient):
         clients = self.clients
         if _max_tiers is not None:
             clients = islice(clients, _max_tiers)
-        for i,client in enumerate(clients):
+        for i, client in enumerate(clients):
             # Yeap, separate NONE_, we must avoid CacheMissError s
             nkeys = []
             nkeys_append = nkeys.append
@@ -236,7 +236,7 @@ class TieredInclusiveClient(BaseCacheClient):
         ttl_skip = ttl_skip or 0
         if _max_tiers is not None:
             clients = islice(clients, _max_tiers)
-        for i,client in enumerate(clients):
+        for i, client in enumerate(clients):
             # Yeap, separate NONE_, we must avoid CacheMissError s
             if client.contains(key, ttl_skip):
                 rv, ttl = client.getTtl(key, NONE__)
@@ -264,7 +264,7 @@ class TieredInclusiveClient(BaseCacheClient):
         clients = self.clients
         if _max_tiers is not None:
             clients = islice(clients, _max_tiers)
-        for i,client in enumerate(clients):
+        for i, client in enumerate(clients):
             if client.contains(key, ttl):
                 return True
             elif not i:
