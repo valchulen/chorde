@@ -666,7 +666,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
                     if default is NONE:
                         raise CacheMissError, key
                     else:
-                        return default, -1
+                        return default
                 elif value is _RENEW and (ttl_skip is None or ttl >= ttl_skip):
                     # The value is renewed, ttl_skip will be meaningless
                     ttl_skip = None
@@ -682,7 +682,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
                 if default is NONE:
                     raise CacheMissError, key
                 else:
-                    return default, -1
+                    return default
         
         # Ok, read the cache then
         return self.client.get(key, default, ttl_skip = ttl_skip, **kw)
