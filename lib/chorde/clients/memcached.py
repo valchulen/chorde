@@ -157,6 +157,11 @@ class _Host(memcache._Host):
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
         return sock
 
+def simple_multi_method(method):
+    def multi_method(keys):
+        return { k : method(k) for k in keys }
+    return multi_method
+
 class MemcachedStoreClient(memcache.Client):
     """
     Subclass of memcache.Client that improves on the basic client by implementing
@@ -1313,11 +1318,12 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 _usucceedfast_cache[k] = (cached, now)
                 return cached
 
+        gen_multi_method = multi_method
+        if multi_method is None and method is not None:
+            multi_method = simple_multi_method(method)
+
         if pages is None:
-            if multi_method is not None:
-                pages = multi_method([ short_key+"|0" for short_key in short_keys ])
-            else:
-                pages = { short_key : method(short_key+"|0") for short_key in short_keys }
+            pages = multi_method([ short_key+"|0" for short_key in short_keys ])
 
         # Fill out the remaining keys
         remaining_keys = []
@@ -1360,10 +1366,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             return
 
         if remaining_keys:
-            if multi_method is not None:
-                pages.update(multi_method(remaining_keys))
-            else:
-                pages.update([ (short_key, method(short_key)) for short_key in remaining_keys ])
+            pages.update(multi_method(remaining_keys))
 
         # Sort out pages by short_key, and decode by feeding to _getTtl
         key_pages = collections.defaultdict(dict)
@@ -1384,7 +1387,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                     # Decode by feeding already fetched pages to _getTtl
                     yield key, self._getTtl(key, default, ttl_skip = ttl_skip, 
                         short_key = short_key, pages = key_pages,
-                        method = method, multi_method = multi_method,
+                        method = method, multi_method = gen_multi_method,
                         force_all_pages = force_all_pages,
                         valid_sequence_types = valid_sequence_types,
                         return_stale = return_stale)
