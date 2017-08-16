@@ -126,6 +126,9 @@ class BaseCacheClient(object):
 
             default: The default value to return when a miss occurs
 
+            ttl_skip: (kwarg only) Clients that support it, will
+                avoid returning entries with ttls below this
+
         Returns: An iterator over the respective (key, value) pairs. When a
             miss occurs, the default is returned in every case (instead of
             an exception). It's up to the caller to check for a default
@@ -146,6 +149,9 @@ class BaseCacheClient(object):
             keys: An iterable of keys to fetch
 
             default: The default value to return when a miss occurs
+
+            ttl_skip: (kwarg only) Clients that support it, will
+                avoid returning entries with ttls below this
 
         Returns: An iterator over the respective (key, (value, ttl)) tuples.
             When a miss occurs, the default is returned in every case (instead
