@@ -6,6 +6,13 @@ from libc.stdlib cimport malloc, free
 from cpython.ref cimport Py_CLEAR, Py_XINCREF, Py_XDECREF, Py_INCREF
 from cpython.object cimport (
     PyObject_RichCompareBool, Py_EQ, PyObject, visitproc, traverseproc, inquiry, PyTypeObject)
+from cpython.list cimport PyList_New
+
+cdef extern from "Python.h":
+    # Similar to cpython.list's version, but it takes a PyObject*
+    # Allows us to avoid generating useless (and risky) Py_DECREF calls
+    # due to reference count handling of regular <object> variables
+    void PyList_SET_ITEM(object list, Py_ssize_t i, PyObject *o)
 
 from random import random
 import functools
@@ -283,31 +290,85 @@ cdef class LazyCuckooCache:
         return 0
 
     def keys(self):
-        rv = []
+        # Allocate the list and fill it with CPython API to avoid the risk of invoking
+        # the GC implicitly through calls to append
+        cdef Py_ssize_t i, tsize, rvpos
+        rv = PyList_New(self.nitems)
+        rvpos = 0
         table = self.table
         tsize = self.table_size
         for i from 0 <= i < tsize:
             if table[i].key != NULL:
-                rv.append(<object>(table[i].key))
+                assert rvpos < self.nitems
+                Py_XINCREF(table[i].key)
+                PyList_SET_ITEM(rv, rvpos, table[i].key)
+                rvpos += 1
+        assert rvpos == self.nitems
+
+        # Leaking NULL entries would cause segfaults in optimized builds (no asserts)
+        # So the following should be unreachable, but keep it here to avoid hard crashes
+        while rvpos < self.nitems:
+            Py_INCREF(None)
+            PyList_SET_ITEM(rv, rvpos, <PyObject*>None)
         return rv
 
     def values(self):
-        rv = []
+        cdef Py_ssize_t i, tsize, rvpos
+        rv = PyList_New(self.nitems)
+        rvpos = 0
         table = self.table
         tsize = self.table_size
         for i from 0 <= i < tsize:
             if table[i].value != NULL:
-                rv.append(<object>(table[i].value))
+                assert rvpos < self.nitems
+                Py_XINCREF(table[i].value)
+                PyList_SET_ITEM(rv, rvpos, table[i].value)
+                rvpos += 1
+        assert rvpos == self.nitems
+
+        # Leaking NULL entries would cause segfaults in optimized builds (no asserts)
+        # So the following should be unreachable, but keep it here to avoid hard crashes
+        while rvpos < self.nitems:
+            Py_INCREF(None)
+            PyList_SET_ITEM(rv, rvpos, <PyObject*>None)
         return rv
 
     def items(self):
-        rv = []
+        # Only way to atomically snapshot this without risk of invoking the GC in the
+        # middle due to python object allocations, is to build key and value lists
+        # in one go, but in separate lists. We cannot build tuples on the go,
+        # since each new allocation could trigger the GC and swap the table under
+        # our feet.
+        cdef Py_ssize_t i, tsize, rvkpos, rvvpos
+        rvk = PyList_New(self.nitems)
+        rvv = PyList_New(self.nitems)
+        rvkpos = rvvpos = 0
         table = self.table
         tsize = self.table_size
         for i from 0 <= i < tsize:
-            if table[i].key != NULL and table[i].value != NULL:
-                rv.append((<object>(table[i].key), <object>(table[i].value)))
-        return rv
+            assert (table[i].key == NULL) == (table[i].value == NULL)
+            if table[i].key != NULL:
+                assert rvkpos < self.nitems
+                Py_XINCREF(table[i].key)
+                PyList_SET_ITEM(rvk, rvkpos, table[i].key)
+                rvkpos += 1
+            if table[i].value != NULL:
+                assert rvvpos < self.nitems
+                Py_XINCREF(table[i].value)
+                PyList_SET_ITEM(rvv, rvvpos, table[i].value)
+                rvvpos += 1
+        assert rvkpos == self.nitems
+        assert rvvpos == self.nitems
+
+        # Leaking NULL entries would cause segfaults in optimized builds (no asserts)
+        # So the following should be unreachable, but keep it here to avoid hard crashes
+        while rvkpos < self.nitems:
+            Py_INCREF(None)
+            PyList_SET_ITEM(rvk, rvkpos, <PyObject*>None)
+        while rvvpos < self.nitems:
+            Py_INCREF(None)
+            PyList_SET_ITEM(rvv, rvvpos, <PyObject*>None)
+        return zip(rvk, rvv)
 
     def iterkeys(self):
         table = self.table
