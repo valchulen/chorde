@@ -25,9 +25,24 @@ except:
         "explicit synchronization. Decreased performance will be noticeable")
     del warnings
 
-import chorde.pycuckoocache
-CuckooCache = chorde.pycuckoocache.LazyCuckooCache
-assert issubclass(chorde.pycuckoocache.CacheMissError, CacheMissError)
+try:
+
+    import chorde.cuckoocache
+    CuckooCache = chorde.cuckoocache.LazyCuckooCache
+    assert issubclass(chorde.cuckoocache.CacheMissError, CacheMissError)
+
+except:
+
+    import chorde.pycuckoocache
+    CuckooCache = chorde.pycuckoocache.LazyCuckooCache
+    assert issubclass(chorde.pycuckoocache.CacheMissError, CacheMissError)
+
+    if CacheIsThreadsafe:
+        import warnings
+        warnings.warn("CuckooCache extension module not built in, "
+            "but LRUCache module was built. InprocCacheClient will be assumed "
+            "thread-safe, you will need to wrap it in a synchronized adapter "
+            "to be used with CuckooCache!")
 
 _caches_mutex = threading.RLock()
 _caches = weakref.WeakKeyDictionary()
