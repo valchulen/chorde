@@ -33,7 +33,7 @@ class LazyCuckooCache(object):
     to provide your own if you know the type of keys you'll be hashing.
     """
     def __init__(self, size, touch_on_read = True, eviction_callback = None,
-            preallocate = False, hash1 = hash, hash2 = None, initial_size = 256):
+            preallocate = False, hash1 = None, hash2 = None, initial_size = 256):
         assert size > 0
         self.size = size
         self.touch_on_read = touch_on_read
@@ -46,9 +46,14 @@ class LazyCuckooCache(object):
         self.table = [None] * initial_size
         self.nitems = 0
         self.eviction_callback = eviction_callback
+        if hash1 is None:
+            hash1 = hash
         self.hash1 = hash1
-        self.hash2 = functools.partial(_hash2, random() * 0.98 + 0.01)
-        self._nextprio = self._baseprio = 0
+        if hash2 is None:
+            self.hash2 = functools.partial(_hash2, random() * 0.98 + 0.01)
+        else:
+            self.hash2 = hash2
+        self._nextprio = 0
 
     def _assign_prio(self):
         prio = self._nextprio
@@ -185,7 +190,7 @@ class LazyCuckooCache(object):
 
     def __setitem__(self, key, value):
         h1 = self.hash1(key)
-        h2 = self.hash2(value)
+        h2 = self.hash2(key)
         table = self.table
         tsize = len(table)
         prio = self._assign_prio()
@@ -208,13 +213,15 @@ class LazyCuckooCache(object):
             else:
                 tnode = tnode2
             eviction_callback = self.eviction_callback
+            k = tnode.key
+            v = tnode.value
+            tnode.key = key
+            tnode.value = value
+            tnode.h1 = h1
+            tnode.h2 = h2
+            tnode.prio = prio
             if eviction_callback is not None:
-                eviction_callback(tnode.key, tnode.value)
-                tnode.key = key
-                tnode.value = value
-                tnode.h1 = h1
-                tnode.h2 = h2
-                tnode.prio = prio
+                eviction_callback(k, v)
 
     def __getitem__(self, key):
         table = self.table
@@ -341,6 +348,8 @@ class LazyCuckooCache(object):
         return deflt
 
     def update(self, iterOrDict):
+        if self is iterOrDict:
+            return
         if isinstance(iterOrDict, dict) or isinstance(iterOrDict, LazyCuckooCache):
             for k,v in iterOrDict.iteritems():
                 self[k] = v
