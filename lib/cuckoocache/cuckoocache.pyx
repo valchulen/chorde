@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Efficient (O(1) amortized update) Quasi-Least-Recently-Used cache"""
+"""Efficient (O(1) amortized update) Quasi-Least-Recently-Used cache
+
+This implementation provides atomic operations for all single-element operations.
+This includes get, set, delete, setdefault and cas.
+
+Additionally, keys, values and items will provide an atomic snapshot of
+some consistent state of the cache.
+"""
 import cython
 
 from libc.stdlib cimport malloc, free
