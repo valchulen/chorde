@@ -4,7 +4,8 @@ import cython
 
 from libc.stdlib cimport malloc, free
 from cpython.ref cimport Py_CLEAR, Py_XINCREF, Py_XDECREF, Py_INCREF
-from cpython.object cimport PyObject_RichCompareBool, Py_EQ, PyObject
+from cpython.object cimport (
+    PyObject_RichCompareBool, Py_EQ, PyObject, visitproc, traverseproc, inquiry, PyTypeObject)
 
 from random import random
 import functools
@@ -600,4 +601,51 @@ cdef class LazyCuckooCache:
 
     def __repr__(self):
         return "<LazyCuckooCache (%d elements, %d max)>" % (len(self), self.size)
+
+cdef traverseproc cuckoocache_cy_traverse = NULL
+cdef inquiry cuckoocache_cy_clear = NULL
+
+cdef int cuckoocache_traverse(PyObject *o, visitproc visit, void *arg):
+    cdef LazyCuckooCache p = <LazyCuckooCache>o
+    cdef int e
+    cdef unsigned int i, tsize
+    if cuckoocache_cy_traverse != NULL:
+        e = cuckoocache_cy_traverse(o, visit, arg)
+        if e:
+            return e
+    if p.table != NULL and p.table_size > 0:
+        tsize = p.table_size
+        table = p.table
+        for i from 0 <= i < tsize:
+            node = table + i
+            if node.key != NULL:
+                e = visit(node.key, arg)
+                if e:
+                    return e
+            if node.value != NULL:
+                e = visit(node.value, arg)
+                if e:
+                    return e
+    return 0
+
+cdef int cuckoocache_clear(o):
+    cdef LazyCuckooCache p = <LazyCuckooCache>o
+    cdef int e
+    cdef unsigned int i, tsize
+    if cuckoocache_cy_clear != NULL:
+        e = cuckoocache_cy_clear(p)
+        if e:
+            return e
+    if p.table != NULL and p.table_size > 0:
+        _free_table_items(p.table, 0, p.table_size)
+    return 0
+
+cdef void lazy_cuckoocache_enable_gc(PyTypeObject *t):
+    if t.tp_traverse != cuckoocache_traverse:
+        cuckoocache_cy_traverse = t.tp_traverse
+        t.tp_traverse = cuckoocache_traverse
+    if t.tp_clear != cuckoocache_clear:
+        t.tp_clear = cuckoocache_clear
+
+lazy_cuckoocache_enable_gc(<PyTypeObject*>LazyCuckooCache)
 
