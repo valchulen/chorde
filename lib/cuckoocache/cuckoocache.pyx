@@ -26,6 +26,29 @@ import functools
 
 from chorde.clients.base import CacheMissError
 
+# Hash table manipulation helpers
+#
+# Hash nodes, when empty, will contain NULL in both the key and value
+# While the code doesn't assume key is NULL iff value is NULL, it ought to be true
+# at all times. Still, it's safer not to assume it.
+#
+# In theory, tables could be rebuilt in-place. In practice, however, the process
+# is difficult, and impossible to do atomically if concurrent activity from other
+# threads is allowed. So we just rebuild them in a new array that we swap with the
+# old one afterwards.
+#
+# Hashes are 32-bit, the implementation doesn't support tables bigger than 4G items
+# in any case, and doing so, while simple, would involve making nodes quite bigger,
+# which doesn't seem worthwhile.
+#
+# Nodes contain both hashes for their key, if non-empty. While the utility of the
+# hashes themselves isn't huge, and could be avoided and recomputed (they're only
+# ever needed while growing the table), they help make growing the hash table
+# not only faster, but also atomic. Without the hashes, we'd have to invoke
+# abritrary user code to recompute them, which would break atomicity of the
+# rehash procedure, and cause a lot of trouble. Having the hashes, thus, is a
+# small price to pay for an atomic, lockless yet thread-safe implementation.
+
 cdef struct _node:
     PyObject *key
     PyObject *value
@@ -59,12 +82,20 @@ cdef _node* _alloc_table(unsigned int size) except NULL:
         raise MemoryError
     return table
 
+cdef int _free_table(_node* table, unsigned int size) except -1:
+    _free_table_items(table, 0, size)
+    free(table)
+    return 0
+
 cdef int _key_equals(_node* node, object key) except -1:
-    if node != NULL and node.key != NULL and (node.key == <PyObject*>key
-            or PyObject_RichCompareBool(<object>node.key, key, Py_EQ)):
-        return 1
-    else:
-        return 0
+    cdef PyObject *nkey
+    if node != NULL and node.key != NULL:
+        if node.key == <PyObject*>key:
+            return 1
+        nkey = node.key
+        if PyObject_RichCompareBool(<object>nkey, key, Py_EQ):
+            return 1
+    return 0
 
 cdef int _value_set(_node* node, PyObject *value, unsigned long long prio) except -1:
     cdef PyObject *t
@@ -112,6 +143,36 @@ cdef class LazyCuckooCache:
     The default hash functions may not be at all optimal, so you're encouraged
     to provide your own if you know the type of keys you'll be hashing.
     """
+
+    #
+    # Atomicity considerations
+    #
+    # Each call to hash1, hash2 or key_equals will break atomicity. Thus, it is necessary
+    # to consider them as atomic barriers, and assume the hash table could have changed
+    # considerably across those calls. All pointers to nodes to the old table could be
+    # invalid.
+    #
+    # To cope with that, when possible, the calls should be the very last thing done,
+    # after grabbing all the information required to perform whichever operation from
+    # the relevant nodes.
+    #
+    # When manipulation of the table is the operation to be performed, after key_equals
+    # table mutation needs to be assertained. A recheck of the table pointer against
+    # the local copy, and the key's object identity should suffice in most contexts
+    # to be able to proceed with the operation safely, since the table never grows,
+    # and operations are always local to the node.
+    #
+    # If concurrent mutation happens at the atomic barrier, however, the operation needs
+    # to be restarted. So, no change of the hash table must be applied until after
+    # the atomic barrier, to avoid leaving an inconsistent state. Sometimes, such a
+    # restart isn't necessary, like when updating node hit counters (prio). Failure
+    # to increment a node's hit counter isn't relevant, so a better approach in those
+    # cases is to just skip it.
+    #
+    # Each time there's a conflict, at least one of the conflicting operation succeeds.
+    # This guarantees the application will be making progress as a whole (though a thread
+    # in particular might not). This is a concept akin to software-transactional memory.
+
     def __cinit__(self, unsigned int size, bint touch_on_read = True, eviction_callback = None,
             bint preallocate = False, hash1 = None, hash2 = None, unsigned int initial_size = 256):
         cdef _node *table
@@ -141,8 +202,7 @@ cdef class LazyCuckooCache:
 
     def __dealloc__(self):
         if self.table != NULL and self.table_size > 0:
-            _free_table_items(self.table, 0, self.table_size)
-            free(self.table)
+            _free_table(self.table, self.table_size)
             self.table = NULL
 
     cdef unsigned int _hash1(self, x) except? 0xFFFFFFFF:
@@ -170,6 +230,7 @@ cdef class LazyCuckooCache:
             # The garbage overfloweth, repriorize
             # by truncating the lower half of the priority range
             # shouldn't happen not even once in a blue moon
+            # This whole loop should be atomic (albeit perhaps not fast)
             table = self.table
             tsize = self.table_size
             for i from 0 <= i < tsize:
@@ -188,6 +249,8 @@ cdef class LazyCuckooCache:
         return self.nitems
 
     cdef int _rnd(self) except -1:
+        # This "maybe random" helper gives us a random-ish value without invoking arbitrary
+        # python code, and thus break atomicity. Perfect randomness isn't necessary, but thread-safety is.
         rpos = self._rnd_pos
         self._rnd_pos = (self._rnd_pos + 1) % (sizeof(self._rnd_data) / sizeof(self._rnd_data[0]))
         return self._rnd_data[rpos]
@@ -233,7 +296,7 @@ cdef class LazyCuckooCache:
                 node = otable+i
                 if node.key != NULL and node.value != NULL:
                     if not self._add_node(ntable, ntablesize, node, node.h1, node.h2,
-                            node.key, node.value, node.prio, 0):
+                            node.key, node.value, node.prio, 0, False):
                         # Notify eviction, atomic barrier
                         if eviction_callback is not None:
                             k = <object>node.key
@@ -243,58 +306,83 @@ cdef class LazyCuckooCache:
                     else:
                         nitems += 1
         except:
-            _free_table_items(ntable, 0, ntablesize)
-            free(ntable)
+            _free_table(ntable, ntablesize)
             raise
 
         self.table = ntable
         self.table_size = ntablesize
         self.nitems = nitems
-        _free_table_items(otable, 0, tsize)
-        free(otable)
+        _free_table(otable, tsize)
 
         return 1
 
     cdef int _add_node(self, _node *table, unsigned int tsize, _node *node, unsigned int h1, unsigned int h2,
-            PyObject *key, PyObject *value, unsigned long long prio, unsigned int item_diff) except -1:
-        cdef unsigned int ix1, ix2
+            PyObject *key, PyObject *value, unsigned long long prio, unsigned int item_diff, bint recheck) except -1:
+        cdef PyObject *tkey
 
-        ix1 = h1 % tsize
-        tnode = table+ix1
-        if tnode.key != NULL:
-            if _key_equals(tnode, <object>key):
-                # Replacing key, no eviction callback
-                if node == NULL:
-                    _value_set(tnode, value, prio)
-                else:
-                    _node_set(tnode, key, value, h1, h2, prio)
+        if recheck:
+            # Recheck-enabled add_node should always receive the instance's table at entry
+            assert self.table == table
+            assert self.table_size == tsize
+
+        while True:
+            if recheck:
+                table = self.table
+                tsize = self.table_size
+
+            # Adds a node `node` to the table `table`. The node's attributes h1, h2, key and value must
+            # always be specified, but the node itself may be omitted.
+            #
+            # If the table is the instance's table, and can thus receive concurrent modifications
+            # at atomic barriers, recheck must be given as True, and the operation will be retried on conflicts.
+            #
+            # If the table is a local copy, and the operation is a rebuild, recheck must be given as False to
+            # avoid equality checks, since during rebuild, equal yet different keys cannot be enocuntered. An
+            # identity check will be used instead, since within a hash table, equal keys are identical keys.
+            tnode = table + (h1 % tsize)
+            if tnode.key != NULL:
+                tkey = tnode.key
+                
+                if (recheck and _key_equals(tnode, <object>key)) or (not recheck and tkey == key):
+                    if recheck and (table != self.table or tkey != tnode.key):
+                        # Conflict during equals, restart
+                        continue
+    
+                    # Replacing key, no eviction callback
+                    if node == NULL:
+                        _value_set(tnode, value, prio)
+                    else:
+                        _node_set(tnode, key, value, h1, h2, prio)
+                    return 1
+            else:
+                # Free slot
+                if item_diff:
+                    self.nitems += item_diff
+                _node_set(tnode, key, value, h1, h2, prio)
                 return 1
-        else:
-            # Free slot
-            if item_diff:
-                self.nitems += item_diff
-            _node_set(tnode, key, value, h1, h2, prio)
-            return 1
 
-        ix2 = h2 % tsize
-        tnode = table+ix2
-        if tnode.key != NULL:
-            if _key_equals(tnode, <object>key):
-                # Replacing key, no eviction callback
-                if node == NULL:
-                    _value_set(tnode, value, prio)
-                else:
-                    _node_set(tnode, key, value, h1, h2, prio)
+            tnode = table + (h2 % tsize)
+            if tnode.key != NULL:
+                tkey = tnode.key
+                if (recheck and _key_equals(tnode, <object>key)) or (not recheck and tkey == key):
+                    if recheck and (table != self.table or tkey != tnode.key):
+                        # Conflict during equals, restart
+                        continue
+                    # Replacing key, no eviction callback
+                    if node == NULL:
+                        _value_set(tnode, value, prio)
+                    else:
+                        _node_set(tnode, key, value, h1, h2, prio)
+                    return 1
+            else:
+                # Free slot
+                if item_diff:
+                    self.nitems += item_diff
+                _node_set(tnode, key, value, h1, h2, prio)
                 return 1
-        else:
-            # Free slot
-            if item_diff:
-                self.nitems += item_diff
-            _node_set(tnode, key, value, h1, h2, prio)
-            return 1
 
-        # No room
-        return 0
+            # No room
+            return 0
 
     def keys(self):
         # Allocate the list and fill it with CPython API to avoid the risk of invoking
@@ -422,12 +510,12 @@ cdef class LazyCuckooCache:
         table = self.table
         tsize = self.table_size
         prio = self._assign_prio()
-        if not self._add_node(table, tsize, NULL, h1, h2, <PyObject*>key, <PyObject*>value, prio, 1):
+        if not self._add_node(table, tsize, NULL, h1, h2, <PyObject*>key, <PyObject*>value, prio, 1, True):
             if self._rehash():
                 # Try agin
                 table = self.table
                 tsize = self.table_size
-                if self._add_node(table, tsize, NULL, h1, h2, <PyObject*>key, <PyObject*>value, prio, 1):
+                if self._add_node(table, tsize, NULL, h1, h2, <PyObject*>key, <PyObject*>value, prio, 1, True):
                     return
 
             # No room, evict some entry, pick one of the two options randomly
@@ -661,14 +749,21 @@ cdef class LazyCuckooCache:
         self.table = _alloc_table(self.initial_size)
         self.table_size = self.initial_size
         self.nitems = 0
-        _free_table_items(otable, 0, tsize)
-        free(otable)
+        _free_table(otable, tsize)
 
     def defrag(self):
         pass
 
     def __repr__(self):
         return "<LazyCuckooCache (%d elements, %d max)>" % (len(self), self.size)
+
+# Cython's automatically generated tp_traverse and tp_clear don't know about our
+# C-level hash table and all the references it contains.
+#
+# So we generate aditional traverse/clear methods and associate them to the
+# type object at import time, remembering the original ones to chain them.
+#
+# A bit hackish, maybe, but effective, and Cython gives us no other recourse.
 
 cdef traverseproc cuckoocache_cy_traverse = NULL
 cdef inquiry cuckoocache_cy_clear = NULL
@@ -706,6 +801,9 @@ cdef int cuckoocache_clear(o):
             return e
     if p.table != NULL and p.table_size > 0:
         _free_table_items(p.table, 0, p.table_size)
+
+        # just to keep it consistent, shouldn't matter, but better safe than sorry
+        p.nitems = 0
     return 0
 
 cdef void lazy_cuckoocache_enable_gc(PyTypeObject *t):

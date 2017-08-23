@@ -30,7 +30,7 @@ cdef class LazyCuckooCache:
 
     cdef int _add_node(LazyCuckooCache self, _node *table, unsigned int tsize, _node *node,
             unsigned int h1, unsigned int h2, PyObject *key, PyObject *value,
-            unsigned long long prio, unsigned int item_diff) except -1
+            unsigned long long prio, unsigned int item_diff, bint recheck) except -1
     cdef int _rehash(LazyCuckooCache self) except -1
 
     cdef int _rnd(LazyCuckooCache self) except -1
