@@ -33,6 +33,8 @@ class PyCuckooCacheTest(unittest.TestCase):
         overflow = dict(evictions)
         for k,v in self.TEST_ELEMENTS:
             self.assertEqual(c.get(k, overflow.get(k)), v)
+            if k in c:
+                self.assertEqual(c[k], v)
 
     def testNoCallback(self):
         c = self._build_with_values(20)
@@ -116,12 +118,18 @@ class PyCuckooCacheTest(unittest.TestCase):
         self.assertGreater(len(c), 0)
         self.assertLessEqual(len(c), len(self.TEST_ELEMENTS))
 
-    def testUpdate(self):
+    def testUpdate(self, what = TEST_ELEMENTS):
         c = self.Cache(20)
-        c.update(self.TEST_ELEMENTS)
+        c.update(what)
         self.assertGreater(len(c), 0)
         self.assertLessEqual(len(c), len(self.TEST_ELEMENTS))
         self.assertLessEqual(set(c.iteritems()), set(self.TEST_ELEMENTS))
+
+    def testUpdateDict(self):
+        self.testUpdate(dict(self.TEST_ELEMENTS))
+
+    def testUpdateCuckooCache(self):
+        self.testUpdate(self._build_with_values(20))
 
     def testReplaceUpdate(self):
         c = self.Cache(20)
@@ -169,7 +177,10 @@ class PyCuckooCacheTest(unittest.TestCase):
     def testCustomHashes(self):
         h1 = lambda x : hash(str(x))
         h2 = lambda x : hash("blah" + str(x))
-        c = self.testAdd(hash1=h1, hash2=h2)
+        c = self.testAdd(hash1 = h1, hash2 = h2)
+
+    def testNoTouch(self):
+        c = self.testAdd(touch_on_read = False)
 
     def testIters(self):
         evictions = []
