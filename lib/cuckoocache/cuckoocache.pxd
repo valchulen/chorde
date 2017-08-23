@@ -3,6 +3,8 @@ cdef struct _node
 from cpython.object cimport PyObject
 
 cdef class LazyCuckooCache:
+    cdef object __weakref__
+
     cdef unsigned long long _nextprio
 
     cdef bint _rnd_data[16]

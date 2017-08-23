@@ -2,6 +2,8 @@
 from __future__ import absolute_import
 
 import unittest
+import gc
+import weakref
 
 from chorde import pycuckoocache
 
@@ -111,7 +113,63 @@ class PyCuckooCacheTest(unittest.TestCase):
         for k,v in self.TEST_ELEMENTS:
             c[k] = v
 
+        self.assertGreater(len(c), 0)
         self.assertLessEqual(len(c), len(self.TEST_ELEMENTS))
+
+    def testUpdate(self):
+        c = self.Cache(20)
+        c.update(self.TEST_ELEMENTS)
+        self.assertGreater(len(c), 0)
+        self.assertLessEqual(len(c), len(self.TEST_ELEMENTS))
+        self.assertLessEqual(set(c.iteritems()), set(self.TEST_ELEMENTS))
+
+    def testReplaceUpdate(self):
+        c = self.Cache(20)
+        c.update([(k,None) for k,v in self.TEST_ELEMENTS])
+        c.update(self.TEST_ELEMENTS)
+        self.assertGreater(len(c), 0)
+        self.assertLessEqual(len(c), len(self.TEST_ELEMENTS))
+        self.assertLessEqual(set(c.iteritems()), set(self.TEST_ELEMENTS))
+
+    def testSelfUpdate(self):
+        c = self.Cache(20)
+        c[1] = 3
+        c[2] = 4
+        i1 = c.items()
+        c.update(c)
+        i2 = c.items()
+        self.assertEqual(i1, i2)
+
+    def testSelfReference(self):
+        c = self.Cache(20)
+        wc = weakref.ref(c)
+        c[1] = 3
+        c[2] = 4
+        c[3] = c
+        self.assertIsNotNone(wc())
+        del c
+        gc.collect()
+        self.assertIsNone(wc())
+
+    def testReplace(self):
+        evictions = []
+        eviction_callback = lambda k,v : evictions.append((k,v))
+        c = self._build_with_values(20, eviction_callback = eviction_callback)
+        for k,v in self.TEST_ELEMENTS:
+            c[k] = v
+            self.assertIs(c[k], v)
+
+            # Replace item without invoking the eviction callback
+            old_evictions = len(evictions)
+            v2 = float(v)
+            c[k] = v2
+            self.assertIs(c[k], v2)
+            self.assertEqual(old_evictions, len(evictions))
+
+    def testCustomHashes(self):
+        h1 = lambda x : hash(str(x))
+        h2 = lambda x : hash("blah" + str(x))
+        c = self.testAdd(hash1=h1, hash2=h2)
 
     def testIters(self):
         evictions = []
