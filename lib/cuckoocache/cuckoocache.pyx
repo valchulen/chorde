@@ -213,7 +213,6 @@ cdef class LazyCuckooCache:
             return <unsigned int><long>self.hash1(x)
 
     cdef unsigned int _hash2(self, x) except? 0xFFFFFFFF:
-        cdef long mult, h, y
         if self.hash2 is None:
             # Replicates what tuple's hash does with (hash2seed, x)
             return <unsigned int>((0x345678L ^ <long>hash(x)) * 1000003L + 97531L)
