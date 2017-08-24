@@ -88,11 +88,13 @@ cdef int _free_table(_node* table, unsigned int size) except -1:
     free(table)
     return 0
 
-cdef int _key_equals(_node* node, object key) except -1:
+cdef int _key_equals(_node* node, object key, unsigned int h1) except -1:
     cdef PyObject *nkey
     if node != NULL and node.key != NULL:
         if node.key == <PyObject*>key:
             return 1
+        elif node.h1 != h1:
+            return 0
         nkey = node.key
         if PyObject_RichCompareBool(<object>nkey, key, Py_EQ):
             return 1
@@ -271,14 +273,14 @@ cdef class LazyCuckooCache:
         table = self.table
         tsize = self.table_size
         node = table + (h1 % tsize)
-        if _key_equals(node, key):
+        if _key_equals(node, key, h1):
             return True
 
         h2 = self._hash2(key)
         table = self.table
         tsize = self.table_size
         node = table + (h2 % tsize)
-        return _key_equals(node, key)
+        return _key_equals(node, key, h1)
 
     cdef int _rehash(LazyCuckooCache self) except -1:
         cdef unsigned int i, tsize, ntablesize, size, nitems
@@ -352,7 +354,7 @@ cdef class LazyCuckooCache:
             if tnode.key != NULL:
                 tkey = tnode.key
                 
-                if (recheck and _key_equals(tnode, <object>key)) or (not recheck and tkey == key):
+                if (recheck and _key_equals(tnode, <object>key, h1)) or (not recheck and tkey == key):
                     if recheck and (table != self.table or tkey != tnode.key):
                         # Conflict during equals, restart
                         continue
@@ -373,7 +375,7 @@ cdef class LazyCuckooCache:
             tnode = table + (h2 % tsize)
             if tnode.key != NULL:
                 tkey = tnode.key
-                if (recheck and _key_equals(tnode, <object>key)) or (not recheck and tkey == key):
+                if (recheck and _key_equals(tnode, <object>key, h1)) or (not recheck and tkey == key):
                     if recheck and (table != self.table or tkey != tnode.key):
                         # Conflict during equals, restart
                         continue
@@ -565,7 +567,7 @@ cdef class LazyCuckooCache:
         node = table + (h1 % tsize)
         if node.value != NULL:
             v = <object>node.value
-            if _key_equals(node, key):
+            if _key_equals(node, key, h1):
                 # Recheck table in case equals invoked re-entrant python code
                 if self.touch_on_read and self.table == table:
                     node.prio = self._assign_prio()
@@ -578,7 +580,7 @@ cdef class LazyCuckooCache:
         node = table + (h2 % tsize)
         if node.value != NULL:
             v = <object>node.value
-            if _key_equals(node, key):
+            if _key_equals(node, key, h1):
                 # Recheck table in case equals invoked re-entrant python code
                 if self.touch_on_read and self.table == table:
                     node.prio = self._assign_prio()
@@ -601,7 +603,7 @@ cdef class LazyCuckooCache:
             tsize = self.table_size
             node = table + (h1 % tsize)
             tkey = node.key
-            if node.value == <PyObject*>oldvalue and _key_equals(node, key):
+            if node.value == <PyObject*>oldvalue and _key_equals(node, key, h1):
                 if self.table != table or node.key != tkey:
                     # Re-entrancy, restart operation
                     continue
@@ -613,7 +615,7 @@ cdef class LazyCuckooCache:
             tsize = self.table_size
             node = table + (h2 % tsize)
             tkey = node.key
-            if node.value == <PyObject*>oldvalue and _key_equals(node, key):
+            if node.value == <PyObject*>oldvalue and _key_equals(node, key, h1):
                 if self.table != table or node.key != tkey:
                     # Re-entrancy, restart operation
                     continue
@@ -630,7 +632,7 @@ cdef class LazyCuckooCache:
         node = table + (h1 % tsize)
         if node.value != NULL:
             v = <object>node.value
-            if _key_equals(node, key):
+            if _key_equals(node, key, h1):
                 # Recheck table in case equals invoked re-entrant python code
                 if self.touch_on_read and self.table == table:
                     node.prio = self._assign_prio()
@@ -643,7 +645,7 @@ cdef class LazyCuckooCache:
         node = table + (h2 % tsize)
         if node.value != NULL:
             v = <object>node.value
-            if _key_equals(node, key):
+            if _key_equals(node, key, h1):
                 # Recheck table in case equals invoked re-entrant python code
                 if self.touch_on_read and self.table == table:
                     node.prio = self._assign_prio()
@@ -665,7 +667,7 @@ cdef class LazyCuckooCache:
             tsize = self.table_size
             node = table + (h1 % tsize)
             tkey = node.key
-            if _key_equals(node, key):
+            if _key_equals(node, key, h1):
                 if self.table != table or tkey != node.key:
                     # Re-entrancy, retstart operation
                     continue
@@ -682,7 +684,7 @@ cdef class LazyCuckooCache:
             tsize = self.table_size
             node = table + (h2 % tsize)
             tkey = node.key
-            if _key_equals(node, key):
+            if _key_equals(node, key, h1):
                 if self.table != table or tkey != node.key:
                     # Re-entrancy, retstart operation
                     continue
@@ -710,7 +712,7 @@ cdef class LazyCuckooCache:
             node1 = table + (h1 % tsize)
             if node1.value != NULL:
                 v = <object>node1.value
-                if _key_equals(node1, key):
+                if _key_equals(node1, key, h1):
                     # Recheck table in case equals invoked re-entrant python code
                     if self.touch_on_read and self.table == table:
                         node1.prio = self._assign_prio()
@@ -723,7 +725,7 @@ cdef class LazyCuckooCache:
             node2 = table + (h2 % tsize)
             if node2.value != NULL:
                 v = <object>node2.value
-                if _key_equals(node2, key):
+                if _key_equals(node2, key, h1):
                     # Recheck table in case equals invoked re-entrant python code
                     if self.touch_on_read and self.table == table:
                         node2.prio = self._assign_prio()
