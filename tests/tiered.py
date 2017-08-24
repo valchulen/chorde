@@ -117,15 +117,15 @@ class TieredTest(CacheClientTestMixIn, unittest.TestCase):
         client.put(4, 15, 0)
         client.put(5, 16, 2)
         for c in client.clients:
-            self.assertTrue(c.getTtl(4, None)[0] is not None)
+            self.assertIsNotNone(c.getTtl(4, None)[0])
             self.assertEqual(c.get(5), 16)
         client.purge(86400)
         for c in client.clients:
-            self.assertTrue(c.getTtl(4, None)[0] is not None)
+            self.assertIsNotNone(c.getTtl(4, None)[0])
             self.assertEqual(c.get(5), 16)
         client.purge(0)
         for c in client.clients:
-            self.assertTrue(c.getTtl(4, None)[0] is None)
+            self.assertIsNone(c.getTtl(4, None)[0])
             self.assertEqual(c.get(5), 16)
 
 class SyncTieredTest(SyncWrapperTestMixIn, TieredTest):
