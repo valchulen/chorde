@@ -7,7 +7,7 @@ This includes get, set, delete, setdefault and cas.
 Additionally, keys, values and items will provide an atomic snapshot of
 some consistent state of the cache.
 """
-import cython
+cimport cython
 
 from libc.stdlib cimport malloc, free
 from cpython.ref cimport Py_CLEAR, Py_XINCREF, Py_XDECREF, Py_INCREF
@@ -25,6 +25,7 @@ from random import random
 import functools
 
 from chorde.clients.base import CacheMissError
+cdef object CacheMissError_ = CacheMissError
 
 # Hash table manipulation helpers
 #
@@ -196,9 +197,7 @@ cdef class LazyCuckooCache:
         self.table_size = initial_size
         self.table = _alloc_table(initial_size)
 
-        self._rnd_pos = 0
-        for i from 0 <= i < (sizeof(self._rnd_data) / sizeof(self._rnd_data[0])):
-            self._rnd_data[i] = random() < 0.5
+        self._init_rnd()
 
     def __dealloc__(self):
         if self.table != NULL and self.table_size > 0:
@@ -219,7 +218,7 @@ cdef class LazyCuckooCache:
         else:
             return <unsigned int><long>self.hash2(x)
 
-    cdef unsigned long long _assign_prio(self) except? 0xFFFFFFFFFFFFFFFFULL:
+    cdef unsigned long long _assign_prio(self):
         cdef unsigned int i, tsize
         cdef unsigned long long prio, nprio
         cdef _node *table
@@ -248,13 +247,22 @@ cdef class LazyCuckooCache:
     def __len__(self):
         return self.nitems
 
-    cdef int _rnd(self) except -1:
+    @cython.cdivision(True)
+    cdef int _init_rnd(self) except -1:
+        self._rnd_pos = 0
+        for i from 0 <= i < (sizeof(self._rnd_data) / sizeof(self._rnd_data[0])):
+            self._rnd_data[i] = random() < 0.5
+        return 0
+
+    @cython.cdivision(True)
+    cdef bint _rnd(self):
         # This "maybe random" helper gives us a random-ish value without invoking arbitrary
         # python code, and thus break atomicity. Perfect randomness isn't necessary, but thread-safety is.
         rpos = self._rnd_pos
         self._rnd_pos = (self._rnd_pos + 1) % (sizeof(self._rnd_data) / sizeof(self._rnd_data[0]))
         return self._rnd_data[rpos]
 
+    @cython.cdivision(True)
     def __contains__(LazyCuckooCache self, key):
         cdef _node *node
         cdef unsigned int tsize, h1, h2
@@ -316,6 +324,7 @@ cdef class LazyCuckooCache:
 
         return 1
 
+    @cython.cdivision(True)
     cdef int _add_node(self, _node *table, unsigned int tsize, _node *node, unsigned int h1, unsigned int h2,
             PyObject *key, PyObject *value, unsigned long long prio, unsigned int item_diff, bint recheck) except -1:
         cdef PyObject *tkey
@@ -502,6 +511,7 @@ cdef class LazyCuckooCache:
     def __iter__(self):
         return self.iterkeys()
 
+    @cython.cdivision(True)
     def __setitem__(self, key, value):
         cdef unsigned int h1, h2, tsize
 
@@ -521,6 +531,8 @@ cdef class LazyCuckooCache:
             # No room, evict some entry, pick one of the two options randomly
             # NOTE: Don't invoke python code until all manipulations of the table
             #   are done, or baaad things may happen
+            table = self.table
+            tsize = self.table_size
             tnode1 = table + (h1 % tsize)
             tnode2 = table + (h2 % tsize)
             prio1 = tnode1.prio
@@ -543,6 +555,7 @@ cdef class LazyCuckooCache:
             if eviction_callback is not None:
                 eviction_callback(k, v)
 
+    @cython.cdivision(True)
     def __getitem__(self, key):
         cdef unsigned int tsize, h1, h2
 
@@ -572,21 +585,24 @@ cdef class LazyCuckooCache:
                 return v
             del v
 
-        raise CacheMissError(key)
+        raise CacheMissError_(key)
 
     def __delitem__(self, key):
         self.pop(key)
 
+    @cython.cdivision(True)
     def cas(self, key, oldvalue, newvalue):
         cdef unsigned int tsize, h1, h2
+        cdef PyObject *tkey
 
         while 1:
             h1 = self._hash1(key)
             table = self.table
             tsize = self.table_size
             node = table + (h1 % tsize)
+            tkey = node.key
             if node.value == <PyObject*>oldvalue and _key_equals(node, key):
-                if self.table != table:
+                if self.table != table or node.key != tkey:
                     # Re-entrancy, restart operation
                     continue
                 _value_set(node, <PyObject*>newvalue, self._assign_prio())
@@ -596,13 +612,15 @@ cdef class LazyCuckooCache:
             table = self.table
             tsize = self.table_size
             node = table + (h2 % tsize)
+            tkey = node.key
             if node.value == <PyObject*>oldvalue and _key_equals(node, key):
-                if self.table != table:
+                if self.table != table or node.key != tkey:
                     # Re-entrancy, restart operation
                     continue
                 _value_set(node, <PyObject*>newvalue, self._assign_prio())
                 return
 
+    @cython.cdivision(True)
     def get(self, key, deflt = None):
         cdef unsigned int tsize, h1, h2
 
@@ -634,8 +652,10 @@ cdef class LazyCuckooCache:
 
         return deflt
 
-    def pop(self, key, deflt = CacheMissError):
+    @cython.cdivision(True)
+    cpdef pop(self, key, deflt = CacheMissError_):
         cdef unsigned int tsize, h1, h2
+        cdef PyObject *tkey
 
         rv = None
         while 1:
@@ -644,8 +664,9 @@ cdef class LazyCuckooCache:
             table = self.table
             tsize = self.table_size
             node = table + (h1 % tsize)
+            tkey = node.key
             if _key_equals(node, key):
-                if self.table != table:
+                if self.table != table or tkey != node.key:
                     # Re-entrancy, retstart operation
                     continue
                 if node.value != NULL:
@@ -660,8 +681,9 @@ cdef class LazyCuckooCache:
             table = self.table
             tsize = self.table_size
             node = table + (h2 % tsize)
+            tkey = node.key
             if _key_equals(node, key):
-                if self.table != table:
+                if self.table != table or tkey != node.key:
                     # Re-entrancy, retstart operation
                     continue
                 if node.value != NULL:
@@ -672,64 +694,69 @@ cdef class LazyCuckooCache:
                 self.nitems -= 1
                 return rv
 
-            if deflt is CacheMissError:
-                raise CacheMissError(key)
+            if deflt is CacheMissError_:
+                raise CacheMissError_(key)
             else:
                 return deflt
 
+    @cython.cdivision(True)
     def setdefault(self, key, deflt = None):
-        cdef unsigned int tsize, h1, h2
+        cdef unsigned int tsize, h1, h2, j
 
-        h1 = self._hash1(key)
-        table = self.table
-        tsize = self.table_size
-        node1 = table + (h1 % tsize)
-        if node1.value != NULL:
-            v = <object>node1.value
-            if _key_equals(node1, key):
-                # Recheck table in case equals invoked re-entrant python code
-                if self.touch_on_read and self.table == table:
-                    node1.prio = self._assign_prio()
-                return v
-            del v
+        for j from 0 <= j < 2:
+            h1 = self._hash1(key)
+            table = self.table
+            tsize = self.table_size
+            node1 = table + (h1 % tsize)
+            if node1.value != NULL:
+                v = <object>node1.value
+                if _key_equals(node1, key):
+                    # Recheck table in case equals invoked re-entrant python code
+                    if self.touch_on_read and self.table == table:
+                        node1.prio = self._assign_prio()
+                    return v
+                del v
 
-        h2 = self._hash2(key)
-        table = self.table
-        tsize = self.table_size
-        node2 = table + (h2 % tsize)
-        if node2.value != NULL:
-            v = <object>node2.value
-            if _key_equals(node2, key):
-                # Recheck table in case equals invoked re-entrant python code
-                if self.touch_on_read and self.table == table:
-                    node2.prio = self._assign_prio()
-                return v
-            del v
+            h2 = self._hash2(key)
+            table = self.table
+            tsize = self.table_size
+            node2 = table + (h2 % tsize)
+            if node2.value != NULL:
+                v = <object>node2.value
+                if _key_equals(node2, key):
+                    # Recheck table in case equals invoked re-entrant python code
+                    if self.touch_on_read and self.table == table:
+                        node2.prio = self._assign_prio()
+                    return v
+                del v
 
-        prio = self._assign_prio()
-        if node1.key == NULL or node1.value == NULL:
-            _node_set(node1, <PyObject*>key, <PyObject*>deflt, h1, h2, prio)
-            self.nitems += 1
-        elif node2.key == NULL or node2.value == NULL:
-            _node_set(node2, <PyObject*>key, <PyObject*>deflt, h1, h2, prio)
-            self.nitems += 1
-        else:
-            # Pick a node to evict
-            if self._rnd():
-                tnode = node1
+            prio = self._assign_prio()
+            if node1.key == NULL or node1.value == NULL:
+                _node_set(node1, <PyObject*>key, <PyObject*>deflt, h1, h2, prio)
+                self.nitems += 1
+            elif node2.key == NULL or node2.value == NULL:
+                _node_set(node2, <PyObject*>key, <PyObject*>deflt, h1, h2, prio)
+                self.nitems += 1
+            elif self._rehash():
+                # Enlarged the table, retry
+                continue
             else:
-                tnode = node2
-            eviction_callback = self.eviction_callback
-            if tnode.key != NULL and tnode.value != NULL:
-                k = <object>tnode.key
-                v = <object>tnode.value
-            else:
-                # Should not happen, but better safe than segfault
-                k = v = None
-            _node_set(tnode, <PyObject*>key, <PyObject*>deflt, h1, h2, prio)
-            if eviction_callback is not None:
-                eviction_callback(k, v)
-        return deflt
+                # Pick a node to evict
+                if self._rnd():
+                    tnode = node1
+                else:
+                    tnode = node2
+                eviction_callback = self.eviction_callback
+                if tnode.key != NULL and tnode.value != NULL:
+                    k = <object>tnode.key
+                    v = <object>tnode.value
+                else:
+                    # Should not happen, but better safe than segfault
+                    k = v = None
+                _node_set(tnode, <PyObject*>key, <PyObject*>deflt, h1, h2, prio)
+                if eviction_callback is not None:
+                    eviction_callback(k, v)
+            return deflt
 
     def update(self, iterOrDict):
         if self is iterOrDict:

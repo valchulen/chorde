@@ -62,10 +62,10 @@ class PyCuckooCacheTest(unittest.TestCase):
         for k,v in self.TEST_ELEMENTS:
             self.assertTrue(k in c or k in overflow)
 
-    def testSetDefault(self):
+    def testSetDefault(self, min_size = 4, **kwargs):
         evictions = []
         eviction_callback = lambda k,v : evictions.append((k,v))
-        c = self.Cache(5, eviction_callback = eviction_callback)
+        c = self.Cache(5, eviction_callback = eviction_callback, **kwargs)
 
         for k,v in self.TEST_ELEMENTS:
             # Construct a distinct object
@@ -76,6 +76,7 @@ class PyCuckooCacheTest(unittest.TestCase):
             v2 = float(v)
             self.assertIs(c.setdefault(k,v2), v)
 
+        self.assertGreaterEqual(len(c), min_size)
         self.assertGreater(len(evictions), 0)
 
     def testCas(self):
@@ -104,6 +105,9 @@ class PyCuckooCacheTest(unittest.TestCase):
 
     def testRehash(self):
         self.testAdd(initial_size = 1)
+
+    def testRehashSetDefault(self):
+        self.testSetDefault(initial_size = 1)
 
     def testPreallocate(self):
         self.testAdd(preallocate = True)

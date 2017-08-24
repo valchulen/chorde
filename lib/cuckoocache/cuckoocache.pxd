@@ -26,12 +26,14 @@ cdef class LazyCuckooCache:
 
     cdef unsigned int _hash1(LazyCuckooCache self, x) except? 0xFFFFFFFF
     cdef unsigned int _hash2(LazyCuckooCache self, x) except? 0xFFFFFFFF
-    cdef unsigned long long _assign_prio(LazyCuckooCache self) except? 0xFFFFFFFFFFFFFFFFULL
+    cdef unsigned long long _assign_prio(LazyCuckooCache self)
 
     cdef int _add_node(LazyCuckooCache self, _node *table, unsigned int tsize, _node *node,
             unsigned int h1, unsigned int h2, PyObject *key, PyObject *value,
             unsigned long long prio, unsigned int item_diff, bint recheck) except -1
     cdef int _rehash(LazyCuckooCache self) except -1
 
-    cdef int _rnd(LazyCuckooCache self) except -1
+    cdef int _init_rnd(self) except -1
+    cdef bint _rnd(LazyCuckooCache self)
 
+    cpdef pop(LazyCuckooCache self, key, deflt = ?)

@@ -306,46 +306,50 @@ class LazyCuckooCache(object):
             return deflt
 
     def setdefault(self, key, deflt = None):
-        table = self.table
-        tsize = len(table)
-        h1 = self.hash1(key)
-        ix1 = h1 % tsize
-        node1 = table[ix1]
-        if node1 is not None and node1.key == key:
-            if self.touch_on_read:
-                node1.prio = self._assign_prio()
-            return node1.value
+        for i in xrange(2):
+            table = self.table
+            tsize = len(table)
+            h1 = self.hash1(key)
+            ix1 = h1 % tsize
+            node1 = table[ix1]
+            if node1 is not None and node1.key == key:
+                if self.touch_on_read:
+                    node1.prio = self._assign_prio()
+                return node1.value
 
-        h2 = self.hash2(key)
-        ix2 = h2 % tsize
-        node2 = table[ix2]
-        if node2 is not None and node2.key == key:
-            if self.touch_on_read:
-                node2.prio = self._assign_prio()
-            return node2.value
+            h2 = self.hash2(key)
+            ix2 = h2 % tsize
+            node2 = table[ix2]
+            if node2 is not None and node2.key == key:
+                if self.touch_on_read:
+                    node2.prio = self._assign_prio()
+                return node2.value
 
-        prio = self._assign_prio()
-        if node1 is None:
-            table[ix1] = _node(key, deflt, h1, h2, prio)
-            self.nitems += 1
-        elif node2 is None:
-            table[ix2] = _node(key, deflt, h1, h2, prio)
-            self.nitems += 1
-        else:
-            # Pick a node to evict
-            if random() < 0.5:
-                tnode = node1
+            prio = self._assign_prio()
+            if node1 is None:
+                table[ix1] = _node(key, deflt, h1, h2, prio)
+                self.nitems += 1
+            elif node2 is None:
+                table[ix2] = _node(key, deflt, h1, h2, prio)
+                self.nitems += 1
+            elif self.rehash():
+                # Enlarged the table, retry
+                continue
             else:
-                tnode = node2
-            eviction_callback = self.eviction_callback
-            if eviction_callback is not None:
-                eviction_callback(tnode.key, tnode.value)
-            tnode.key = key
-            tnode.value = deflt
-            tnode.h1 = h1
-            tnode.h2 = h2
-            tnode.prio = prio
-        return deflt
+                # Pick a node to evict
+                if random() < 0.5:
+                    tnode = node1
+                else:
+                    tnode = node2
+                eviction_callback = self.eviction_callback
+                if eviction_callback is not None:
+                    eviction_callback(tnode.key, tnode.value)
+                tnode.key = key
+                tnode.value = deflt
+                tnode.h1 = h1
+                tnode.h2 = h2
+                tnode.prio = prio
+            return deflt
 
     def update(self, iterOrDict):
         if self is iterOrDict:
