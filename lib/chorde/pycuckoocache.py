@@ -308,7 +308,7 @@ class LazyCuckooCache(object):
             return deflt
 
     def setdefault(self, key, deflt = None):
-        for i in xrange(2):
+        for j in xrange(3):
             table = self.table
             tsize = len(table)
             h1 = self.hash1(key)
@@ -334,7 +334,7 @@ class LazyCuckooCache(object):
             elif node2 is None:
                 table[ix2] = _node(key, deflt, h1, h2, prio)
                 self.nitems += 1
-            elif self.rehash():
+            elif j < 2 and self.rehash():
                 # Enlarged the table, retry
                 continue
             else:

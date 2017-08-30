@@ -710,7 +710,7 @@ cdef class LazyCuckooCache:
     def setdefault(self, key, deflt = None):
         cdef unsigned int tsize, h1, h2, j
 
-        for j from 0 <= j < 2:
+        for j from 0 <= j <= 2:
             h1 = self._hash1(key)
             table = self.table
             tsize = self.table_size
@@ -744,7 +744,7 @@ cdef class LazyCuckooCache:
             elif node2.key == NULL or node2.value == NULL:
                 _node_set(node2, <PyObject*>key, <PyObject*>deflt, h1, h2, prio)
                 self.nitems += 1
-            elif self._rehash():
+            elif j < 2 and self._rehash():
                 # Enlarged the table, retry
                 continue
             else:
