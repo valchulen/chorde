@@ -34,7 +34,9 @@ class LazyCuckooCache(object):
     """
     def __init__(self, size, touch_on_read = True, eviction_callback = None,
             preallocate = False, hash1 = None, hash2 = None, initial_size = 256):
-        assert size > 0
+        if size <= 0:
+            raise ValueError("Cannot build a size-0 cache")
+
         self.size = size
         self.touch_on_read = touch_on_read
         if preallocate:

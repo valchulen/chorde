@@ -76,11 +76,14 @@ cdef int _free_table_items(_node* table, unsigned int start, unsigned int end) e
 
 cdef _node* _alloc_table(unsigned int size) except NULL:
     cdef _node* table
+
+    assert size > 0
+
     table = <_node*>malloc(sizeof(_node) * size)
-    if table != NULL:
-        _init_table_items(table, 0, size)
-    else:
+    if table == NULL:
         raise MemoryError
+
+    _init_table_items(table, 0, size)
     return table
 
 cdef int _free_table(_node* table, unsigned int size) except -1:
@@ -179,6 +182,9 @@ cdef class LazyCuckooCache:
     def __cinit__(self, unsigned int size, bint touch_on_read = True, eviction_callback = None,
             bint preallocate = False, hash1 = None, hash2 = None, unsigned int initial_size = 256):
         cdef _node *table
+
+        if size <= 0:
+            raise ValueError("Cannot build a size-0 cache")
 
         self.table = NULL
         self.size = size

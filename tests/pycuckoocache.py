@@ -24,6 +24,9 @@ class PyCuckooCacheTest(unittest.TestCase):
             c[k] = v
         return c
 
+    def testSize0(self):
+        self.assertRaises(ValueError, self.Cache, 0)
+
     def testAdd(self, **kwargs):
         evictions = []
         eviction_callback = lambda k,v : evictions.append((k,v))
