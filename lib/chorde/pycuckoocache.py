@@ -352,6 +352,9 @@ class LazyCuckooCache(object):
                 tnode.h2 = h2
                 tnode.prio = prio
             return deflt
+        else:
+            # Unreachable code, in theory
+            raise AssertionError("unreachable")
 
     def update(self, iterOrDict):
         if self is iterOrDict:

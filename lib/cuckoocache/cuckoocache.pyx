@@ -764,6 +764,9 @@ cdef class LazyCuckooCache:
                 if eviction_callback is not None:
                     eviction_callback(k, v)
             return deflt
+        else:
+            # Unreachable code, in theory
+            raise AssertionError("unreachable")
 
     def update(self, iterOrDict):
         if self is iterOrDict:
