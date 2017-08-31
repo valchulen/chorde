@@ -308,7 +308,7 @@ cdef class LazyCuckooCache:
             # Some evictions might take place during rehashing
             nitems = 0
             for i from 0 <= i < tsize:
-                node = otable+i
+                node = otable + i
                 if node.key != NULL and node.value != NULL:
                     if not self._add_node(ntable, ntablesize, node, node.h1, node.h2,
                             node.key, node.value, node.prio, 0, False):
