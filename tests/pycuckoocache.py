@@ -246,6 +246,66 @@ class PyCuckooCacheTest(unittest.TestCase):
 
             self.assertEquals(len(c), len(c.items()))
 
+    def testEqualsReentrancy(self):
+        # ShyItem self-deletes itself when it's about to be found by SOMEONE ELSE
+        is_cythonized = self.Cache is not pycuckoocache.LazyCuckooCache
+        class ShyItem:
+            def __init__(self, v):
+                self.v = v
+            def __eq__(self, other):
+                # The cythonized version should check for identity before invoking equality
+                if isinstance(other, ShyItem) and other.v == self.v:
+                    if is_cythonized or self is not other:
+                        del c[self]
+                    return True
+                else:
+                    return False
+            def __hash__(self):
+                return hash(self.v)
+
+        k = ShyItem(3)
+        k2 = ShyItem(3)
+        c = self.Cache(20)
+
+        c[k] = 100
+        self.assertEquals(c[k], 100)
+        self.assertEquals(c[k], 100)
+        self.assertEquals(c.get(k), 100)
+        self.assertEquals(c.get(k), 100)
+        self.assertEquals(c.pop(k, None), 100)
+        c[k] = 100
+        self.assertEquals(c.pop(k), 100)
+        c[k] = 100
+        self.assertEquals(c.setdefault(k, 200), 100)
+        self.assertEquals(c.setdefault(k, 200), 100)
+        del c[k]
+
+        k2 = ShyItem(3)
+        c[k] = 100
+        self.assertEquals(c[k2], 100)
+        self.assertRaises(pycuckoocache.CacheMissError, c.__getitem__, k2)
+        c[k] = 100
+        self.assertEquals(c.get(k2), 100)
+        self.assertIsNone(c.get(k2))
+        c[k] = 100
+        self.assertEquals(c.get(k2, 5), 100)
+        self.assertEquals(c.get(k2, 5), 5)
+        c[k] = 100
+        # Implementations behave differently here, but the important
+        # thing to avoid are hard crashes, so just run the operation
+        c.pop(k2, None)
+        c.pop(k2, None)
+        c[k] = 100
+        try:
+            c.pop(k2)
+        except pycuckoocache.CacheMissError:
+            pass
+        self.assertRaises(pycuckoocache.CacheMissError, c.pop, k2)
+        c[k] = 100
+        self.assertEquals(c.setdefault(k2, 200), 100)
+        self.assertEquals(c.setdefault(k2, 200), 200)
+        del c[k2]
+
 @skipIfNotCythonized
 class CuckooCacheTest(PyCuckooCacheTest):
     Cache = cuckoocache.LazyCuckooCache

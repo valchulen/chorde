@@ -664,9 +664,7 @@ cdef class LazyCuckooCache:
         cdef unsigned int tsize, h1, h2
         cdef PyObject *tkey
 
-        rv = None
         while 1:
-            del rv
             h1 = self._hash1(key)
             table = self.table
             tsize = self.table_size
