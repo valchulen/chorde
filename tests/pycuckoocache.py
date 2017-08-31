@@ -244,6 +244,8 @@ class PyCuckooCacheTest(unittest.TestCase):
                 b = c.get(k)
                 b = c.pop(k, v)
 
+            self.assertEquals(len(c), len(c.items()))
+
 @skipIfNotCythonized
 class CuckooCacheTest(PyCuckooCacheTest):
     Cache = cuckoocache.LazyCuckooCache
