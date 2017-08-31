@@ -217,6 +217,33 @@ class PyCuckooCacheTest(unittest.TestCase):
         self.assertEqual(c.get(1000), 1000)
         self.assertEqual(c._nextprio, 0x4000000000000000)
 
+    def testReentrancy(self):
+        fucking = []
+        def fuckerhash(x):
+            if not fucking:
+                fucking.append(None)
+                c[hash(x)] = 1
+                del fucking[:]
+            return hash(x)
+        def crackerhash(x):
+            c.clear()
+            return 1 + hash(x)
+
+        for h1, h2 in [(fuckerhash, crackerhash), (crackerhash, fuckerhash)]:
+            # Of course, cannot assert anything, these hash functions are really evil and unpredictable
+            # We just want to make sure there are no segfaults
+            c = self.Cache(20, hash1 = fuckerhash, hash2 = crackerhash)
+            c.update([(k,None) for k,v in self.TEST_ELEMENTS])
+            c.update(self.TEST_ELEMENTS)
+
+            for k,v in self.TEST_ELEMENTS:
+                c.setdefault(k, v)
+
+            for k,v in self.TEST_ELEMENTS:
+                b = k in c
+                b = c.get(k)
+                b = c.pop(k, v)
+
 @skipIfNotCythonized
 class CuckooCacheTest(PyCuckooCacheTest):
     Cache = cuckoocache.LazyCuckooCache
