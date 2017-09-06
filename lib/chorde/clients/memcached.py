@@ -35,7 +35,7 @@ except ImportError:
 try:
     from select import poll
 except ImportError:
-    pass
+    poll = None
 
 from chorde import sPickle
 from chorde.dnsutils import ThreadLocalDynamicResolvingClient, AsyncThreadLocalDynamicResolvingClient
