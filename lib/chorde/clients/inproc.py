@@ -209,12 +209,7 @@ class InprocCacheClient(base.BaseCacheClient):
         if rv is not baseNONE:
             rv, ttl = rv
             ttl = ttl - time()
-            if ttl_skip is None or ttl >= ttl_skip:
-                return rv, ttl
-            elif default is baseNONE:
-                raise CacheMissError, key
-            else:
-                return default, -1
+            return rv, ttl
         elif default is baseNONE:
             raise CacheMissError, key
         else:

@@ -650,6 +650,143 @@ class AsyncWriteCacheClient(BaseCacheClient):
         else:
             return value, ttl
 
+    def get(self, key, default = NONE, ttl_skip = None,
+            _DELETE = _DELETE, _EXPIRE = _EXPIRE, _RENEW = _RENEW, _CLEAR = _CLEAR, 
+            NONE = NONE, _NONE = _NONE,
+            hasattr = hasattr,
+            **kw):
+        writer = self.writer
+        if writer is not None: # self.is_started() inlined for speed
+            # Try to read pending writes as if they were on the cache
+            value = writer.getTtl(key, _NONE)
+            if value is not _NONE:
+                value, ttl, _ = value
+                if value is _DELETE or value is _EXPIRE:
+                    # Deletion means a miss... right?
+                    if default is NONE:
+                        raise CacheMissError, key
+                    else:
+                        return default
+                elif value is _RENEW and (ttl_skip is None or ttl >= ttl_skip):
+                    # The value is renewed, ttl_skip will be meaningless
+                    ttl_skip = None
+                elif not hasattr(value, 'undefer'):
+                    return value
+            # Yep, _NONE when querying the writer, because we don't want
+            # to return a default if the writer doesn't have it, we must
+            # still check the client.
+
+            # Check pending clear - after checking the queue for sorted semantics
+            if writer._contains(_CLEAR):
+                # Well, 
+                if default is NONE:
+                    raise CacheMissError, key
+                else:
+                    return default
+        
+        # Ok, read the cache then
+        return self.client.get(key, default, ttl_skip = ttl_skip, **kw)
+
+    def getTtlMulti(self, keys, default = NONE, 
+            _DELETE = _DELETE, _EXPIRE = _EXPIRE, _RENEW = _RENEW, _CLEAR = _CLEAR, 
+            NONE = NONE, _NONE = _NONE,
+            hasattr = hasattr,
+            **kw):
+        ettl = {}
+        writer = self.writer
+        default_rv = (default, -1)
+        if writer is not None: # self.is_started() inlined for speed
+            # Try to read pending writes as if they were on the cache
+            wgetTtl = writer.getTtl
+            nkeys = []
+            nkeys_append = nkeys.append
+            for key in keys:
+                value = wgetTtl(key, _NONE)
+                if value is not _NONE:
+                    value, ttl, _ = value
+                    if value is _DELETE:
+                        # Deletion means a miss... right?
+                        yield key, default_rv
+                        continue
+                    elif value is _EXPIRE:
+                        # Expiration just sets the TTL
+                        ettl[key] = -1
+                    elif value is _RENEW:
+                        ettl[key] = ttl
+                    elif not hasattr(value, 'undefer'):
+                        yield key, (value, ttl)
+                        continue
+                # Yep, _NONE when querying the writer, because we don't want
+                # to return a default if the writer doesn't have it, we must
+                # still check the client.
+                nkeys_append(key)
+            keys = nkeys
+            del nkeys, nkeys_append
+
+            # Check pending clear - after checking the queue for sorted semantics
+            if writer._contains(_CLEAR):
+                for key in keys:
+                    yield key, default_rv
+                return
+        
+        # Ok, read the cache then
+        ettlget = ettl.get
+        for key, (value, ttl) in self.client.getTtlMulti(keys, default, **kw):
+            ttl = ettlget(key, ttl)
+            yield key, (value, ttl)
+
+    def getMulti(self, keys, default = NONE, ttl_skip = None,
+            _DELETE = _DELETE, _EXPIRE = _EXPIRE, _RENEW = _RENEW, _CLEAR = _CLEAR, 
+            NONE = NONE, _NONE = _NONE,
+            hasattr = hasattr,
+            **kw):
+        ettl = []
+        ettl_append = ettl.append
+        writer = self.writer
+        if writer is not None: # self.is_started() inlined for speed
+            # Try to read pending writes as if they were on the cache
+            wgetTtl = writer.getTtl
+            nkeys = []
+            nkeys_append = nkeys.append
+            for key in keys:
+                value = wgetTtl(key, _NONE)
+                if value is not _NONE:
+                    value, ttl, _ = value
+                    if value is _DELETE or value is _EXPIRE:
+                        # Deletion/expiration means a miss...
+                        yield key, default
+                        continue
+                    elif value is _RENEW and (ttl_skip is None or ttl >= ttl_skip):
+                        if ttl_skip is not None:
+                            # We'll do these without ttl_skip
+                            ettl_append(key)
+                            continue
+                    elif not hasattr(value, 'undefer'):
+                        yield key, value
+                        continue
+                # Yep, _NONE when querying the writer, because we don't want
+                # to return a default if the writer doesn't have it, we must
+                # still check the client.
+                nkeys_append(key)
+            keys = nkeys
+            del nkeys, nkeys_append
+
+            # Check pending clear - after checking the queue for sorted semantics
+            if writer._contains(_CLEAR):
+                for key in keys:
+                    yield key, default
+                for key in ettl:
+                    yield key, default
+                return
+
+        # Ok, read the cache then
+        if ettl:
+            for key, value in self.client.getMulti(keys, default, **kw):
+                yield key, value
+        if keys:
+            for key, value in self.client.getMulti(keys, default, ttl_skip = ttl_skip, **kw):
+                yield key, value
+
     def promote(self, key, *p, **kw):
         if self.is_started() and self.writer.contains(key):
             return

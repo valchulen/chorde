@@ -257,7 +257,16 @@ class CoherentWrapperClient(BaseCacheClient):
     
     def getTtl(self, key, default = NONE, **kw):
         return self.client.getTtl(key, default, **kw)
-    
+
+    def get(self, key, default = NONE, **kw):
+        return self.client.get(key, default, **kw)
+
+    def getTtlMulti(self, keys, default = NONE, **kw):
+        return self.client.getTtlMulti(keys, default, **kw)
+
+    def getMulti(self, keys, default = NONE, **kw):
+        return self.client.getMulti(keys, default, **kw)
+
     def contains(self, key, ttl = None, **kw):
         return self.client.contains(key, ttl, **kw)
 

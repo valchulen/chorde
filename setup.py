@@ -17,7 +17,19 @@ else:
     except:
         no_pyrex = True
 
-VERSION = "0.1"
+VERSION = "0.2.0"
+
+version_path = os.path.join(os.path.dirname(__file__), 'lib', 'chorde', '_version.py')
+if not os.path.exists(version_path):
+    with open(version_path, "w") as version_file:
+        pass
+with open(version_path, "r+") as version_file:
+    version_content = "__version__ = %r" % (VERSION,)
+    if version_file.read() != version_content:
+        version_file.seek(0)
+        version_file.write(version_content)
+        version_file.flush()
+        version_file.truncate()
 
 with open(os.path.join(os.path.dirname(__file__), 'README.rst')) as readme_file:
     readme = readme_file.read()
