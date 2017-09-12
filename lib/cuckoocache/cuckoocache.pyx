@@ -180,7 +180,7 @@ cdef class LazyCuckooCache:
     # in particular might not). This is a concept akin to software-transactional memory.
 
     def __cinit__(self, unsigned int size, bint touch_on_read = True, eviction_callback = None,
-            bint preallocate = False, hash1 = None, hash2 = None, unsigned int initial_size = 256):
+            bint preallocate = True, hash1 = None, hash2 = None, unsigned int initial_size = 256):
         cdef _node *table
 
         if size <= 0:
