@@ -252,17 +252,23 @@ class LazyCuckooCache(object):
         tsize = len(table)
         h1 = self.hash1(key)
         node = table[h1 % tsize]
-        if node is not None and node.key == key and node.value is oldvalue:
-            node.value = newvalue
-            node.prio = self._assign_prio()
-            return True
+        if node is not None and node.key == key:
+            if node.value is oldvalue:
+                node.value = newvalue
+                node.prio = self._assign_prio()
+                return True
+            else:
+                return False
 
         h2 = self.hash2(key)
         node = table[h2 % tsize]
-        if node is not None and node.key == key and node.value is oldvalue:
-            node.value = newvalue
-            node.prio = self._assign_prio()
-            return True
+        if node is not None and node.key == key:
+            if node.value is oldvalue:
+                node.value = newvalue
+                node.prio = self._assign_prio()
+                return True
+            else:
+                return False
 
         return False
 
