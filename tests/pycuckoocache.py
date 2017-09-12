@@ -89,9 +89,13 @@ class PyCuckooCacheTest(unittest.TestCase):
 
         for k,v in self.TEST_ELEMENTS:
             v2 = float(v)
+            v3 = v2 + 1
             c[k] = v2
-            c.cas(k,v2,v)
+            success = c.cas(k,v2,v)
+            success2 = c.cas(k,v2,v3)
             self.assertIs(c[k], v)
+            self.assertTrue(success)
+            self.assertFalse(success2)
 
         self.assertGreater(len(evictions), 0)
 

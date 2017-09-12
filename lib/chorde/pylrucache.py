@@ -163,8 +163,10 @@ class LRUCache(object):
             if node.value is oldvalue:
                 node.value = newvalue
                 self.decrease(node)
+                return True
             elif self.touch_on_read:
                 self.decrease(node)
+        return False
 
     def get(self, key, deflt = None):
         if key not in self.emap:

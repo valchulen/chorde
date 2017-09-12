@@ -613,7 +613,7 @@ cdef class LazyCuckooCache:
                     # Re-entrancy, restart operation
                     continue
                 _value_set(node, <PyObject*>newvalue, self._assign_prio())
-                return
+                return True
 
             h2 = self._hash2(key)
             table = self.table
@@ -625,7 +625,9 @@ cdef class LazyCuckooCache:
                     # Re-entrancy, restart operation
                     continue
                 _value_set(node, <PyObject*>newvalue, self._assign_prio())
-                return
+                return True
+
+            return False
 
     @cython.cdivision(True)
     def get(self, key, deflt = None):

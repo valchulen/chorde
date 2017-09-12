@@ -273,8 +273,10 @@ cdef class LRUCache:
             if node.value is oldvalue:
                 node.value = newvalue
                 self.c_decrease(node)
+                return True
             elif self.touch_on_read:
                 self.c_decrease(node)
+        return False
 
     cdef c_get(LRUCache self, object key, object deflt):
         cdef _node node
