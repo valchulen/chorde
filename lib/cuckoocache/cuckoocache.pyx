@@ -608,24 +608,30 @@ cdef class LazyCuckooCache:
             tsize = self.table_size
             node = table + (h1 % tsize)
             tkey = node.key
-            if node.value == <PyObject*>oldvalue and _key_equals(node, key, h1):
+            if _key_equals(node, key, h1):
                 if self.table != table or node.key != tkey:
                     # Re-entrancy, restart operation
                     continue
-                _value_set(node, <PyObject*>newvalue, self._assign_prio())
-                return True
+                if node.value == <PyObject*>oldvalue:
+                    _value_set(node, <PyObject*>newvalue, self._assign_prio())
+                    return True
+                else:
+                    return False
 
             h2 = self._hash2(key)
             table = self.table
             tsize = self.table_size
             node = table + (h2 % tsize)
             tkey = node.key
-            if node.value == <PyObject*>oldvalue and _key_equals(node, key, h1):
+            if _key_equals(node, key, h1):
                 if self.table != table or node.key != tkey:
                     # Re-entrancy, restart operation
                     continue
-                _value_set(node, <PyObject*>newvalue, self._assign_prio())
-                return True
+                if node.value == <PyObject*>oldvalue:
+                    _value_set(node, <PyObject*>newvalue, self._assign_prio())
+                    return True
+                else:
+                    return False
 
             return False
 
