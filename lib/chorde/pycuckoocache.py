@@ -33,7 +33,7 @@ class LazyCuckooCache(object):
     to provide your own if you know the type of keys you'll be hashing.
     """
     def __init__(self, size, touch_on_read = True, eviction_callback = None,
-            preallocate = False, hash1 = None, hash2 = None, initial_size = 256):
+            preallocate = True, hash1 = None, hash2 = None, initial_size = 256):
         if size <= 0:
             raise ValueError("Cannot build a size-0 cache")
 
@@ -252,17 +252,25 @@ class LazyCuckooCache(object):
         tsize = len(table)
         h1 = self.hash1(key)
         node = table[h1 % tsize]
-        if node is not None and node.key == key and node.value is oldvalue:
-            node.value = newvalue
-            node.prio = self._assign_prio()
-            return
+        if node is not None and node.key == key:
+            if node.value is oldvalue:
+                node.value = newvalue
+                node.prio = self._assign_prio()
+                return True
+            else:
+                return False
 
         h2 = self.hash2(key)
         node = table[h2 % tsize]
-        if node is not None and node.key == key and node.value is oldvalue:
-            node.value = newvalue
-            node.prio = self._assign_prio()
-            return
+        if node is not None and node.key == key:
+            if node.value is oldvalue:
+                node.value = newvalue
+                node.prio = self._assign_prio()
+                return True
+            else:
+                return False
+
+        return False
 
     def get(self, key, deflt = None):
         table = self.table
