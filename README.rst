@@ -38,6 +38,27 @@ and use it directly, like
 This creates an In-process LRU cache. The in-process part indicates that it
 is process-private, and not shared with other processes.
 
+There are two implementations of the LRU, with different performance
+characteristics. The `InprocCacheClient` can take alternative store
+implementations as an argument, see the module for details.
+
+The default LRUCache, accessible as `chorde.clients.inproc.Cache`,
+is a regular LRU implemented with
+a priority queue and a hash table in tandem, so it has *O(log n)* writes
+and *O(1)* reads, but by default all reads entail a write (to update the
+LRU). That can be disabled by specifying custom options, see the module's
+documentation for more details.
+
+There's an alternative approximate LRU, accessible in
+`chorde.clients.inproc.CuckooCache`, that implements a lazy version of
+a cuckoo hash table, and has *O(1)* reads and amortized *O(1)* writes.
+It's also quite more space-efficient than the regular LRU, so it's better
+suited for very large caches, but its eviction strategy will be approximate,
+and thus not guaranteed to always evict the actual least-recently-used item.
+
+Shared Caches
+=============
+
 The most straightforward way to get a shared cache, is to use a memcache:
 
 .. code:: python
