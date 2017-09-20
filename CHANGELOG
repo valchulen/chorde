@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2017-09-20
 ### Changed
 - Made ttl_skip not return default/CacheMissError when the
   only available value is below the skip threshold. Instead,
