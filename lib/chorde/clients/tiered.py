@@ -43,12 +43,13 @@ class TieredInclusiveClient(BaseCacheClient):
                 # if we don't get a better value, which is what we want
                 value = async._NONE
 
-                reget_value, vttl = self.getTtl(key, NONE, return_stale = False)
-                if reget_value is not NONE and vttl > 0:
+                # NONE_ is a special local value that does not raise CacheMissErrors
+                reget_value, vttl = self.getTtl(key, NONE_, return_stale = False)
+                if reget_value is not NONE_ and vttl > 0:
                     # This might be an old value, so try to promote better values from upper tiers
-                    self.promote(key, ttl_skip = vttl+1)
-                    reget_value, vttl = self.getTtl(key, NONE, return_stale = False)
-                    if reget_value is not NONE:
+                    value = reget_value
+                    reget_value, vttl = self.getTtl(key, NONE_, ttl_skip = vttl+1, return_stale = False)
+                    if reget_value is not NONE_:
                         value = reget_value
                 deferred.set(value)
 
