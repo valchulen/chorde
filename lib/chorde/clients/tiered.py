@@ -39,8 +39,21 @@ class TieredInclusiveClient(BaseCacheClient):
         try:
             value = value.undefer()
             if value is async.REGET:
-                value = self.get(key)
+                # This will cause a CancelledError on any waiter
+                # if we don't get a better value, which is what we want
+                value = async._NONE
+
+                reget_value, vttl = self.getTtl(key, NONE, return_stale = False)
+                if reget_value is not NONE and vttl > 0:
+                    # This might be an old value, so try to promote better values from upper tiers
+                    self.promote(key, ttl_skip = vttl+1)
+                    reget_value, vttl = self.getTtl(key, NONE, return_stale = False)
+                    if reget_value is not NONE:
+                        value = reget_value
                 deferred.set(value)
+
+                # In any case, don't do the reget in the caller, we did the equivalent
+                value = async._NONE
             elif value is not NONE and value is not async._NONE:
                 for fraction, client in islice(izip(fractions,clients), 1, _max_tiers):
                     try:
