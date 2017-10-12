@@ -67,7 +67,7 @@ class Defer(object):
         else:
             future = getattr(self, 'future', None)
             if future is not None and not future.done():
-                future.exception(CancelledError())
+                future.set_exception(CancelledError())
             return _NONE
 
     def set(self, value):
@@ -78,7 +78,7 @@ class Defer(object):
         if future is not None and not future.done():
             rv = getattr(self, 'rv', NONE)
             if rv is _NONE or rv is NONE:
-                future.exception(CancelledError())
+                future.set_exception(CancelledError())
             else:
                 future.set(rv)
 
