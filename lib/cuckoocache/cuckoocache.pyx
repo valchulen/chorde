@@ -300,8 +300,6 @@ cdef class LazyCuckooCache:
         if ntablesize >= size or self._rehash_in_progress:
             return 0
 
-        self._rehash_in_progress = True
-
         eviction_callback = self.eviction_callback
         if eviction_callback is not None:
             # Atomic barrier, so recheck table afterwards
@@ -312,6 +310,7 @@ cdef class LazyCuckooCache:
             if ntablesize >= size or self._rehash_in_progress:
                 return 0
 
+        self._rehash_in_progress = True
         try:
             ntablesize += max(1, ntablesize / 2)
             if ntablesize > size:
