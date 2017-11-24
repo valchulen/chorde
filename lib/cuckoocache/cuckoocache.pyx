@@ -188,6 +188,7 @@ cdef class LazyCuckooCache:
 
         self.table = NULL
         self.size = size
+        self._rehash_in_progress = False
         self.touch_on_read = touch_on_read
         if preallocate:
             initial_size = size
@@ -209,8 +210,11 @@ cdef class LazyCuckooCache:
 
     def __dealloc__(self):
         if self.table != NULL and self.table_size > 0:
-            _free_table(self.table, self.table_size)
+            table = self.table
+            table_size = self.table_size
             self.table = NULL
+            self.table_size = 0
+            _free_table(table, table_size)
 
     cdef unsigned int _hash1(self, x) except? 0xFFFFFFFF:
         if self.hash1 is None:
@@ -293,41 +297,62 @@ cdef class LazyCuckooCache:
         otable = self.table
         size = self.size
         tsize = ntablesize = self.table_size
-        if ntablesize >= size:
+        if ntablesize >= size or self._rehash_in_progress:
             return 0
 
-        ntablesize += max(1, ntablesize / 2)
-        if ntablesize > size:
-            ntablesize = size
+        self._rehash_in_progress = True
 
-        ntable = _alloc_table(ntablesize)
+        eviction_callback = self.eviction_callback
+        if eviction_callback is not None:
+            # Atomic barrier, so recheck table afterwards
+            evict_keys = []
+            evict_values = []
+            otable = self.table
+            tsize = ntablesize = self.table_size
+            if ntablesize >= size or self._rehash_in_progress:
+                return 0
+
         try:
-            _init_table_items(ntable, 0, ntablesize)
-            eviction_callback = self.eviction_callback
+            ntablesize += max(1, ntablesize / 2)
+            if ntablesize > size:
+                ntablesize = size
 
-            # Some evictions might take place during rehashing
-            nitems = 0
-            for i from 0 <= i < tsize:
-                node = otable + i
-                if node.key != NULL and node.value != NULL:
-                    if not self._add_node(ntable, ntablesize, node, node.h1, node.h2,
-                            node.key, node.value, node.prio, 0, False):
-                        # Notify eviction, atomic barrier
-                        if eviction_callback is not None:
-                            k = <object>node.key
-                            v = <object>node.value
-                            eviction_callback(k, v)
-                            del k, v
-                    else:
-                        nitems += 1
-        except:
-            _free_table(ntable, ntablesize)
-            raise
+            ntable = _alloc_table(ntablesize)
+            try:
+                _init_table_items(ntable, 0, ntablesize)
 
-        self.table = ntable
-        self.table_size = ntablesize
-        self.nitems = nitems
-        _free_table(otable, tsize)
+                # Some evictions might take place during rehashing
+                nitems = 0
+                for i from 0 <= i < tsize:
+                    node = otable + i
+                    if node.key != NULL and node.value != NULL:
+                        if not self._add_node(ntable, ntablesize, node, node.h1, node.h2,
+                                node.key, node.value, node.prio, 0, False):
+                            # Queue eviction notification, not an atomic barrier since we just queue it
+                            # without creating new objects, so no GC and no arbitrary python code can be triggered
+                            if eviction_callback is not None:
+                                k = <object>node.key
+                                v = <object>node.value
+                                evict_keys.append(k)
+                                evict_values.append(v)
+                                del k, v
+                        else:
+                            nitems += 1
+            except:
+                _free_table(ntable, ntablesize)
+                raise
+
+            self.table = ntable
+            self.table_size = ntablesize
+            self.nitems = nitems
+            _free_table(otable, tsize)
+        finally:
+            self._rehash_in_progress = False
+
+        if eviction_callback is not None:
+            num_evictions = len(evict_keys)
+            for i from 0 <= i < num_evictions:
+                eviction_callback(evict_keys[i], evict_values[i])
 
         return 1
 

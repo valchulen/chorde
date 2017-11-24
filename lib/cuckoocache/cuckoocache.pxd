@@ -17,6 +17,8 @@ cdef class LazyCuckooCache:
 
     cdef _node *table
 
+    cdef bint _rehash_in_progress
+
     cdef readonly unsigned int size
     cdef readonly unsigned int initial_size
     cdef unsigned int table_size
