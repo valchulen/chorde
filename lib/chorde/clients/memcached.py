@@ -103,18 +103,18 @@ stamp_prefix = "#vc#"
 
 try:
     import lz4
-    
+
     class LZ4File:
         def __init__(self, fileobj, level = 9):
             self.fileobj = fileobj
             self.buffer = StringIO()
             self.flushed = True
             self.closed = False
-    
+
         def write(self, buf):
             self.buffer.write(buf)
             self.flushed = False
-    
+
         def flush(self):
             if not self.flushed:
                 self.fileobj.write(lz4.compress(self.buffer.getvalue()))
@@ -122,18 +122,18 @@ try:
                 self.buffer.truncate()
                 self.flushed = True
             self.fileobj.flush()
-    
+
         def close(self):
             if not self.closed:
                 self.flush()
                 self.closed = True
-    
+
         def __del__(self):
             self.close()
-    
+
         def __enter__(self):
             return self
-    
+
         def __exit__(self, type, value, traceback):
             self.close()
 
@@ -268,7 +268,7 @@ class MemcachedStoreClient(memcache.Client):
 
     # A faster check_key
     def check_key(self, key, key_extra_len=0,
-            isinstance = isinstance, tuple = tuple, str = str, 
+            isinstance = isinstance, tuple = tuple, str = str,
             unicode = unicode, basestring = basestring, len = len,
             tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in xrange(256)),
             imap = itertools.imap):
@@ -304,7 +304,7 @@ class MemcachedStoreClient(memcache.Client):
         def _send_multi(self, buffers, mark_dead = True):
             '''
             Takes a mapping server->buffer, sends the data in the buffers
-            to all servers in parallel, returning unsent buffers at the end 
+            to all servers in parallel, returning unsent buffers at the end
             (ie: due to errors)
             '''
             if not buffers:
@@ -371,45 +371,45 @@ class MemcachedStoreClient(memcache.Client):
         def get_multi(self, keys, key_prefix=''):
             '''
             Retrieves multiple keys from the memcache doing just one query.
-    
+
             >>> success = mc.set("foo", "bar")
             >>> success = mc.set("baz", 42)
             >>> mc.get_multi(["foo", "baz", "foobar"]) == {"foo": "bar", "baz": 42}
             1
             >>> mc.set_multi({'k1' : 1, 'k2' : 2}, key_prefix='pfx_') == []
             1
-    
+
             This looks up keys 'pfx_k1', 'pfx_k2', ... . Returned dict will just have unprefixed keys 'k1', 'k2'.
             >>> mc.get_multi(['k1', 'k2', 'nonexist'], key_prefix='pfx_') == {'k1' : 1, 'k2' : 2}
             1
-    
+
             get_mult [ and L{set_multi} ] can take str()-ables like ints / longs as keys too. Such as your db pri key fields.
             They're rotored through str() before being passed off to memcache, with or without the use of a key_prefix.
             In this mode, the key_prefix could be a table name, and the key itself a db primary key number.
-    
+
             >>> mc.set_multi({42: 'douglass adams', 46 : 'and 2 just ahead of me'}, key_prefix='numkeys_') == []
             1
             >>> mc.get_multi([46, 42], key_prefix='numkeys_') == {42: 'douglass adams', 46 : 'and 2 just ahead of me'}
             1
-    
+
             This method is recommended over regular L{get} as it lowers the number of
             total packets flying around your network, reducing total latency, since
             your app doesn't have to wait for each round-trip of L{get} before sending
             the next one.
-    
+
             See also L{set_multi}.
-    
+
             @param keys: An array of keys.
             @param key_prefix: A string to prefix each key when we communicate with memcache.
                 Facilitates pseudo-namespaces within memcache. Returned dictionary keys will not have this prefix.
             @return:  A dictionary of key/value pairs that were available. If key_prefix was provided, the keys in the retured dictionary will not have it present.
-    
+
             '''
-    
+
             self._statlog('get_multi')
-    
+
             server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(keys, key_prefix)
-    
+
             # send out all requests on each server before reading anything
             unsent = self._send_multi({
                 server : "get %s\r\n" % (" ".join(server_keys[server]),)
@@ -417,15 +417,15 @@ class MemcachedStoreClient(memcache.Client):
             })
             dead_servers = unsent.keys()
             del unsent
-    
+
             # if any servers died on the way, don't expect them to respond.
             for server in dead_servers:
                 del server_keys[server]
-    
+
             # fetch values from all servers, in interleaved fashion, skipping
             # unready servers, marking dead ones. While this isn't fully
             # nonblocking, it decreases the time sockets spend blocked due
-            # to full buffers, and has a better chance to parallelize bulk 
+            # to full buffers, and has a better chance to parallelize bulk
             # network I/O from value data
             retvals = {}
             sockets = {
@@ -479,21 +479,21 @@ class MemcachedStoreClient(memcache.Client):
                             sockets.pop(sock)
                             poller.unregister(sock)
             return retvals
-    
+
         def set_multi(self, mapping, time=0, key_prefix='', min_compress_len=0):
             '''
             Sets multiple keys in the memcache doing just one query.
-    
+
             >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'})
             >>> mc.get_multi(['key1', 'key2']) == {'key1' : 'val1', 'key2' : 'val2'}
             1
-    
-    
+
+
             This method is recommended over regular L{set} as it lowers the number of
             total packets flying around your network, reducing total latency, since
             your app doesn't have to wait for each round-trip of L{set} before sending
             the next one.
-    
+
             @param mapping: A dict of key/value pairs to set.
             @param time: Tells memcached the time which this value should expire, either
             as a delta number of seconds, or an absolute unix time-since-the-epoch
@@ -505,10 +505,10 @@ class MemcachedStoreClient(memcache.Client):
                 True
                 >>> mc.get_multi(['subspace_key1', 'subspace_key2']) == {'subspace_key1' : 'val1', 'subspace_key2' : 'val2'}
                 True
-    
+
                 Causes key 'subspace_key1' and 'subspace_key2' to be set. Useful in conjunction with a higher-level layer which applies namespaces to data in memcache.
                 In this case, the return result would be the list of notset original keys, prefix not applied.
-    
+
             @param min_compress_len: The threshold length to kick in auto-compression
             of the value using the zlib.compress() routine. If the value being cached is
             a string, then the length of the string is measured, else if the value is an
@@ -518,16 +518,16 @@ class MemcachedStoreClient(memcache.Client):
             indicating don't ever try to compress.
             @return: List of keys which failed to be stored [ memcache out of memory, etc. ].
             @rtype: list
-    
+
             '''
-    
+
             self._statlog('set_multi')
-    
+
             server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping.iterkeys(), key_prefix)
-    
+
             # send out all requests on each server before reading anything
             notstored = [] # original keys.
-    
+
             server_commands = {}
             for server in server_keys.iterkeys():
                 bigcmd = []
@@ -545,14 +545,14 @@ class MemcachedStoreClient(memcache.Client):
             unsent = self._send_multi(server_commands)
             dead_servers = unsent.keys()
             del unsent, server_commands
-    
+
             # if any servers died on the way, don't expect them to respond.
             for server in dead_servers:
                 del server_keys[server]
-    
+
             #  short-circuit if there are no servers, just return all keys
             if not server_keys: return(mapping.keys())
-    
+
             # wait for all confirmations
             sockets = {
                 server.socket : [server, len(keys)]
@@ -614,7 +614,7 @@ class MemcachedStoreClient(memcache.Client):
         def _send_multi(self, buffers, mark_dead = True):  # lint:ok
             '''
             Takes a mapping server->buffer, sends the data in the buffers
-            to all servers in parallel, returning unsent buffers at the end 
+            to all servers in parallel, returning unsent buffers at the end
             (ie: due to errors)
             '''
             if not buffers:
@@ -666,45 +666,45 @@ class MemcachedStoreClient(memcache.Client):
         def get_multi(self, keys, key_prefix=''):  # lint:ok
             '''
             Retrieves multiple keys from the memcache doing just one query.
-    
+
             >>> success = mc.set("foo", "bar")
             >>> success = mc.set("baz", 42)
             >>> mc.get_multi(["foo", "baz", "foobar"]) == {"foo": "bar", "baz": 42}
             1
             >>> mc.set_multi({'k1' : 1, 'k2' : 2}, key_prefix='pfx_') == []
             1
-    
+
             This looks up keys 'pfx_k1', 'pfx_k2', ... . Returned dict will just have unprefixed keys 'k1', 'k2'.
             >>> mc.get_multi(['k1', 'k2', 'nonexist'], key_prefix='pfx_') == {'k1' : 1, 'k2' : 2}
             1
-    
+
             get_mult [ and L{set_multi} ] can take str()-ables like ints / longs as keys too. Such as your db pri key fields.
             They're rotored through str() before being passed off to memcache, with or without the use of a key_prefix.
             In this mode, the key_prefix could be a table name, and the key itself a db primary key number.
-    
+
             >>> mc.set_multi({42: 'douglass adams', 46 : 'and 2 just ahead of me'}, key_prefix='numkeys_') == []
             1
             >>> mc.get_multi([46, 42], key_prefix='numkeys_') == {42: 'douglass adams', 46 : 'and 2 just ahead of me'}
             1
-    
+
             This method is recommended over regular L{get} as it lowers the number of
             total packets flying around your network, reducing total latency, since
             your app doesn't have to wait for each round-trip of L{get} before sending
             the next one.
-    
+
             See also L{set_multi}.
-    
+
             @param keys: An array of keys.
             @param key_prefix: A string to prefix each key when we communicate with memcache.
                 Facilitates pseudo-namespaces within memcache. Returned dictionary keys will not have this prefix.
             @return:  A dictionary of key/value pairs that were available. If key_prefix was provided, the keys in the retured dictionary will not have it present.
-    
+
             '''
-    
+
             self._statlog('get_multi')
-    
+
             server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(keys, key_prefix)
-    
+
             # send out all requests on each server before reading anything
             unsent = self._send_multi({
                 server : "get %s\r\n" % (" ".join(server_keys[server]),)
@@ -712,15 +712,15 @@ class MemcachedStoreClient(memcache.Client):
             })
             dead_servers = unsent.keys()
             del unsent
-    
+
             # if any servers died on the way, don't expect them to respond.
             for server in dead_servers:
                 del server_keys[server]
-    
+
             # fetch values from all servers, in interleaved fashion, skipping
             # unready servers, marking dead ones. While this isn't fully
             # nonblocking, it decreases the time sockets spend blocked due
-            # to full buffers, and has a better chance to parallelize bulk 
+            # to full buffers, and has a better chance to parallelize bulk
             # network I/O from value data
             retvals = {}
             sockets = {
@@ -759,21 +759,21 @@ class MemcachedStoreClient(memcache.Client):
                             server.mark_dead(msg)
                             sockets.pop(sock)
             return retvals
-    
+
         def set_multi(self, mapping, time=0, key_prefix='', min_compress_len=0):  # lint:ok
             '''
             Sets multiple keys in the memcache doing just one query.
-    
+
             >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'})
             >>> mc.get_multi(['key1', 'key2']) == {'key1' : 'val1', 'key2' : 'val2'}
             1
-    
-    
+
+
             This method is recommended over regular L{set} as it lowers the number of
             total packets flying around your network, reducing total latency, since
             your app doesn't have to wait for each round-trip of L{set} before sending
             the next one.
-    
+
             @param mapping: A dict of key/value pairs to set.
             @param time: Tells memcached the time which this value should expire, either
             as a delta number of seconds, or an absolute unix time-since-the-epoch
@@ -785,10 +785,10 @@ class MemcachedStoreClient(memcache.Client):
                 True
                 >>> mc.get_multi(['subspace_key1', 'subspace_key2']) == {'subspace_key1' : 'val1', 'subspace_key2' : 'val2'}
                 True
-    
+
                 Causes key 'subspace_key1' and 'subspace_key2' to be set. Useful in conjunction with a higher-level layer which applies namespaces to data in memcache.
                 In this case, the return result would be the list of notset original keys, prefix not applied.
-    
+
             @param min_compress_len: The threshold length to kick in auto-compression
             of the value using the zlib.compress() routine. If the value being cached is
             a string, then the length of the string is measured, else if the value is an
@@ -798,16 +798,16 @@ class MemcachedStoreClient(memcache.Client):
             indicating don't ever try to compress.
             @return: List of keys which failed to be stored [ memcache out of memory, etc. ].
             @rtype: list
-    
+
             '''
-    
+
             self._statlog('set_multi')
-    
+
             server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping.iterkeys(), key_prefix)
-    
+
             # send out all requests on each server before reading anything
             notstored = [] # original keys.
-    
+
             server_commands = {}
             for server in server_keys.iterkeys():
                 bigcmd = []
@@ -825,14 +825,14 @@ class MemcachedStoreClient(memcache.Client):
             unsent = self._send_multi(server_commands)
             dead_servers = unsent.keys()
             del unsent, server_commands
-    
+
             # if any servers died on the way, don't expect them to respond.
             for server in dead_servers:
                 del server_keys[server]
-    
+
             #  short-circuit if there are no servers, just return all keys
             if not server_keys: return(mapping.keys())
-    
+
             # wait for all confirmations
             sockets = {
                 server.socket : [server, len(keys)]
@@ -884,8 +884,8 @@ class AsyncDynamicResolvingMemcachedClient(BaseCacheClient, AsyncThreadLocalDyna
                 client_class, client_addresses, client_args)
 
 class MemcachedClient(DynamicResolvingMemcachedClient):
-    def __init__(self, 
-            client_addresses, 
+    def __init__(self,
+            client_addresses,
             max_backing_key_length = 250,
             max_backing_value_length = 1000*1024,
             failfast_size = 100,
@@ -908,7 +908,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             **client_args):
         if checksum_key is None:
             raise ValueError, "MemcachedClient requires a checksum key for security checks"
-        
+
         self.max_backing_value_length = max_backing_value_length - 256 # 256-bytes for page header and other overhead
         self.last_seen_stamp = 0
         self.namespace = namespace
@@ -936,19 +936,19 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         # make room for the hash prefix
         max_backing_key_length -= len(self.client_pickler_key) + len(self.version_prefix)
-        
+
         max_backing_key_length = min(
             max_backing_key_length,
             memcache.SERVER_MAX_KEY_LENGTH)
-        
+
         self.max_backing_key_length = max_backing_key_length - 16 # 16-bytes for page suffix
-        
+
         if self.namespace:
             self.max_backing_key_length -= len(self.namespace)+1
-        
+
         assert self.max_backing_key_length > 48
         assert self.max_backing_value_length > 128
-        
+
         if 'pickleProtocol' not in client_args:
             # use binary protocol, otherwise binary data gets inflated
             # unreasonably when pickling
@@ -966,7 +966,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     @property
     def async(self):
         return False
-    
+
     @property
     def stats(self):
         stats = getattr(self, '_stats', None)
@@ -989,7 +989,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         else:
             stats = stats[0]
         return stats
-    
+
     @property
     def capacity(self):
         return self.stats.get('limit_maxbytes', 0)
@@ -1026,7 +1026,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         if self.compress:
             key = zpfx + key
-        
+
         if len(key) > self.max_backing_key_length:
             # keys cannot be too long, accept the possibility of collision,
             # and shorten it by truncating and perhaps appending an MD5 hash.
@@ -1035,15 +1035,15 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 key = "H%s#%s" % (hashlib.md5(key).digest().encode("hex"),key[:self.max_backing_key_length-48])
             except ImportError:
                 key = "H%08X#%s" % (hash(key), key[:self.max_backing_key_length-16])
-        
+
         if not key:
             key = "#NULL#"
-        
+
         if self.namespace:
             key = "%s|%s" % (self.namespace,key)
-        
+
         return "%s%s%s" % (self.client_pickler_key, self.version_prefix, key), exact
-    
+
     def get_version_stamp(self, short_key = None):
         if short_key is None:
             stamp_key = stamp_prefix
@@ -1072,7 +1072,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 pass
         self.last_seen_stamp = stamp
         return stamp
-    
+
     def encode_pages(self, short_key, key, ttl, value):
         encoded = None
         if self.encoding_cache is not None:
@@ -1083,7 +1083,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         if encoded is None:
             # Always pickle & compress, since we'll always unpickle.
-            # Note: compress with very little effort (level=1), 
+            # Note: compress with very little effort (level=1),
             #   otherwise it's too expensive and not worth it
             sio = StringIO()
             if self.compress:
@@ -1098,7 +1098,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
             if self.encoding_cache is not None:
                 self.encoding_cache.cache = (value, encoded)
-        
+
         npages = (len(encoded) + self.max_backing_value_length - 1) / self.max_backing_value_length
         pagelen = self.max_backing_value_length
         if npages > 1:
@@ -1109,26 +1109,26 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         page = 0
         for page,start in enumerate(xrange(0,len(encoded),self.max_backing_value_length)):
             yield (npages, page, ttl, version, encoded[start:start+pagelen])
-        
+
         assert page == npages-1
 
     def decode_pages(self, pages, key, canclear=True):
         if 0 not in pages:
             raise ValueError, "Missing page"
-        
+
         ref_npages, _, ref_ttl, ref_version, _ = pages[0]
         data = [None] * ref_npages
-        
+
         for pageno, (npages, page, ttl, version, pagedata) in pages.iteritems():
-            if (    pageno != page 
-                 or version != ref_version 
-                 or npages != ref_npages 
-                 or not (0 <= page < ref_npages) 
+            if (    pageno != page
+                 or version != ref_version
+                 or npages != ref_npages
+                 or not (0 <= page < ref_npages)
                  or data[page] is not None
                  or not isinstance(pagedata,str) ):
                 raise ValueError, "Inconsistent data in cache"
             data[page] = pagedata
-        
+
         # if there is any page missing
         for page_data in data:
             if page_data is None:
@@ -1137,7 +1137,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         # free up memory if possible
         if canclear:
             pages.clear()
-        
+
         # join pages, decompress, unpickle
         data = ''.join(data)
 
@@ -1157,10 +1157,10 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         if self.encoding_cache is not None and isinstance(value, tuple) and len(value) > 1:
             self.encoding_cache.cache = (value[1], data)
-        
+
         return value
-    
-    def _getTtl(self, key, default, decode = True, ttl_skip = None, promote_callback = None, 
+
+    def _getTtl(self, key, default, decode = True, ttl_skip = None, promote_callback = None,
             short_key = None, pages = None, method = None, multi_method = None,
             force_all_pages = False, valid_sequence_types = (list, tuple),
             return_stale = False ):
@@ -1178,7 +1178,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                     # Ok
                     cached, ttl = cached
                     return cached, ttl - now
-        
+
         # get the first page (gambling that most entries will span only a single page)
         # then query for the remaining ones in a single roundtrip, if present,
         # for a combined total of 2 roundtrips.
@@ -1206,7 +1206,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         first_page = pages[0]
         if first_page is None or not isinstance(first_page,valid_sequence_types) or len(first_page) != 5:
             return default, -1
-        
+
         ttl = first_page[2]
         npages = first_page[0]
 
@@ -1225,13 +1225,13 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         # When there's a key collision, this avoids misses being expensive
         elif self._failfast_cache.get(key) > (now - self.failfast_time):
             return default, -1
-        
+
         if npages > 1:
             if npages > 2 and multi_method:
                 pages.update( multi_method(xrange(1,npages), key_prefix=page_prefix) )
             else:
                 pages.update([ (i,method("%s%d" % (page_prefix,i))) for i in xrange(1,npages) ])
-        
+
         try:
             try:
                 cached_key, cached_value = self.decode_pages(pages, key)
@@ -1247,7 +1247,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 else:
                     # unrecoverable
                     raise
-            
+
             if cached_key == key:
                 self._succeedfast_cache[key] = (cached_value, ttl), now
                 return cached_value, ttl - now
@@ -1262,7 +1262,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             logging.warning("Error decoding cached data", exc_info=True)
             return default, -1
 
-    def _getTtlMulti(self, keys, default, decode = True, ttl_skip = None, promote_callback = None, 
+    def _getTtlMulti(self, keys, default, decode = True, ttl_skip = None, promote_callback = None,
             short_keys = None, pages = None, method = None, multi_method = None,
             force_all_pages = False, valid_sequence_types = (list, tuple),
             return_stale = False ):
@@ -1385,7 +1385,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             else:
                 try:
                     # Decode by feeding already fetched pages to _getTtl
-                    yield key, self._getTtl(key, default, ttl_skip = ttl_skip, 
+                    yield key, self._getTtl(key, default, ttl_skip = ttl_skip,
                         short_key = short_key, pages = key_pages,
                         method = method, multi_method = gen_multi_method,
                         force_all_pages = force_all_pages,
@@ -1428,7 +1428,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             self.client.cache_cas = reset_cas = True
         try:
             short_key,exact = self.shorten_key(key)
-            raw_pages, store_ttl = self._getTtl(key, NONE, False, short_key = short_key, 
+            raw_pages, store_ttl = self._getTtl(key, NONE, False, short_key = short_key,
                 method = self.client.gets)
             if raw_pages is not NONE and store_ttl < ttl:
                 # Only the TTL on the first page matters, so avoid touching all pages
@@ -1496,7 +1496,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             del self._failfast_cache[key]
         except:
             pass
-        
+
         try:
             del self._succeedfast_cache[key]
         except:
@@ -1511,7 +1511,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 del self._usucceedfast_cache[page_key]
             except:
                 pass
-    
+
     def delete(self, key):
         # delete the first page
         # let all other pages just expire
@@ -1540,7 +1540,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         self._failfast_cache.clear()
         self._succeedfast_cache.clear()
         self._usucceedfast_cache.clear()
-    
+
     def contains(self, key, ttl = None):
         short_key,exact = self.shorten_key(key)
         if ttl is None:
@@ -1563,9 +1563,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 # the TTL in the first page, and validate pessimistically.
                 # When checking with a TTL margin a key that's stale, this will
                 # minimize bandwidth, but when it's valid, it will result in
-                # 1 roundtrip still: no check with append, get ttl, 
+                # 1 roundtrip still: no check with append, get ttl,
                 # get key with cached result, although it will incur higher CPU costs
-                
+
                 # check TTL quickly, no decoding (or fetching) of pages needed
                 # to check stale TTL
                 raw_pages, store_ttl = self._getTtl(key, NONE, False, short_key = short_key)
@@ -1604,7 +1604,7 @@ class MemcacheWriterThread(Thread):
         _memcache_writer_sequence += 1
 
         name = 'memcached-writer-thread-%d' % (threadno,)
-        
+
         Thread.__init__(self, target=target, args=args, name=name)
 
 class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
@@ -1619,11 +1619,11 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
         key_pickler: specify a json-like implementation. It must support loads
             and dumps, and dumps must take a "separators" keyword argument
             just as stdlib json.dumps does, but it doesn't need to honour it
-            aside from not generating control chars (spaces). 
+            aside from not generating control chars (spaces).
             You can use cjson for instance, but you'll have to wrap it as it
-            doesn't support separators and it will generate spaces. 
-            Do not pass Pickle or its other  implementations, as it will work, 
-            but the pickle protocol isn't  secure. Use MemcachedClient 
+            doesn't support separators and it will generate spaces.
+            Do not pass Pickle or its other  implementations, as it will work,
+            but the pickle protocol isn't  secure. Use MemcachedClient
             if you need the features of pickling.
         pickler: specify a json-like implementation. Like key_pickler, except
             it can completely dishonor separators without major issues, as
@@ -1640,9 +1640,9 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
             will be invisible until the failfast_time elapses. Thus, make
             sure such delay is acceptable before making use of this cache.
     """
-    
-    def __init__(self, 
-            client_addresses, 
+
+    def __init__(self,
+            client_addresses,
             max_backing_key_length = 250,
             max_backing_value_length = 1000*1024,
             key_pickler = None,
@@ -1652,23 +1652,23 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
             failfast_size = 100,
             client_class = MemcachedStoreClient,
             **client_args):
-        
+
         max_backing_key_length = min(
             max_backing_key_length,
             memcache.SERVER_MAX_KEY_LENGTH)
 
-        self.max_backing_key_length = max_backing_key_length 
+        self.max_backing_key_length = max_backing_key_length
         self.max_backing_value_length = max_backing_value_length - 32 # 32-bytes for various overheads
         self.key_pickler = key_pickler or json
         self.pickler = pickler or key_pickler or cjson
         self.namespace = namespace
-        
+
         if self.namespace:
             self.max_backing_key_length -= len(self.namespace)+1
-        
+
         assert self.max_backing_key_length > 48
         assert self.max_backing_value_length > 128
-        
+
         self.queueset = {}
         self.workset = {}
         self.workev = Event()
@@ -1684,7 +1684,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
     @property
     def async(self):
         return False
-    
+
     @property
     def stats(self):
         stats = getattr(self, '_stats', None)
@@ -1707,7 +1707,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
         else:
             stats = stats[0]
         return stats
-    
+
     @property
     def capacity(self):
         return self.stats.get('limit_maxbytes', 0)
@@ -1813,23 +1813,23 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
                                 value = encode(key, nttl, value)
                                 ttl = min(ttl, MAX_MEMCACHE_TTL)
                                 client.cas(key, value, ttl)
-                
+
                 # Let us be suicidal
                 del client
                 workset.clear()
 
             del self, plan, deletions, renewals, encode, encode_key
             del workset
-            
+
             key = value = ttl = kttl = nttl = batch = None
             workev.wait(1)
-    
+
     def encode_key(self, key):
         return self.key_pickler.dumps((self.namespace, key), separators = JSON_SEPARATORS)
-    
+
     def encode(self, key, ttl, value):
         # Always pickle & compress, since we'll always unpickle.
-        # Note: compress with very little effort (level=1), 
+        # Note: compress with very little effort (level=1),
         #   otherwise it's too expensive and not worth it
         return self.pickler.dumps((value, ttl), separators = JSON_SEPARATORS)
 
@@ -1845,7 +1845,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
             value = self.queueset.get(key, self.workset.get(key, NONE))
         if value is NONE or value[0] is _RENEW:
             now = time.time()
-            
+
             # Not in queue, get from memcached, and decode
             if not encoded:
                 # Check failfast cache, before contacting the remote client
@@ -1876,7 +1876,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
             if value is NONE:
                 # A deletion is queued, so we deleted
                 value = None
-        
+
         if value is None:
             return default, -1
         else:
@@ -1973,7 +1973,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
                 del self._failfast_cache[key]
             except:
                 pass
-        
+
     def renew(self, key, ttl):
         # check the work queue
         value = self.queueset.get(key, NONE)
@@ -1985,14 +1985,14 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
         else:
             # set_multi all pages in one roundtrip
             self._enqueue_put(key, _RENEW, ttl)
-        
+
     def add(self, key, value, ttl):
         # set_multi all pages in one roundtrip
         if self.queueset.get(key, NONE) is not NONE:
             return False
         elif self.workset.get(key, NONE) is not NONE:
             return False
-        
+
         key = self.encode_key(key)
         value = self.encode(key, ttl+time.time(), value)
         rv = self.client.add(key, value, ttl)
@@ -2003,7 +2003,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
             return False
         else:
             raise RuntimeError, "Memcache add returned %r" % (rv,)
-    
+
     def delete(self, key):
         self._enqueue_put(key, NONE, 0)
 
@@ -2013,7 +2013,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
                 del self._failfast_cache[key]
             except:
                 pass
-    
+
     def clear(self):
         # We don't want to clear memcache, it might be shared
         # But we can purge our queueset
@@ -2026,7 +2026,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
         # Memcache does that itself
         if self._failfast_cache is not None:
             self._failfast_cache.clear()
-    
+
     def contains(self, key, ttl = None):
         # Quick check against worker queues
         if key in self.queueset or key in self.workset:
@@ -2035,7 +2035,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
         # Check failfast cache, before contacting the remote client
         if self._failfast_cache is not None and self._failfast_cache.get(key) > (time.time() - self.failfast_time):
             return False
-        
+
         # Else exploit the fact that append returns True on success (the key exists)
         # and False on failure (the key doesn't exist), with minimal bandwidth
         encoded_key = self.encode_key(key)

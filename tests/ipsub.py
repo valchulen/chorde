@@ -18,28 +18,28 @@ except ImportError:
 
 @skipIfUnsupported
 class IPSubTest(unittest.TestCase):
-    
+
     def _make_ipsub(self):
         self.ipsub = ipsub.IPSub([dict(
-                rep="tcp://127.0.0.1:%d" % self.port1, 
+                rep="tcp://127.0.0.1:%d" % self.port1,
                 pub="tcp://127.0.0.1:%d" % self.port2
-            )], 
+            )],
             ctx=self.ctx)
         self.ipsub_thread = threading.Thread(target=self.ipsub.run)
         self.ipsub_thread.daemon = True
 
     def _make_ipsub2(self):
         self.ipsub2 = ipsub.IPSub([dict(
-                rep="tcp://127.0.0.1:%d" % self.port1, 
+                rep="tcp://127.0.0.1:%d" % self.port1,
                 pub="tcp://127.0.0.1:%d" % self.port2
-            )], 
+            )],
             ctx=self.ctx)
         self.ipsub2_thread = threading.Thread(target=self.ipsub2.run)
         self.ipsub2_thread.daemon = True
-        
+
     def setUp(self):
         ipsub.IPSub.register_default_pyobj()
-        
+
         ctx = zmq.Context.instance()
         s1 = ctx.socket(zmq.REQ)
         s2 = ctx.socket(zmq.REQ)
@@ -57,7 +57,7 @@ class IPSubTest(unittest.TestCase):
         self._make_ipsub2()
 
         time.sleep(0.1)
-        
+
         self.ipsub_thread.start()
         self.ipsub2_thread.start()
 
@@ -255,7 +255,7 @@ def _check_start_ipsub(port1, port2):
 class IPSubConcurrencyTest(unittest.TestCase):
     def setUp(self):
         ipsub.IPSub.register_default_pyobj()
-        
+
         ctx = zmq.Context.instance()
         s1 = ctx.socket(zmq.REQ)
         s2 = ctx.socket(zmq.REQ)
@@ -272,7 +272,7 @@ class IPSubConcurrencyTest(unittest.TestCase):
         processes = []
         for i in xrange(16):
             p = multiprocessing.Process(
-                target=_check_start_ipsub, 
+                target=_check_start_ipsub,
                 args=(self.port1, self.port2))
             p.start()
             processes.append(p)

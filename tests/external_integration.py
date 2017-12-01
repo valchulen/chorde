@@ -23,7 +23,7 @@ class TestTornadoIntegration(AsyncTestCase):
     def setUp(self):
         super(TestTornadoIntegration, self).setUp()
         original_futures = concurrent.FUTURES
-        
+
         @coroutine
         def foo():
             f = Future()
@@ -35,7 +35,7 @@ class TestTornadoIntegration(AsyncTestCase):
             concurrent.FUTURES = original_futures
 
         self.addCleanup(restore_isfuture)
-        self.foo = foo    
+        self.foo = foo
 
     @gen_test
     def test_no_patch(self):

@@ -81,7 +81,7 @@ among them.
 If a hostname is given, and the hostname points to multiple IP addresses, the
 same effect will be obtained, and the distribution will be dynamically updated
 according to the TTL specified on the DNS entry. This, for example, makes the
-client work seamlessly with Amazon ElastiCache's "configuration endpoint", 
+client work seamlessly with Amazon ElastiCache's "configuration endpoint",
 which is a DNS entry that points to one of the cache nodes. But it only works
 like that with single-node clusters. For multi-node clusters, use
 ``chorde.clients.elasticache.ElastiCacheClient``, which goes a step further
@@ -143,12 +143,12 @@ This can be done straightforwardly with the tiered clients:
         except CacheMissError:
                 print "miss"
 
-Here we build an *inclusive* tiered client, in which elements on higher levels are 
+Here we build an *inclusive* tiered client, in which elements on higher levels are
 promoted into the lower levels by copying, rather than swapping. This means there
 is duplication among them, but this is usually best in cases like these, where the
 upper levels are shared among processes.
 
-An exclusive client isn't provided at this moment, since there is seldom any use 
+An exclusive client isn't provided at this moment, since there is seldom any use
 for the exclusive pattern on these types of caches.
 
 Decorators
@@ -168,7 +168,7 @@ Assuming *c* is the client we want to use for caching,
 
 	from chorde.decorators import cached
 	import random
-	
+
 	@cached(c, ttl=300, async_ttl=-60)
 	def expensive_func(x):
 		return x * random.random()
@@ -189,7 +189,7 @@ every minute (60 seconds). The plain ttl is an absolute limit, no result older t
 that will ever be returned.
 
 The documentation on chorde.decorators.cached will have more to say about the ways of
-invoking cached functions. 
+invoking cached functions.
 
 In general, the terms are:
 
@@ -215,11 +215,11 @@ wrapped like so:
 	import tornado.web
 	import tornado.gen
 	from chorde.clients.async import makeFutureWrapper
-	
+
 	WF = makeFutureWrapper(tornado.web.Future)
-	
+
 	...
-	
+
 	@tornado.gen.coroutine
 	def get(self):
 		some_result = yield WF(some_func.future()(some_args))
