@@ -10,13 +10,13 @@ class CacheClientTestMixIn:
     is_lru = True
     contains_touches = True
     meaningful_capacity = True
-    
+
     def setUpClient(self):
         raise NotImplementedError
 
     def _setUpClient(self):
         return self.setUpClient()
-    
+
     def setUp(self):
         try:
             self.client = self._setUpClient()
@@ -212,7 +212,7 @@ class CacheClientTestMixIn:
         cap = client.capacity
 
         self.assertEqual(client.usage, 0)
-        
+
         for i in xrange(cap):
             client.put(i,i,86400)
             self.assertEqual(client.usage, i+1)
@@ -267,19 +267,19 @@ class NamespaceWrapperTestMixIn(CacheClientTestMixIn):
         self.client.put(4, 5, 10)
         self.bclient.put(4, 6, 10)
         self.rclient.put(4, 7, 10)
-        
+
         self.assertEqual(self.client.get(1), 2)
         self.assertRaises(CacheMissError, self.bclient.get, 1)
         self.assertRaises(CacheMissError, self.rclient.get, 1)
-        
+
         self.assertRaises(CacheMissError, self.client.get, 2)
         self.assertEqual(self.bclient.get(2), 3)
         self.assertRaises(CacheMissError, self.rclient.get, 2)
-        
+
         self.assertRaises(CacheMissError, self.client.get, 3)
         self.assertRaises(CacheMissError, self.bclient.get, 3)
         self.assertEqual(self.rclient.get(3), 4)
-        
+
         self.assertEqual(self.client.get(4), 5)
         self.assertEqual(self.bclient.get(4), 6)
         self.assertEqual(self.rclient.get(4), 7)
@@ -291,19 +291,19 @@ class NamespaceWrapperTestMixIn(CacheClientTestMixIn):
         self.client.put(4, 5, 10)
         self.bclient.put(4, 6, 10)
         self.rclient.put(4, 7, 10)
-        
+
         self.assertEqual(self.client.get(1), 2)
         self.assertRaises(CacheMissError, self.bclient.get, 1)
         self.assertRaises(CacheMissError, self.rclient.get, 1)
-        
+
         self.assertRaises(CacheMissError, self.client.get, 2)
         self.assertEqual(self.bclient.get(2), 3)
         self.assertRaises(CacheMissError, self.rclient.get, 2)
-        
+
         self.assertRaises(CacheMissError, self.client.get, 3)
         self.assertRaises(CacheMissError, self.bclient.get, 3)
         self.assertEqual(self.rclient.get(3), 4)
-        
+
         self.assertEqual(self.client.get(4), 5)
         self.assertEqual(self.bclient.get(4), 6)
         self.assertEqual(self.rclient.get(4), 7)

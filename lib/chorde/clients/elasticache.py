@@ -28,11 +28,11 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
             return [entrypoint] if fallback is None else fallback
         else:
             cluster_nodes = cluster_description[1:]
-            return [ 
-                "%s:%d" % (host.rstrip('.'), int(port)) 
-                for host, ip, port in [ node.split('|',2) for node in cluster_nodes ] 
+            return [
+                "%s:%d" % (host.rstrip('.'), int(port))
+                for host, ip, port in [ node.split('|',2) for node in cluster_nodes ]
             ]
-    
+
     def get_config(self, key):
         self.check_key(key)
         server, key = self._get_server(key)

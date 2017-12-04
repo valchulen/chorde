@@ -4,7 +4,7 @@
 """
 
 def monkey_patch_tornado():
-    """ Mock the tornado.conncurrent.is_future to mark the chorde 
+    """ Mock the tornado.conncurrent.is_future to mark the chorde
     Futures as valid.
 
     This is required, because Tornado checks that the result is a

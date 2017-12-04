@@ -42,7 +42,7 @@ class BaseCacheClient(object):
         will wait for it to finish. If there is not, it will return immediately.
         """
         pass
-    
+
     @abstractmethod
     def put(self, key, value, ttl):
         raise NotImplementedError
@@ -96,21 +96,21 @@ class BaseCacheClient(object):
 
             If promote_callback is given, and the operation results in a promotion
             from a lower level to a higher one, promote_callback will be called
-            with 3 arguments: the key as given, the value being promoted, 
+            with 3 arguments: the key as given, the value being promoted,
             and the remaining TTL.
         """
         if default is NONE:
             raise CacheMissError, key
         else:
             return (default, -1)
-    
+
     def promote(self, key, default = NONE, ttl_skip = None, promote_callback = None):
         """
         Returns: None. If getTtl would find an entry with the given arguments,
             this entry will be promoted. Otherwise, it's a no-op.
         """
         return
-    
+
     def get(self, key, default = NONE, **kw):
         rv, ttl = self.getTtl(key, default, **kw)
         if ttl < 0 and default is NONE:
@@ -173,7 +173,7 @@ class BaseCacheClient(object):
     def purge(self, timeout = 0):
         """
         Params
-            
+
             timeout: if specified, only items that have been stale for
                 this amount of time will be removed. That is, it is added to the
                 initial entry's TTL vale.
@@ -250,7 +250,7 @@ class ReadWriteSyncAdapter(BaseCacheClient):
     @serialize_write
     def promote(self, *p, **kw):
         return self.client.promote(*p, **kw)
-    
+
     @serialize_write
     def clear(self):
         return self.client.clear()
@@ -325,7 +325,7 @@ class SyncAdapter(BaseCacheClient):
     @serialize_write
     def promote(self, *p, **kw):
         return self.client.promote(*p, **kw)
-    
+
     @serialize
     def clear(self):
         return self.client.clear()
@@ -350,8 +350,8 @@ class DecoratedWrapper(BaseCacheClient):
     A namespace wrapper client will decorate keys with a namespace, making it possible
     to share one client among many sub-clients without key collisions.
     """
-    def __init__(self, client, 
-            key_decorator = None, key_undecorator = None, 
+    def __init__(self, client,
+            key_decorator = None, key_undecorator = None,
             value_decorator = None, value_undecorator = None):
         self.client = client
         self.key_decorator = key_decorator
@@ -376,7 +376,7 @@ class DecoratedWrapper(BaseCacheClient):
         if key_decorator:
             key = key_decorator(key)
         return self.client.wait(key, timeout)
-    
+
     def put(self, key, value, ttl, **kw):
         key_decorator = self.key_decorator
         if key_decorator:
@@ -498,7 +498,7 @@ class DecoratedWrapper(BaseCacheClient):
             if key_undecorator is not None and 'promote_callback' in kw:
                 self._wrapPromoteCallback(key_undecorator, kw)
         self.client.promote(key, *p, **kw)
-    
+
     def clear(self):
         return self.client.clear()
 
