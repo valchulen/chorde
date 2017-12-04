@@ -24,10 +24,10 @@ except ImportError:
 @skipIfUnsupported
 class CoherenceProtocolTest(unittest.TestCase):
     coherence_kwargs = {}
-    
+
     def setUp(self):
         ipsub.IPSub.register_default_pyobj()
-        
+
         ctx = zmq.Context.instance()
         s1 = ctx.socket(zmq.REQ)
         s2 = ctx.socket(zmq.REQ)
@@ -37,15 +37,15 @@ class CoherenceProtocolTest(unittest.TestCase):
         s2.close()
         del s1,s2
         logging.debug("ipsub1 ports: %d, %d", port1, port2)
-        
+
         self.ipsub = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)], ctx=ctx)
         self.ipsub_thread = threading.Thread(target=self.ipsub.run)
         self.ipsub_thread.daemon = True
-        
+
         self.ipsub2 = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)], ctx=ctx)
         self.ipsub2_thread = threading.Thread(target=self.ipsub2.run)
         self.ipsub2_thread.daemon = True
-        
+
         self.ipsub3 = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, pub="tcp://127.0.0.1:%d" % port2)], ctx=ctx)
 
         self.private = inproc.InprocCacheClient(100)
@@ -57,10 +57,10 @@ class CoherenceProtocolTest(unittest.TestCase):
         self.coherence3 = coherence.CoherenceManager('ns', self.private2, self.shared, self.ipsub3, **self.coherence_kwargs)
 
         time.sleep(0.1)
-        
+
         self.ipsub_thread.start()
         self.ipsub2_thread.start()
-        
+
         time.sleep(0.1)
 
     def tearDown(self):
@@ -88,14 +88,14 @@ class CoherenceProtocolTest(unittest.TestCase):
         t1 = time.time()
         pending = self.coherence.query_pending(1, lambda:1)
         t2 = time.time()
-        
+
         self.assertEqual(pending, None) # No pending
         self.assertLess(t2-t1, 1.0) # No timeout
-        
+
         t1 = time.time()
         pending = self.coherence2.query_pending(1, lambda:1)
         t2 = time.time()
-        
+
         self.assertEqual(pending, None) # No pending
         self.assertLess(t2-t1, 1.0) # No timeout
 
@@ -103,15 +103,15 @@ class CoherenceProtocolTest(unittest.TestCase):
         t1 = time.time()
         pending = self.coherence2.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
-        
+
         self.assertEqual(pending, None) # No pending
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 in self.coherence2.pending) # Locally pending now
-        
+
         t1 = time.time()
         pending = self.coherence.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
-        
+
         self.assertNotEqual(pending, None) # pending on coherence2
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 not in self.coherence.pending) # Not locally pending
@@ -129,7 +129,7 @@ class CoherenceProtocolTest(unittest.TestCase):
         t1 = time.time()
         pending = self.coherence.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
-        
+
         self.assertEqual(pending, None) # Not pending anymore on coherence2
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 in self.coherence.pending) # Locally pending
@@ -138,15 +138,15 @@ class CoherenceProtocolTest(unittest.TestCase):
         t1 = time.time()
         pending = self.coherence.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
-        
+
         self.assertEqual(pending, None) # No pending
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 in self.coherence.pending) # Locally pending now
-        
+
         t1 = time.time()
         pending = self.coherence2.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
-        
+
         self.assertNotEqual(pending, None) # pending on coherence
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 not in self.coherence2.pending) # Not locally pending
@@ -162,7 +162,7 @@ class CoherenceProtocolTest(unittest.TestCase):
         t1 = time.time()
         pending = self.coherence2.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
-        
+
         self.assertEqual(pending, None) # Not pending anymore on coherence2
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 in self.coherence2.pending) # Locally pending
@@ -171,7 +171,7 @@ class CoherenceProtocolTest(unittest.TestCase):
         t1 = time.time()
         pending = self.coherence2.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
-        
+
         self.assertEqual(pending, None) # No pending
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 in self.coherence2.pending) # Locally pending now
@@ -179,7 +179,7 @@ class CoherenceProtocolTest(unittest.TestCase):
         t1 = time.time()
         pending = self.coherence.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
-        
+
         self.assertNotEqual(pending, None) # pending on coherence2
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 not in self.coherence.pending) # Not locally pending
@@ -202,15 +202,15 @@ class CoherenceProtocolTest(unittest.TestCase):
         t1 = time.time()
         pending = self.coherence2.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
-        
+
         self.assertEqual(pending, None) # No pending
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 in self.coherence2.pending) # Locally pending now
-        
+
         t1 = time.time()
         pending = self.coherence.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
-        
+
         self.assertNotEqual(pending, None) # pending on coherence2
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 not in self.coherence.pending) # Not locally pending
@@ -223,7 +223,7 @@ class CoherenceProtocolTest(unittest.TestCase):
         # Coherence2 aborts... coherence must pick up
         time.sleep(0.1)
         self.coherence2.mark_aborted(1)
-        
+
         waiter.join(3*coherence.PENDING_TIMEOUT)
         t2 = time.time()
 
@@ -233,15 +233,15 @@ class CoherenceProtocolTest(unittest.TestCase):
         t1 = time.time()
         pending = self.coherence2.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
-        
+
         self.assertEqual(pending, None) # No pending
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 in self.coherence2.pending) # Locally pending now
-        
+
         t1 = time.time()
         pending = self.coherence.query_pending(1, lambda:1, optimistic_lock = True)
         t2 = time.time()
-        
+
         self.assertNotEqual(pending, None) # pending on coherence2
         self.assertLess(t2-t1, 1.0) # No timeout
         self.assertTrue(1 not in self.coherence.pending) # Not locally pending
@@ -260,14 +260,14 @@ class CoherenceProtocolTest(unittest.TestCase):
         t1 = time.time()
         pending = self.coherence.query_pending(1, lambda:0)
         t2 = time.time()
-        
+
         self.assertNotEqual(pending, None) # IB or OOB update
         self.assertLess(t2-t1, 1.0) # No timeout
-        
+
         t1 = time.time()
         pending = self.coherence2.query_pending(1, lambda:0)
         t2 = time.time()
-        
+
         self.assertNotEqual(pending, None) # IB or OOB update
         self.assertLess(t2-t1, 1.0) # No timeout
 
@@ -275,13 +275,13 @@ class CoherenceProtocolTest(unittest.TestCase):
         t1 = time.time()
         pending = self.coherence3.query_pending(1, lambda:1)
         t2 = time.time()
-        
+
         self.assertEqual(pending, None) # No pending
         self.assertLess(t2-t1, 1.0) # No timeout
 
         # No crashing
         pending = self.coherence3.fire_deletion(1)
-        
+
 
 @skipIfUnsupported
 class CoherenceQuickProtocolTest(CoherenceProtocolTest):

@@ -111,12 +111,12 @@ class BaseIPSub(object):
     # Implementations are free to provide alternative versions as static/classmethods
     def __init__(self):
         self.logger = logging.getLogger('chorde.ipsub')
-        
+
         self.listeners = defaultdict(lambda : defaultdict(set))
-        
+
         self.last_idle = time.time()
         self.last_tic = time.time()
-        
+
         self.identity = "%x-%x-%s" % (
             os.getpid(),
             id(self),
@@ -154,7 +154,7 @@ class BaseIPSub(object):
         except zmq.ZMQError:
             # Shit happens, probably not connected
             pass
-    
+
     def listen(self, prefix, event, callback):
         """
         Registers a listener for all events whose prefix starts
@@ -163,27 +163,27 @@ class BaseIPSub(object):
         The callback will be invoked with the whole prefix as
         first argument, or None if the event doesn't have one,
         the event id as second argument, and the whole message,
-        including prefix and payload, as third argument. 
+        including prefix and payload, as third argument.
         Use decode_payload to decode, if needed.
 
         It should return True, if it is to be called again, or
         False if the listener is to be removed. Designated
-        brokers can also return a BrokerReply wrapper, in which case 
-        the reply's payload will be returned to the listener where 
-        the update originated, providing a way to piggy-back the 
+        brokers can also return a BrokerReply wrapper, in which case
+        the reply's payload will be returned to the listener where
+        the update originated, providing a way to piggy-back the
         req-response connection among them. These are considered
         as True, so they will not be automatically removed.
 
         Listeners are not guaranteed to be called in any specific
         or stable order, but they are guaranteed to be called just
-        once (per instance, not function name). They should return fast, 
+        once (per instance, not function name). They should return fast,
         or the I/O thread may stall.
         """
         self.listeners[event][prefix].add(callback)
         if event in IDENTITY_EVENTS:
             # Those are external, so we must subscribe
             self.add_subscriptions((prefix,))
-    
+
     def listen_decode(self, prefix, event, callback):
         """
         See listen. The difference is that in this case, the payload
@@ -218,7 +218,7 @@ class BaseIPSub(object):
         listeners = self.listeners.get(event)
         if not listeners and self._ndebug:
             return
-        
+
         if event in IDENTITY_EVENTS and len(update) > 1:
             identity = update[1]
         else:
@@ -278,21 +278,21 @@ class BaseIPSub(object):
         Mark the given set of prefixes as "interesting".
         If the underlying channel support filtering by message prefix, these
         prefixes that haven been added are the ones that must be captured.
-        
+
         Implementations must provide this method.
         """
         raise NotImplementedError
-    
+
     def cancel_subscriptions(self, prefixes):
         """
         Mark the given set of prefixes as "uninteresting".
         If the underlying channel support filtering by message prefix, these
         prefixes should not be captured any more.
-        
+
         Implementations must provide this method.
         """
         raise NotImplementedError
-        
+
     def publish_json(self, prefix, payload, timeout = None):
         """
         Publish the message using the 'json' encoding. See publish.
@@ -328,7 +328,7 @@ class BaseIPSub(object):
     def register_encoding(name, encoder, decoder, stream_decoder):
         """
         Register an encoding with the specified name.
-    
+
         Params:
             encoder: a callable that takes the object to be dumped,
                 and returns a string or buffer object.
@@ -364,11 +364,11 @@ class BaseIPSub(object):
         def load(x):
             return unpickler(x).load()
         BaseIPSub.register_encoding('pyobj', dumps, loads, load)
-    
+
     @staticmethod
     def register_default_pyobj():
         BaseIPSub.register_pyobj(cPickle.Pickler, cPickle.Unpickler)
-    
+
     @staticmethod
     def encode_payload(encoding, payload):
         return [encoding, ENCODINGS[encoding](payload)]

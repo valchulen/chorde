@@ -67,14 +67,14 @@ class ZMQIPSub(BaseIPSub):
             @abstractmethod
             def stay(self):
                 pass
-        
+
         class Bootstrap(State):
             def enter(self):
                 owner = self._owner()
 
                 # Initialize pull socket so others can connect rightaway
                 owner._pullsocket()
-                
+
                 # Try a few times
                 for i in xrange(5):
                     try:
@@ -100,7 +100,7 @@ class ZMQIPSub(BaseIPSub):
 
             def leave(self):
                 pass
-        
+
         class Listener(State):
             def enter(self):
                 owner = self._owner()
@@ -115,7 +115,7 @@ class ZMQIPSub(BaseIPSub):
 
             def stay(self):
                 owner = self._owner()
-                
+
                 # Cache globals and attributes, to avoid memory allocations in the hottest loop of all
                 listener_req = self.listener_req
                 listener_sub = self.listener_sub
@@ -205,13 +205,13 @@ class ZMQIPSub(BaseIPSub):
                     self.logger.error("Exception in IPSub listener, re-bootstrapping in a sec", exc_info = True)
                     time.sleep(1)
                     self.transition(ZMQIPSub.FSM.Bootstrap)
-            
+
             def leave(self):
                 owner = self._owner()
                 if owner is not None:
                     owner._notify_all(EVENT_LEAVE_LISTENER, None)
                     owner._disconnect()
-        
+
         class DesignatedBroker(State):
             def enter(self):
                 owner = self._owner()
@@ -295,7 +295,7 @@ class ZMQIPSub(BaseIPSub):
                     self.logger.error("Exception in IPSub broker, re-bootstrapping in a sec", exc_info = True)
                     time.sleep(1)
                     self.transition(ZMQIPSub.FSM.Bootstrap)
-    
+
             def leave(self):
                 owner = self._owner()
                 if owner is not None:
@@ -304,11 +304,11 @@ class ZMQIPSub(BaseIPSub):
 
     def __init__(self, broker_addresses, subscriptions = (), ctx=None):
         super(ZMQIPSub, self).__init__()
-        
+
         self.broker_addresses = broker_addresses
         self.updates = Queue.Queue(INPROC_HWM)
         self.current_update = None
-        
+
         self.listener_req = self.listener_sub = None
         self.broker_rep = self.broker_pub = None
         self.local = threading.local()
@@ -371,7 +371,7 @@ class ZMQIPSub(BaseIPSub):
 
     def _bind(self):
         ctx = self.context
-        
+
         pub = ctx.socket(zmq.PUB)
         rep = ctx.socket(zmq.REP)
         set_hwm(pub, BROKER_PUB_HWM)
@@ -443,7 +443,7 @@ class ZMQIPSub(BaseIPSub):
                 sub.connect(pub_addr)
             if rep_addr:
                 req.connect(rep_addr)
-            
+
 
         self.listener_sub = sub
         self.listener_req = req
@@ -474,17 +474,17 @@ class ZMQIPSub(BaseIPSub):
             sub.setsockopt(zmq.UNSUBSCRIBE, prefix)
 
         return sub
-    
+
     def add_subscriptions(self, prefixes):
         self._needs_subscriptions = True
         self.subscriptions.update(prefixes)
         self.wake()
-    
+
     def cancel_subscriptions(self, prefixes):
         self._needs_subscriptions = True
         self.subscriptions -= set(prefixes)
         self.wake()
-    
+
     @property
     def has_updates(self):
         return not self.updates.empty()
@@ -498,19 +498,19 @@ class ZMQIPSub(BaseIPSub):
             except Queue.Full:
                 self.logger.error("While handling IPSub FSM error: Queue full, update lost")
             raise BootstrapNow
-        
+
         try:
             update = self.updates.get_nowait()
         except Queue.Empty:
             # So what...
             return
-        
+
         socket.send_multipart(update)
 
         if not noreply:
             # Remember, we'll wait for a reply
             self.current_update = update
-            
+
         # Notify listeners
         self._notify_all(EVENT_UPDATE_SENT, update)
 
@@ -535,21 +535,21 @@ class ZMQIPSub(BaseIPSub):
                  reply_code = FRAME_UPDATE_OK
         else:
              reply_code = FRAME_UPDATE_OK
-        
+
         # Notify listeners
         self._notify_all(EVENT_FOR_REPLY[reply_code], (self.current_update, reply))
         self.current_update = None
 
     def _check_heartbeat(self, update):
         HEARTBEAT_ = FRAME_HEARTBEAT
-        
+
         # check for a heartbeat frame
         return (
-            len(update) == 1 
+            len(update) == 1
             and update[0] == HEARTBEAT_
         )
 
-    def _handle_update_request(self, socket, 
+    def _handle_update_request(self, socket,
             isinstance=isinstance, BrokerReply=BrokerReply):
         update = socket.recv_multipart()
         if self._check_heartbeat(update):
@@ -563,7 +563,7 @@ class ZMQIPSub(BaseIPSub):
                 dropped = False
             except Queue.Full:
                 dropped = True
-            
+
             # Notify listeners
             rv = self._notify_all(EVENT_INCOMING_UPDATE, update)
             if isinstance(rv, BrokerReply):

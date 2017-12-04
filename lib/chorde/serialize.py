@@ -17,7 +17,7 @@ __all__ = [
     "RLockPool",
     "ReadWriteLock",
     "ReadWriteRLock",
-    
+
     "DeadlockError",
     "LockWouldBlock",
 ]
@@ -29,7 +29,7 @@ class ScopedLock(object):
         self.mutex = mutex
         if not self.mutex.acquire(blocking):
             raise LockWouldBlock
- 
+
     def __del__(self):
         self.mutex.release()
 
@@ -71,13 +71,13 @@ class GWLockPool(object):
             return lock
         finally:
             self.__lock.release()
-    
+
     def acquire(self, id, blocking=1):
         try:
             return ScopedLock( self.__get(id), blocking )
         except LockWouldBlock:
             return None
-    
+
     def __len__(self):
         return len(self.__idLocks)
 
@@ -96,14 +96,14 @@ class GLockPool(object):
     def __init__(self):
         self.__idLocks = {}
         self.__lock = Lock()
-    
+
     class _scopedLock(object):
         __slots__ = ['pool','id']
-        
+
         def __init__(self, pool, id):
             self.pool = pool
             self.id = id
-            
+
         def __del__(self):
             self.pool._release(self.id)
 
@@ -120,7 +120,7 @@ class GLockPool(object):
             return lock
         finally:
             glock.release()
-    
+
     def __del(self, id):
         glock = self.__lock
         idLocks = self.__idLocks
@@ -134,22 +134,22 @@ class GLockPool(object):
                 return
         finally:
             glock.release()
-    
+
     def acquire(self, id, blocking=1):
         self._acquire( id, blocking )
         return self._scopedLock(self,id)
-    
+
     def _acquire(self, id, blocking=1):
         lock = self.__get(id,1)
         lock[0].acquire( blocking )
-    
+
     def _release(self, id):
         lock = self.__get(id,-1)
         lock[0].release()
-        
+
         if not lock[1]:
             self.__del(id)
-    
+
     def __len__(self):
         return len(self.__idLocks)
 
@@ -164,7 +164,7 @@ class RLockPool(GLockPool):
 
 class DeadlockError(Exception):
     pass
-    
+
 class LockWouldBlock(Exception):
     pass
 
@@ -177,35 +177,35 @@ class ReadWriteLock(object):
     def __init__(self):
         self._read_ready = Condition(self.locktype())
         self._readers = 0
-                                    
+
     def acquire_read(self, blocking=1):
         if not self._read_ready.acquire(blocking):
             return False
-        try: 
+        try:
             self._readers += 1
             return True
-        finally: 
+        finally:
             self._read_ready.release()
-            
+
     def release_read(self):
         self._read_ready.acquire()
         try:
             self._readers -= 1
-            if self._readers == 0: 
+            if self._readers == 0:
                 self._read_ready.notifyAll()
-        finally: 
+        finally:
             self._read_ready.release()
-            
+
     def acquire_write(self, blocking=1):
         if not self._read_ready.acquire(blocking):
             return False
-        while self._readers > 0: 
+        while self._readers > 0:
             self._read_ready.wait(blocking or None)
             if not blocking and self._readers > 0:
                 self._read_ready.release()
                 return False
         return True
-            
+
     def release_write(self):
         self._read_ready.release()
 
@@ -215,7 +215,7 @@ class ReadWriteRLock(ReadWriteLock):
 
 class ReadLockView(object):
     __slots__ = [ 'backing' ]
-    
+
     def __init__(self, backing):
         self.backing = backing
     def acquire(self, blocking=1):
@@ -225,7 +225,7 @@ class ReadLockView(object):
 
 class WriteLockView(object):
     __slots__ = [ 'backing' ]
-    
+
     def __init__(self, backing):
         self.backing = backing
     def acquire(self, blocking=1):
@@ -246,13 +246,13 @@ def serialize(*p,**kw):
             return serialize_docstring(*p)
         else:
             return serialize_docstring
-    
+
     generator = kw.get('generator', False)
     acquire   = kw.get('acquire','acquire')
     release   = kw.get('release','release')
     keyfn     = kw.get('key',None)
     deadlock_timeout = kw.get('deadlock_timeout',None)
-    
+
     if deadlock_timeout is None:
         def deadlock_watchdog(f,acquire):
             # deadlock_timeout to None means disabling the watchdog, which is
@@ -298,7 +298,7 @@ def serialize(*p,**kw):
                 raise DeadlockError, "Timeout expired after %s seconds waiting for %s" % (deadlock_timeout,f.__name__)
     else:
         raise ValueError, "Invalid deadlock_timeout - must be a nonnegative number"
-    
+
     if 'lockobj' in kw:
         if not keyfn:
             # pre-assigned lock object, unkeyed
@@ -379,7 +379,7 @@ def serialize(*p,**kw):
                     finally:
                         del lock
             return rv
-        
+
     if len(p) == 1:
         return decor(p[0])
     else:
@@ -389,10 +389,10 @@ def serialize_read(*p,**kw):
     kw['locktype']= kw.get('locktype', ReadWriteRLock)
     kw['acquire'] = kw.get('acquire', 'acquire_read')
     kw['release'] = kw.get('release', 'release_read')
-    return serialize(*p,**kw)    
+    return serialize(*p,**kw)
 
 def serialize_write(*p,**kw):
     kw['locktype']= kw.get('locktype', ReadWriteRLock)
     kw['acquire'] = kw.get('acquire', 'acquire_write')
     kw['release'] = kw.get('release', 'release_write')
-    return serialize(*p,**kw)    
+    return serialize(*p,**kw)

@@ -2,7 +2,7 @@
 import collections
 import thread
 from threading import Event, Thread
-import multiprocessing.pool 
+import multiprocessing.pool
 import time
 import unittest
 
@@ -21,7 +21,7 @@ class ThreadpoolTest(TestCase):
     def join_close(pool, timeout):
         pool.close()
         pool.join(timeout)
-    
+
     @staticmethod
     def join_continue(pool, timeout):
         pool.join(timeout)
@@ -36,7 +36,7 @@ class ThreadpoolTest(TestCase):
         self.pool.apply(time.time)
         time.sleep(0.01)
         self.assertTrue(called)
-    
+
     def testCleanupCallbackErrors(self):
         if not hasattr(self.pool, 'register_cleanup_callback'):
             self.skipTest("Not implemented")
@@ -47,25 +47,25 @@ class ThreadpoolTest(TestCase):
         time.sleep(0.1)
         self.pool.apply(time.time, timeout=0.1)
         # Just not erroring out or blocking
-    
+
     def testLazyStart(self):
         if not hasattr(self.pool, 'check_started'):
             self.skipTest("Not implemented")
         self.assertFalse(self.pool.check_started())
         self.pool.apply(time.time, timeout=0.1)
         self.assertTrue(self.pool.check_started())
-    
+
     def testExplicitStart(self):
         if not hasattr(self.pool, 'check_started'):
             self.skipTest("Not implemented")
         self.assertFalse(self.pool.check_started())
         self.pool.start()
         self.assertTrue(self.pool.check_started())
-    
+
     def testWorkerRespawnOnFork(self):
         if not hasattr(self.pool, '_ThreadPool__pid'):
             self.skipTest("Not implemented")
-        
+
         self.pool.start()
         workers = getattr(self.pool, '_ThreadPool__workers')
         nworkers = len(workers)
@@ -80,16 +80,16 @@ class ThreadpoolTest(TestCase):
         # Make sure it re-starts
         self.pool.assert_started()
         self.assertTrue(self.pool.is_started())
-        
+
         workers2 = getattr(self.pool, '_ThreadPool__workers')
         nworkers2 = len(workers2)
         self.assertEqual(nworkers, nworkers2)
         self.assertFalse(workers2[0] is workers[0])
-    
+
     def testAsyncLatency(self):
         # Warm up the pool
         self.pool.apply(lambda:None)
-        
+
         for i in xrange(100):
             t0 = time.time()
             ev = Event()
@@ -101,7 +101,7 @@ class ThreadpoolTest(TestCase):
     def testAsyncBlocking(self):
         # Warm up the pool
         self.pool.apply(lambda:None)
-        
+
         for i in xrange(100):
             t0 = time.time()
             ev = Event()
@@ -113,7 +113,7 @@ class ThreadpoolTest(TestCase):
     def testSyncLatency(self):
         # Warm up the pool
         self.pool.apply(lambda:None)
-        
+
         for i in xrange(100):
             t0 = time.time()
             t1 = self.pool.apply(time.time)
@@ -145,7 +145,7 @@ class ThreadpoolTest(TestCase):
 class ThreadpoolSubqueueWrapperTest(ThreadpoolTest):
     def setUp(self):
         self.pool = ThreadPool().subqueue("something")
-    
+
     def tearDown(self):
         self.join_close(self.pool.pool, 60)
 
@@ -179,12 +179,12 @@ class MultiQueueTest(TestCase):
         self.pool.set_queueprio(5, "b")
         self.assertEqual(1, self.pool.queueprio("a"))
         self.assertEqual(5, self.pool.queueprio("b"))
-    
+
     def testFairness(self):
         # Calibrate for low-latency (needed by the test)
         # Should be fine due to zero-copy slicing
         self.pool.max_batch = 50
-        
+
         terminate = []
         M = 50
         counts = collections.defaultdict(int)
@@ -210,7 +210,7 @@ class MultiQueueTest(TestCase):
         # Calibrate for maximum fairness accuracy (needed by test)
         self.pool.max_batch = 100
         self.pool.min_batch = 1
-        
+
         counts = collections.defaultdict(int)
         def accounting(i):
             counts[i] += 1
@@ -228,7 +228,7 @@ class MultiQueueTest(TestCase):
         # Calibrate for maximum fairness accuracy (needed by test)
         self.pool.max_batch = 100
         self.pool.min_batch = 1
-        
+
         counts = collections.defaultdict(int)
         simple = self.pool.subqueue("simple", 1)
         mean = self.pool.subqueue("mean", 3)

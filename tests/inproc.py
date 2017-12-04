@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import unittest
 
-from .clientbase import (CacheClientTestMixIn, 
+from .clientbase import (CacheClientTestMixIn,
     SyncWrapperTestMixIn, RWSyncWrapperTestMixIn,
     NamespaceWrapperTestMixIn
 )

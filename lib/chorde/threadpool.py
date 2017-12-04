@@ -84,17 +84,17 @@ class ThreadPool:
     multiple queues for managing fairness.
 
     This implementation is forcibly a daemon thread pool, which when destroyed
-    will cancel all pending tasks, and no task returns any result, and has been 
+    will cancel all pending tasks, and no task returns any result, and has been
     optimized for that usage pattern.
     """
-    
+
     Process = WorkerThread
 
     def __init__(self, workers = None, min_batch = 10, max_batch = 1000, max_slice = None, logger = None,
             name_pattern = None):
         if workers is None:
             workers = multiprocessing.cpu_count()
-        
+
         self.workers = workers
         self.name_pattern = name_pattern
         self.logger = logger if logger is not None else logging.getLogger('chorde')
@@ -107,7 +107,7 @@ class ThreadPool:
         self.__empty = threading.Event()
         self.__empty.set()
         self.__cleanup_callbacks = []
-        
+
         self.local = threading.local()
         self.queues = collections.defaultdict(list)
         self.queue_weights = {}
@@ -127,7 +127,7 @@ class ThreadPool:
     def queuelen(self, queue = None):
         return (
             len(self.queues.get(queue,()))
-            - self.__queue_slices.get(queue,0) 
+            - self.__queue_slices.get(queue,0)
             + int(self.__worklen * self.__busyfactors.get(queue,0))
         )
 
@@ -227,7 +227,7 @@ class ThreadPool:
         if wqueues:
             self.__busyqueues.clear()
             self.__busyqueues.update(qnames)
-            
+
             # Flatten with weights
             # Do it repeatedly to catch stragglers (those that straggle past the flattening step)
             iqueue = []
@@ -243,7 +243,7 @@ class ThreadPool:
                 if can_straggle:
                     # Wait for stragglers
                     time.sleep(0.0001)
-                
+
                 queues = []
                 qposes = []
                 for q,qprio,wpos in izip(wqueues, wprios, wposes):
@@ -258,7 +258,7 @@ class ThreadPool:
                         qposes.append(None)
                     queues.append(partial(repeat, qiter.next, qprio))
                 wposes = qposes
-                
+
                 ioffs = 0
                 ilen = len(iqueue)
                 while queues:
@@ -344,8 +344,8 @@ class ThreadPool:
             # It is also not necessary to invoke this all the time. If the
             # flags are the right way at any point within this function being
             # run, then it already means the respective waiting threads have
-            # woken up (or are in the process of waking up) in time to pick up the 
-            # just-queued value, so avoid the actual operation 
+            # woken up (or are in the process of waking up) in time to pick up the
+            # just-queued value, so avoid the actual operation
             # (which is much more expensive than checking)
             not_empty = self.__not_empty
             if not not_empty.isSet():
@@ -451,7 +451,7 @@ class ThreadPool:
                     w.logger = self.logger
                     w.daemon = True
                     w.start()
-                
+
                 self.__pid = os.getpid()
             # Else, just keep number of workers in sync
             elif len(self.__workers) < self.workers:
@@ -507,10 +507,10 @@ class SubqueueWrapperThreadPool:
     multiple queues for managing fairness.
 
     This implementation is forcibly a daemon thread pool, which when destroyed
-    will cancel all pending tasks, and no task returns any result, and has been 
+    will cancel all pending tasks, and no task returns any result, and has been
     optimized for that usage pattern.
     """
-    
+
     def __init__(self, pool, queue, priority = None):
         self.queue = queue
         self.pool = pool
