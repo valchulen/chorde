@@ -6,6 +6,8 @@ from .clientbase import (CacheClientTestMixIn,
     NamespaceWrapperTestMixIn
 )
 
+from chorde.clients.base import NamespaceMirrorWrapper
+
 class InprocTest(CacheClientTestMixIn, unittest.TestCase):
     def setUpClient(self):
         from chorde.clients.inproc import InprocCacheClient
@@ -50,3 +52,7 @@ class RWSyncInprocTest(RWSyncWrapperTestMixIn, InprocTest):
 class NamespaceInprocTest(NamespaceWrapperTestMixIn, InprocTest):
     pass
 
+class NamespaceMirrorInprocTest(NamespaceWrapperTestMixIn, InprocTest):
+    def _setUpClient(self):
+        c = super(NamespaceMirrorInprocTest, self)._setUpClient()
+        return NamespaceMirrorWrapper(c, self.rclient)
