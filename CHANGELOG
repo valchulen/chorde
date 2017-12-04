@@ -12,6 +12,8 @@ All notable changes to this project will be documented here.
   inadvertantly. Check the values' TTL befure using it
   in a REGET, inhibit caller's reget, and use promotion
   logic instead.
+- Fix NamespaceMirrorWrapper.clear by properly proxying
+  writes on revision and revmark_ttl
 
 ## [0.2.0] - 2017-09-20
 ### Changed
