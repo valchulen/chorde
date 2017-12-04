@@ -104,7 +104,7 @@ class AsyncCacheWriterPool:
             defer_threadpool = None, writer_threadpool = None):
         
         self.client = client
-        self.logger = logging.getLogger("chorde")
+        self.logger = logging.getLogger("chorde.async")
         self.size = size
         self.workers = workers
         self._spawnlock = threading.Lock()

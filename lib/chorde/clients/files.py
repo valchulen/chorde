@@ -315,7 +315,7 @@ class FilesCacheClient(base.BaseCacheClient):
             # Re-open it
             rv = cls.from_path(counter_slots, path)
         if int(rv) == 0:
-            logger = logging.getLogger('chorde')
+            logger = logging.getLogger('chorde.files')
 
             t0 = time.time()
             logger.info("Initializing concurrent counter for file-based cache on %r", self.basepath)
@@ -630,7 +630,7 @@ class FilesCacheClient(base.BaseCacheClient):
                             return default, -1
                     except:
                         # Oops
-                        logging.getLogger('chorde').error("Error retrieving file contents", exc_info = True)
+                        logging.getLogger('chorde.files').error("Error retrieving file contents", exc_info = True)
                         return default, -1
                 else:
                     return default, rttl
@@ -717,7 +717,7 @@ class FilesCacheClient(base.BaseCacheClient):
         fullsize = 0
         expired_items = expired_bytes = evicted_items = evicted_bytes = 0
 
-        logger = logging.getLogger('chorde')
+        logger = logging.getLogger('chorde.files')
         logger.info('Purging file-based cache at %r, cached size %d / %d',
             basepath, int(self.size), self.max_size)
 
