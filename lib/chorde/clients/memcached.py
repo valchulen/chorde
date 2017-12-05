@@ -960,7 +960,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         self._failfast_cache = Cache(failfast_size)
         self._succeedfast_cache = Cache(succeedfast_size)
         self._usucceedfast_cache = Cache(succeedfast_size)
-
+        self.logger = logging.getLogger('chorde.memcached')
         super(MemcachedClient, self).__init__(client_class, client_addresses, client_args)
 
     @property
@@ -975,7 +975,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             try:
                 client_stats = self.client.get_stats()
             except:
-                logging.warn("MemcachedClient: Error getting stats, resetting client and retrying")
+                self.logger.warn("MemcachedClient: Error getting stats, resetting client and retrying")
                 del self.client
                 client_stats = self.client.get_stats()
             for srv,s in client_stats:
@@ -1055,7 +1055,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         except ValueError:
             # Sometimes shit happens when there's memory pressure, we lost the stamp
             # Some other times, the client gets borked
-            logging.warn("MemcachedClient: Error reading version counter, resetting client")
+            self.logger.warn("MemcachedClient: Error reading version counter, resetting client")
             del self.client
             try:
                 stamp = self.client.incr(stamp_key)
@@ -1068,7 +1068,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 stamp = self.client.incr(stamp_key) or 0
             except ValueError:
                 # Again, this is fucked up
-                logging.warn("MemcachedClient: Error again reading version counter")
+                self.logger.warn("MemcachedClient: Error again reading version counter")
                 pass
         self.last_seen_stamp = stamp
         return stamp
@@ -1259,7 +1259,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             return default, -1
         except:
             self._failfast_cache[key] = now
-            logging.warning("Error decoding cached data", exc_info=True)
+            self.logger.warning("Error decoding cached data", exc_info=True)
             return default, -1
 
     def _getTtlMulti(self, keys, default, decode = True, ttl_skip = None, promote_callback = None, 
@@ -1675,6 +1675,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
 
         self.failfast_time = failfast_time
         self._failfast_cache = Cache(failfast_size) if failfast_time else None
+        self.logger = logging.getLogger('chorde.fastmemcached')
 
         super(FastMemcachedClient, self).__init__(client_class, client_addresses, client_args)
 
@@ -1693,7 +1694,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
             try:
                 client_stats = self.client.get_stats()
             except:
-                logging.warn("FastMemcachedClient: Error getting stats, resetting client and retrying")
+                self.logger.warn("FastMemcachedClient: Error getting stats, resetting client and retrying")
                 del self.client
                 client_stats = self.client.get_stats()
             for srv,s in client_stats:
@@ -1785,7 +1786,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
                     last_error = e
             else:
                 # Um...
-                logging.error("Exception preparing plan: %r", last_error)
+                self.logger.error("Exception preparing plan: %r", last_error)
                 plan = deletions = None
             last_error = None
 
@@ -1795,14 +1796,14 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
                     try:
                         client.delete_multi(deletions)
                     except:
-                        logging.error("Exception in background writer", exc_info = True)
+                        self.logger.error("Exception in background writer", exc_info = True)
                 if plan:
                     for ttl, batch in plan.iteritems():
                         try:
                             ttl = min(ttl, MAX_MEMCACHE_TTL)
                             client.set_multi(batch, ttl)
                         except:
-                            logging.error("Exception in background writer", exc_info = True)
+                            self.logger.error("Exception in background writer", exc_info = True)
                 if renewals:
                     for key, ttl in renewals:
                         value = client.gets(key)
@@ -1864,7 +1865,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
                         self._failfast_cache[raw_key] = now
                     return default, -1
                 except:
-                    logging.warning("Error decoding cached data (%r)", value, exc_info=True)
+                    self.logger.warning("Error decoding cached data (%r)", value, exc_info=True)
                     if self._failfast_cache is not None:
                         self._failfast_cache[raw_key] = now
                     return default, -1
@@ -1932,7 +1933,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
                     yield raw_key, (default, -1)
                     continue
                 except:
-                    logging.warning("Error decoding cached data (%r)", value, exc_info=True)
+                    self.logger.warning("Error decoding cached data (%r)", value, exc_info=True)
                     if self._failfast_cache is not None:
                         self._failfast_cache[raw_key] = now
                     yield raw_key, (default, -1)
