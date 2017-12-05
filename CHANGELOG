@@ -4,6 +4,14 @@ All notable changes to this project will be documented here.
 
 ## [0.3.0] - Unreleased
 ### Bugfixes
+- Fix NamespaceMirrorWrapper.clear by properly proxying
+  writes on revision and revmark_ttl
+
+### Changed
+- Each client has a different logger
+
+## [0.2.1] - 2017-10-12
+### Bugfixes
 - Fix TieredInclusiveClient's handling of REGET during
   coherence. In cases where high load might make the
   L1 expiration be missed by the time putnext gets
@@ -12,11 +20,6 @@ All notable changes to this project will be documented here.
   inadvertantly. Check the values' TTL befure using it
   in a REGET, inhibit caller's reget, and use promotion
   logic instead.
-- Fix NamespaceMirrorWrapper.clear by properly proxying
-  writes on revision and revmark_ttl
-
-### Changed
-- Each client has a different logger
 
 ## [0.2.0] - 2017-09-20
 ### Changed
