@@ -25,15 +25,15 @@ and use it directly, like
 
 .. code:: python
 
-	from chorde.clients.inproc import InprocCacheClient
-	from chorde import CacheMissError
-	c = InprocCacheClient(200)
-	c.put(3, 10, 300) # put value 10 on key 3, TTL 5min
-	assert 10 == c.get(3)
-	try:
-		c.get(5)
-	except CacheMissError:
-		print "miss"
+    from chorde.clients.inproc import InprocCacheClient
+    from chorde import CacheMissError
+    c = InprocCacheClient(200)
+    c.put(3, 10, 300) # put value 10 on key 3, TTL 5min
+    assert 10 == c.get(3)
+    try:
+        c.get(5)
+    except CacheMissError:
+        print "miss"
 
 This creates an In-process LRU cache. The in-process part indicates that it
 is process-private, and not shared with other processes.
@@ -63,15 +63,15 @@ The most straightforward way to get a shared cache, is to use a memcache:
 
 .. code:: python
 
-	from chorde.clients.memcached import MemcachedClient
-	from chorde import CacheMissError
-	c = MemcachedClient(["localhost:11211"], checksum_key = "testing")
-	c.put(3, 10, 300)
-	assert 10 == c.get(3)
-	try:
-		c.get(5)
-	except CacheMissError:
-		print "miss"
+    from chorde.clients.memcached import MemcachedClient
+    from chorde import CacheMissError
+    c = MemcachedClient(["localhost:11211"], checksum_key = "testing")
+    c.put(3, 10, 300)
+    assert 10 == c.get(3)
+    try:
+        c.get(5)
+    except CacheMissError:
+        print "miss"
 
 The MemcachedClient is used just like any other client, only it talks to, in this
 example, a local memcached listening on localhost port 11211. Multiple clients
@@ -109,12 +109,12 @@ getMulti and getTtlMulti, to fetch multiple keys at once:
 
 .. code:: python
 
-	from chorde.clients.memcached import MemcachedClient
-	from chorde import CacheMissError
-	c = MemcachedClient(["localhost:11211"], checksum_key = "testing")
-	c.put(3, 10, 300)
-	c.put(4, 20, 300)
-	assert {3:10, 4:20, 5:None} == dict(c.getMulti([3,4,5], None))
+    from chorde.clients.memcached import MemcachedClient
+    from chorde import CacheMissError
+    c = MemcachedClient(["localhost:11211"], checksum_key = "testing")
+    c.put(3, 10, 300)
+    c.put(4, 20, 300)
+    assert {3:10, 4:20, 5:None} == dict(c.getMulti([3,4,5], None))
 
 See the documentation on clients.base for more details.
 
@@ -129,13 +129,13 @@ This can be done straightforwardly with the tiered clients:
 
 .. code:: python
 
-	from chorde.clients.memcached import MemcachedClient
-	from chorde.clients.inproc import InprocCacheClient
-	from chorde.clients.tiered import TieredInclusiveClient
-	from chorde import CacheMissError
-	l1 = InprocCacheClient(10)
-	l2 = MemcachedClient(["localhost:11211"], checksum_key="test")
-	c = TieredInclusiveClient(l1,l2)
+    from chorde.clients.memcached import MemcachedClient
+    from chorde.clients.inproc import InprocCacheClient
+    from chorde.clients.tiered import TieredInclusiveClient
+    from chorde import CacheMissError
+    l1 = InprocCacheClient(10)
+    l2 = MemcachedClient(["localhost:11211"], checksum_key="test")
+    c = TieredInclusiveClient(l1,l2)
         c.put(3, 10, 300)
         assert 10 == c.get(3)
         try:
@@ -166,21 +166,21 @@ Assuming *c* is the client we want to use for caching,
 
 .. code:: python
 
-	from chorde.decorators import cached
-	import random
-	
-	@cached(c, ttl=300, async_ttl=-60)
-	def expensive_func(x):
-		return x * random.random()
+    from chorde.decorators import cached
+    import random
+    
+    @cached(c, ttl=300, async_ttl=-60)
+    def expensive_func(x):
+        return x * random.random()
 
-	print expensive_func(1)
-	print expensive_func(1) # Should return the same
-	print expensive_func.async()(1) # will refresh asynchronously every minute
-	print expensive_func.future()(1).result() # same as before, but using the futures interface
-	print expensive_func.peek(1) # just check the cache
-	print expensive_func.put(1, _cache_put=5) # write an explicit value
-	print expensive_func.async().lazy(1) # don't wait, raise CacheMissError if not available, compute in background
-	print expensive_func.future().lazy(1).result() # same as before, but using the futures interface
+    print expensive_func(1)
+    print expensive_func(1) # Should return the same
+    print expensive_func.async()(1) # will refresh asynchronously every minute
+    print expensive_func.future()(1).result() # same as before, but using the futures interface
+    print expensive_func.peek(1) # just check the cache
+    print expensive_func.put(1, _cache_put=5) # write an explicit value
+    print expensive_func.async().lazy(1) # don't wait, raise CacheMissError if not available, compute in background
+    print expensive_func.future().lazy(1).result() # same as before, but using the futures interface
 
 There, the async_ttl means the minimum TTL that triggers
 an asynchronous recomputation (you can use it to avoid ever having to wait on a recomputation).
@@ -212,17 +212,17 @@ wrapped like so:
 
 .. code:: python
 
-	import tornado.web
-	import tornado.gen
-	from chorde.clients.async import makeFutureWrapper
-	
-	WF = makeFutureWrapper(tornado.web.Future)
-	
-	...
-	
-	@tornado.gen.coroutine
-	def get(self):
-		some_result = yield WF(some_func.future()(some_args))
+    import tornado.web
+    import tornado.gen
+    from chorde.clients.async import makeFutureWrapper
+    
+    WF = makeFutureWrapper(tornado.web.Future)
+    
+    ...
+    
+    @tornado.gen.coroutine
+    def get(self):
+        some_result = yield WF(some_func.future()(some_args))
 
 
 There is a better way to integrate with tornado >= 4.0

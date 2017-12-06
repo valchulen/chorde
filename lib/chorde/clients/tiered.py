@@ -60,7 +60,7 @@ class TieredInclusiveClient(BaseCacheClient):
                     try:
                         client.put(key, value, ttl * fraction, **kw)
                     except:
-                        logging.getLogger('chorde').error("Error propagating deferred value through tier %r", client)
+                        logging.getLogger('chorde.tiered').error("Error propagating deferred value through tier %r", client)
             return value
         finally:
             deferred.done()
@@ -167,13 +167,13 @@ class TieredInclusiveClient(BaseCacheClient):
                             self.clients[i].put(key, rv, ttl)
                         except:
                             # Ignore, go to the next
-                            logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
+                            logging.getLogger('chorde.tiered').error("Error promoting into tier %d", i+1, exc_info = True)
                     if promote_callback:
                         try:
                             promote_callback(key, rv, ttl)
                         except:
                             # Ignore
-                            logging.getLogger('chorde').error("Error on promote callback", exc_info = True)
+                            logging.getLogger('chorde.tiered').error("Error on promote callback", exc_info = True)
                 return rv, ttl
             elif not i:
                 self.l1_misses += 1
@@ -216,13 +216,13 @@ class TieredInclusiveClient(BaseCacheClient):
                                 self.clients[i].put(key, rv, ttl)
                             except:
                                 # Ignore, go to the next
-                                logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
+                                logging.getLogger('chorde.tiered').error("Error promoting into tier %d", i+1, exc_info = True)
                         if promote_callback:
                             try:
                                 promote_callback(key, rv, ttl)
                             except:
                                 # Ignore
-                                logging.getLogger('chorde').error("Error on promote callback", exc_info = True)
+                                logging.getLogger('chorde.tiered').error("Error on promote callback", exc_info = True)
                     yield key, (rv, ttl)
                 else:
                     if rv is not NONE_:
@@ -260,13 +260,13 @@ class TieredInclusiveClient(BaseCacheClient):
                             self.clients[i].put(key, rv, ttl)
                         except:
                             # Ignore, go to the next
-                            logging.getLogger('chorde').error("Error promoting into tier %d", i+1, exc_info = True)
+                            logging.getLogger('chorde.tiered').error("Error promoting into tier %d", i+1, exc_info = True)
                     if promote_callback:
                         try:
                             promote_callback(key, rv, ttl)
                         except:
                             # Ignore
-                            logging.getLogger('chorde').error("Error on promote callback", exc_info = True)
+                            logging.getLogger('chorde.tiered').error("Error on promote callback", exc_info = True)
                 
                 # Even if we don't really promote, stop trying
                 # If the above client.contains returns True but getTtl doesn't find it,

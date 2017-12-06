@@ -2,17 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.2.2] - Unreleased
-### Bugfixes
-- Make LazyCuckooCache's rehash (resize) operation
-  atomic to avoid concurrent rehashing, which can cause
-  corruption and crashes in rare corner cases, most
-  notably with non-preallocated caches that grow very
-  rapidly from concurrent writer threads and cause
-  eviction callbacks due to hash collisions during
-  rehashing.
-
-## [0.2.1] - 2017-10-12
+## [0.3.0] - Unreleased
 ### Bugfixes
 - Fix TieredInclusiveClient's handling of REGET during
   coherence. In cases where high load might make the
@@ -22,6 +12,16 @@ All notable changes to this project will be documented here.
   inadvertantly. Check the values' TTL befure using it
   in a REGET, inhibit caller's reget, and use promotion
   logic instead.
+- Make LazyCuckooCache's rehash (resize) operation
+  atomic to avoid concurrent rehashing, which can cause
+  corruption and crashes in rare corner cases, most
+  notably with non-preallocated caches that grow very
+  rapidly from concurrent writer threads and cause
+  eviction callbacks due to hash collisions during
+  rehashing.
+
+### Changed
+- Each client has a different logger
 
 ## [0.2.0] - 2017-09-20
 ### Changed
