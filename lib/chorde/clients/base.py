@@ -586,13 +586,37 @@ class NamespaceMirrorWrapper(NamespaceWrapper):
         return self.reference.revision
 
     @revision.setter
-    def revision(self, value):  # lint:ok
-        pass
+    def revision(self, value):
+        self.reference.revision = value
 
     @property
     def namespace(self):
         return self.reference.namespace
 
     @namespace.setter
-    def namespace(self):  # lint:ok
+    def namespace(self, value):  # lint:ok
         pass
+
+    @property
+    def key_undecorator(self):
+        return self.reference.key_undecorator
+
+    @key_undecorator.setter
+    def key_undecorator(self, value):  # lint:ok
+        pass
+
+    @property
+    def key_decorator(self):
+        return self.reference.key_decorator
+
+    @key_decorator.setter
+    def key_decorator(self, value):  # lint:ok
+        pass
+
+    @property
+    def revmark_ttl(self):
+        return self.reference.revmark_ttl
+
+    @revmark_ttl.setter
+    def revmark_ttl(self, value):
+        self.reference.revmark_ttl = value
