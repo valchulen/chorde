@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2017-12-06
 ### Bugfixes
 - Fix NamespaceMirrorWrapper.clear by properly proxying
   writes on revision and revmark_ttl
