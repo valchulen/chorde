@@ -41,7 +41,7 @@ class SecurePickler(object):
     def __init__(self, checksum_key, file, *p, **kw):
         self.file = file
         self.checksum_key = checksum_key
-        
+
         self.backing_class = kw.pop('backing_class', cPickle.Pickler)
         self.backing_args = (p, kw)
         self.local = threading.local()
@@ -70,11 +70,11 @@ class SecurePickler(object):
     @pickler.deleter
     def pickler(self):  # lint:ok
         del self.local.pickler
-        
+
     @property
     def persistent_id(self):
         return self.pickler.persistent_id
-    
+
     @persistent_id.setter
     def persistent_id(self, value):  # lint:ok
         self.pickler.persistent_id = value
@@ -85,7 +85,7 @@ class SecurePickler(object):
         rv = self.buf.getvalue()
         self.buf.reset()
         self.buf.truncate()
-        
+
         # compute HMAC, and prepend to output
         md = hmac.HMAC(self.checksum_key, rv, checksum_algo).hexdigest()
         self.file.write(struct.pack('<L',len(rv)).encode("hex"))
@@ -96,7 +96,7 @@ class SecureUnpickler(object):
     def __init__(self, checksum_key, file, *p, **kw):
         self.file = file
         self.checksum_key = checksum_key
-        
+
         self.backing_class = kw.pop('backing_class', cPickle.Unpickler)
         self.backing_args = (p, kw)
         self.local = threading.local()
@@ -125,11 +125,11 @@ class SecureUnpickler(object):
     @unpickler.deleter
     def unpickler(self):  # lint:ok
         del self.local.unpickler
-        
+
     @property
     def persistent_load(self):
         return self.unpickler.persistent_load
-    
+
     @persistent_load.setter
     def persistent_load(self, value):  # lint:ok
         self.unpickler.persistent_load = value
@@ -139,17 +139,17 @@ class SecureUnpickler(object):
         if not datalen:
             raise EOFError, "Cannot read secure packet header"
         datalen, = struct.unpack('<L', datalen.decode("hex") )
-        
+
         ref_md = hmac.HMAC(self.checksum_key, None, checksum_algo)
         md = self.file.read(ref_md.digest_size*2)
-        
+
         data = self.file.read(datalen)
         ref_md.update(data)
-        
+
         ref_md = ref_md.hexdigest()
         if ref_md != md:
             raise ValueError, "MAC mismatch unpickling"
-        
+
         buf = self.buf
         buf.reset()
         buf.write(data)

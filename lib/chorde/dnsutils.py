@@ -27,7 +27,7 @@ try:
         except ValueError:
             return False
 except ImportError:
-    import re  
+    import re
     def is_ip6(x, ip6match = re.compile(r'^[0-9a-fA-F:]{6,32}$').match): # lint:ok
         return bool(ip6match(x))
     def is_ip(x):  # lint:ok
@@ -77,7 +77,7 @@ try:
 except ImportError:
     import warnings
     warnings.warn("dnspython missing, will not support dynamic CNAME server lists")
-    
+
     # basic fallback that serves to dected round-robin dns at least
     dnsquery = basic_dnsquery
 
@@ -196,7 +196,7 @@ class DynamicResolvingClient(object):
                 rv = self._client_addresses
             else:
                 self._static_client_addresses = static_addresses
-                
+
                 # Schedule a recheck when TTL expires (or 5 seconds, whichever is higher)
                 self._dynamic_client_checktime = max(expiration, time.time() + 5)
                 self._dynamic_client_addresses = servers

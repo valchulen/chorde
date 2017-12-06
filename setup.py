@@ -6,7 +6,7 @@ try:
 except ImportError:
     from distutils.core import setup, Extension
 
-if sys.subversion[0] == 'PyPy': 
+if sys.subversion[0] == 'PyPy':
     # Even though pypy may have Pyrex or Cython, cython LRU isn't compatible with cpyext
     no_pyrex = True
 else:
@@ -68,7 +68,7 @@ packages = [
 
 if not no_pyrex:
     extra.update(dict(
-        ext_modules=cythonize([ 
+        ext_modules=cythonize([
           Extension("chorde.lrucache", ["lib/lrucache/lrucache.pyx"],
                     depends = ["lib/lrucache/lrucache.pxd"],
                     cython_include_dirs = [os.path.join(os.path.dirname(__file__), "lib/lrucache")],
@@ -101,13 +101,13 @@ setup(
   long_description = readme,
   packages = packages,
   package_dir = {'':'lib'},
-  
+
   tests_require = 'nose',
   test_suite = 'tests',
 
   install_requires = requirements,
   extras_require = extras_requirements,
-  
+
   classifiers=[
             "Development Status :: 4 - Beta",
             "Intended Audience :: Developers",

@@ -13,7 +13,7 @@ class TieredInclusiveClient(BaseCacheClient):
         self.clients = clients
         self.l1_misses = 0
         self.ttl_fractions = opts.get('ttl_fractions', (1,)*len(clients))
-        
+
     @property
     def async(self):
         for client in self.clients:
@@ -33,7 +33,7 @@ class TieredInclusiveClient(BaseCacheClient):
     def wait(self, key, timeout = None):
         for client in self.clients:
             client.wait(key, timeout)
-    
+
     def __putnext(self, clients, fractions, key, value, ttl, _max_tiers=None, **kw):
         deferred = value
         try:
@@ -64,7 +64,7 @@ class TieredInclusiveClient(BaseCacheClient):
             return value
         finally:
             deferred.done()
-    
+
     def put(self, key, value, ttl, _max_tiers=None, **kw):
         clients = self.clients
         fractions = self.ttl_fractions
@@ -74,8 +74,8 @@ class TieredInclusiveClient(BaseCacheClient):
                 # First call is async, meaning it will get queued up somwhere
                 # We can do the rest at that point
                 deferred = async.Defer(
-                    self.__putnext, 
-                    clients, fractions, 
+                    self.__putnext,
+                    clients, fractions,
                     key, value, ttl, _max_tiers, **kw)
                 if hasattr(value, 'future'):
                     # Transfer the original deferred's future to this new one-shot deferred
@@ -111,8 +111,8 @@ class TieredInclusiveClient(BaseCacheClient):
                 # First call is async, meaning it will get queued up somwhere
                 # We can do the rest at that point
                 deferred = async.Defer(
-                    self.__putnext, 
-                    clients, fractions, 
+                    self.__putnext,
+                    clients, fractions,
                     key, value, ttl, _max_tiers, **kw)
                 return clients[0].add(key, deferred, ttl * fractions[0], **kw)
             else:
@@ -129,7 +129,7 @@ class TieredInclusiveClient(BaseCacheClient):
                     return False
             else:
                 return True
-    
+
     def delete(self, key):
         for client in self.clients:
             client.delete(key)
@@ -145,7 +145,7 @@ class TieredInclusiveClient(BaseCacheClient):
     def purge(self, *p, **kw):
         for client in self.clients:
             client.purge(*p, **kw)
-    
+
     def _getTtl(self, key, default = NONE, _max_tiers = None, ttl_skip = 0,
             promote_callback = None, return_stale = True,
             NONE_ = NONE_, NONE = NONE, enumerate = enumerate, islice = islice,
@@ -177,7 +177,7 @@ class TieredInclusiveClient(BaseCacheClient):
                 return rv, ttl
             elif not i:
                 self.l1_misses += 1
-            
+
             # Ok, gotta inspect other tiers
         else:
             # Or not
@@ -267,13 +267,12 @@ class TieredInclusiveClient(BaseCacheClient):
                         except:
                             # Ignore
                             logging.getLogger('chorde.tiered').error("Error on promote callback", exc_info = True)
-                
                 # Even if we don't really promote, stop trying
                 # If the above client.contains returns True but getTtl doesn't find it,
                 # it's probably an enqueued deferred write, which means we shouldn't promote anyway
                 break
             # Ok, gotta inspect other tiers
-    
+
     def contains(self, key, ttl = None, _max_tiers = None, **kw):
         clients = self.clients
         if _max_tiers is not None:

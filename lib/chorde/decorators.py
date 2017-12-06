@@ -38,7 +38,7 @@ def wraps(wrapped):
     def decor(wrapper):
         wrapper = w(wrapper)
         wrapper.__doc__ = "\n".join(
-            pydoc.render_doc(wrapped, 'cached %s:').split('\n', 4)[:3] 
+            pydoc.render_doc(wrapped, 'cached %s:').split('\n', 4)[:3]
             + filter(bool, [wrapper.__doc__]))
         return wrapper
     return decor
@@ -51,7 +51,7 @@ def _make_namespace(f, salt = None):
     if fname is None:
         # FTW
         return repr(f)
-    
+
     mname = getattr(f, '__module__', '')
 
     fcode = getattr(f, '__code__', None)
@@ -61,7 +61,7 @@ def _make_namespace(f, salt = None):
         fpath = '%s:%d' % (fcode.co_filename, fcode.co_firstlineno)
     else:
         fpath = ''
-    
+
     try:
         body_digest = md5.md5(fpath)
         if salt:
@@ -79,9 +79,9 @@ def _simple_put_deferred(future, client, f, key, ttl, *p, **kw):
     return client.put(key, defer, ttl)
 
 def _coherent_put_deferred(shared, async_ttl, future, client, f, key, ttl, *p, **kw):
-    return client.put_coherently(key, ttl, 
-        lambda : not shared.contains(key, async_ttl), 
-        future, 
+    return client.put_coherently(key, ttl,
+        lambda : not shared.contains(key, async_ttl),
+        future,
         f, *p, **kw)
 
 class CacheStats(object):
@@ -123,7 +123,7 @@ def cached(client, ttl,
         namespace = None,
         value_serialization_function = None,
         value_deserialization_function = None,
-        async_writer_queue_size = None, 
+        async_writer_queue_size = None,
         async_writer_workers = None,
         async_writer_threadpool = None,
         async_writer_kwargs = None,
@@ -156,15 +156,15 @@ def cached(client, ttl,
     be unreliable).
 
     Caches are thread-safe only if the provided clients are thread-safe, no additional safety is provided. If you
-    have a thread-unsafe client you want to make safe, use a (ReadWrite)SyncAdapter. Since synchronization adapters 
+    have a thread-unsafe client you want to make safe, use a (ReadWrite)SyncAdapter. Since synchronization adapters
     only apply to store manipuation functions, and not the wrapped function, deadlocks cannot occur.
 
-    The decorated function will provide additional behavior through 
+    The decorated function will provide additional behavior through
 
     Attributes
     ----------
-        
-        client: the backing cache client. The provided client is never used as-is, and instead is wrapped in a 
+
+        client: the backing cache client. The provided client is never used as-is, and instead is wrapped in a
             NamespaceWrapper. This is it.
 
         ttl: The configured TTL
@@ -202,9 +202,9 @@ def cached(client, ttl,
             behave just as peek.
 
         future(...): probably the preferred way of accessing the cache on an asynchronous app, it will return
-            a decorated function that will return futures that will receive the value when done. 
-            For straight calls, if lazy would not raise a CacheMissError, the future will already contain the value, 
-            resulting in no delays. If the client is tiered and has remote tiers, it's recommendable to add proper 
+            a decorated function that will return futures that will receive the value when done.
+            For straight calls, if lazy would not raise a CacheMissError, the future will already contain the value,
+            resulting in no delays. If the client is tiered and has remote tiers, it's recommendable to add proper
             lazy_kwargs to avoid this synchronous call blocking. Other forms of access perform similarly, always
             returning a future immediately without blocking. Alternatively, setting future_sync_check to False
             will disable this check and always do it through the processor.
@@ -244,12 +244,12 @@ def cached(client, ttl,
 
             All values are approximate, as no synchroniation is attempted while updating.
 
-            sync_misses and sync_errors are caller-visible misses or exceptions. The difference with 
+            sync_misses and sync_errors are caller-visible misses or exceptions. The difference with
             misses and errors respectively are the number of caller-invisible misses or errors.
 
     Parameters
     ----------
-    
+
         client: the cache store client to be used
 
         ttl: the time, in seconds, during which values remain valid.
@@ -261,7 +261,7 @@ def cached(client, ttl,
             their own refresh in a rather simple way, short of using a coherence protocol. Roughly
             equivalent to the dogpile pattern with a timeout as specified.
 
-        key: (optional) A key derivation function, that will take the same arguments as the underlying function, 
+        key: (optional) A key derivation function, that will take the same arguments as the underlying function,
             and should return a key suitable to the client. If not provided, a default implementation that will
             usually work for most primitive argument types will be used.
 
@@ -284,7 +284,7 @@ def cached(client, ttl,
 
         async_writer_queue_size: (optional) Writer queue size used for the async() client. Default is 100.
 
-        async_writer_workers: (optional) Number of async workers for the async() client. 
+        async_writer_workers: (optional) Number of async workers for the async() client.
             Default is multiprocessing.cpu_count
 
         async_writer_threadpool: (optional) Threadpool to be used for the async writer, instead of
@@ -428,7 +428,7 @@ def cached(client, ttl,
                 stop_initializing = initialize()
                 if stop_initializing:
                     del _initialize[:]
-            _initialize = [_initialize] 
+            _initialize = [_initialize]
         else:
             _initialize = None
 
@@ -440,7 +440,7 @@ def cached(client, ttl,
                 eff_async_ttl = max(async_ttl / 2, async_ttl - spread_type(ttl_spread * 0.25 * random.random()))
         else:
             eff_async_ttl = async_ttl
-        
+
         # Wrap and track misses and timings
         if timings:
             of = f
@@ -462,7 +462,7 @@ def cached(client, ttl,
                         if stats.miss_time_histogram:
                             stats.add_histo(t)
                     except:
-                        # Ignore stats collection exceptions. 
+                        # Ignore stats collection exceptions.
                         # Quite possible since there is no thread synchronization.
                         pass
                     if value_callbacks:
@@ -522,7 +522,7 @@ def cached(client, ttl,
                 logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return f(*p, **kw)
-            
+
             try:
                 rv = nclient.get(callkey, **get_kwargs)
                 stats.hits += 1
@@ -532,7 +532,7 @@ def cached(client, ttl,
             return rv
         if decorate is not None:
             cached_f = decorate(cached_f)
-        
+
         @wraps(of)
         def get_ttl_f(*p, **kw):
             if _initialize:
@@ -552,7 +552,7 @@ def cached(client, ttl,
             return rv
         if decorate is not None:
             get_ttl_f = decorate(get_ttl_f)
-        
+
         @wraps(of)
         def async_cached_f(*p, **kw):
             if _initialize:
@@ -601,7 +601,7 @@ def cached(client, ttl,
             return rv
         if decorate is not None:
             async_cached_f = decorate(async_cached_f)
-        
+
         @wraps(of)
         def future_cached_f(*p, **kw):
             try:
@@ -632,7 +632,7 @@ def cached(client, ttl,
                         stats.hits += 1
                         frv.set(value[0])
                         # If it's stale, though, start an async refresh
-                        if value[1] < eff_async_ttl and not nclient.contains(callkey, eff_async_ttl, 
+                        if value[1] < eff_async_ttl and not nclient.contains(callkey, eff_async_ttl,
                                 **easync_lazy_recheck_kwargs):
                             if renew_time is not None and (rv is not __NONE or lazy_kwargs):
                                 nclient.renew(callkey, eff_async_ttl + renew_time)
@@ -697,7 +697,7 @@ def cached(client, ttl,
         if decorate is not None:
             lazy_cached_f = decorate(lazy_cached_f)
         peek_cached_f = lazy_cached_f
-        
+
         @wraps(of)
         def future_lazy_cached_f(*p, **kw):
             try:
@@ -732,7 +732,7 @@ def cached(client, ttl,
                             # Too stale
                             frv.miss()
                         # If it's stale, though, start an async refresh
-                        if value[1] < eff_async_ttl and not client.contains(callkey, eff_async_ttl, 
+                        if value[1] < eff_async_ttl and not client.contains(callkey, eff_async_ttl,
                                 **easync_lazy_recheck_kwargs):
                             if renew_time is not None and (rv is not __NONE or lazy_kwargs):
                                 nclient.renew(callkey, eff_async_ttl + renew_time)
@@ -866,7 +866,7 @@ def cached(client, ttl,
             nclient.delete(callkey)
         if decorate is not None:
             invalidate_f = decorate(invalidate_f)
-        
+
         @wraps(of)
         def future_invalidate_f(*p, **kw):
             try:
@@ -878,7 +878,7 @@ def cached(client, ttl,
             return fclient[0].delete(callkey)
         if decorate is not None:
             future_invalidate_f = decorate(future_invalidate_f)
-        
+
         @wraps(of)
         def put_f(*p, **kw):
             value = kw.pop('_cache_put')
@@ -894,7 +894,7 @@ def cached(client, ttl,
             nclient.put(callkey, value, eff_ttl(), **(put_kwargs or EMPTY_KWARGS))
         if decorate is not None:
             put_f = decorate(put_f)
-        
+
         @wraps(of)
         def async_put_f(*p, **kw):
             if _initialize:
@@ -910,7 +910,7 @@ def cached(client, ttl,
             aclient[0].put(callkey, value, eff_ttl(), **(put_kwargs or EMPTY_KWARGS))
         if decorate is not None:
             async_put_f = decorate(async_put_f)
-        
+
         @wraps(of)
         def future_put_f(*p, **kw):
             value = kw.pop('_cache_put')
@@ -924,7 +924,7 @@ def cached(client, ttl,
             return fclient[0].put(callkey, value, eff_ttl(), **(put_kwargs or EMPTY_KWARGS))
         if decorate is not None:
             future_put_f = decorate(future_put_f)
-        
+
         @wraps(of)
         def async_lazy_cached_f(*p, **kw):
             if _initialize:
@@ -945,13 +945,13 @@ def cached(client, ttl,
             if (rv is __NONE or rvttl < eff_async_ttl) and not client.contains(callkey, eff_async_ttl, **elazy_kwargs):
                 if async_lazy_recheck:
                     stats.misses += 1
-                    
+
                     # send a Defer that touches the client with recheck kwargs
                     # before doing the refresh. Needs not be coherent.
                     def touch_key(*p, **kw):
-                        rv, rvttl = nclient.getTtl(callkey, __NONE, ttl_skip = eff_async_ttl, 
+                        rv, rvttl = nclient.getTtl(callkey, __NONE, ttl_skip = eff_async_ttl,
                             **eget_async_lazy_recheck_kwargs)
-                        if (rv is __NONE or rvttl < eff_async_ttl) and not nclient.contains(callkey, eff_async_ttl, 
+                        if (rv is __NONE or rvttl < eff_async_ttl) and not nclient.contains(callkey, eff_async_ttl,
                                 **easync_lazy_recheck_kwargs):
                             if renew_time is not None and (rv is not __NONE or lazy_kwargs):
                                 nclient.renew(callkey, eff_async_ttl + renew_time)
@@ -1092,8 +1092,8 @@ def cached(client, ttl,
                     _initialize[0]()
                 if not aclient and initialize:
                     # atomic
-                    aclient[:] = [async.AsyncWriteCacheClient(nclient, 
-                        async_writer_queue_size, 
+                    aclient[:] = [async.AsyncWriteCacheClient(nclient,
+                        async_writer_queue_size,
                         async_writer_workers,
                         **async_writer_kwargs)]
                     async_cached_f.client = aclient[0]
@@ -1146,7 +1146,7 @@ def cached(client, ttl,
         cached_f.on_promote = on_promote_f
         cached_f.on_value = on_value_f
         cached_f.placeholder_value = placeholder_value_f
-        
+
         future_cached_f.clear = lambda : fclient[0].clear()
         future_cached_f.client = None
         future_cached_f.async = cached_f.async
@@ -1172,7 +1172,7 @@ def cached(client, ttl,
     return decor
 
 if not no_coherence:
-    
+
     def coherent_cached(private, shared, ipsub, ttl,
             key = lambda *p, **kw:(p,frozenset(kw.items()) or ()),
             tiered_ = None,
@@ -1182,7 +1182,7 @@ if not no_coherence:
             coherence_timeout = None,
             value_serialization_function = None,
             value_deserialization_function = None,
-            async_writer_queue_size = None, 
+            async_writer_queue_size = None,
             async_writer_workers = None,
             async_writer_threadpool = None,
             async_writer_kwargs = None,
@@ -1207,60 +1207,60 @@ if not no_coherence:
         """
         This decorator provides cacheability to suitable functions, in a way that maintains coherency across
         multiple compute nodes.
-    
+
         For suitability considerations and common parameters, refer to cached. The following describes the
         aspects specific to the coherent version.
-    
+
         The decorated function will provide additional behavior through attributes:
             coherence: the coherence manager created for this purpse
-    
+
             ipsub: the given IPSub channel
-    
+
         Params
             ipsub: An IPSub channel that will be used to publish and subscribe to update events.
-    
+
             private: The private (local) cache client, the one that needs coherence.
-    
+
             shared: The shared cache client, that reflects changes made by other nodes, or a tuple
                 to specify multiple shared tiers.
-    
+
             tiered_: (optional) A client that queries both, private and shared. By default, a TieredInclusiveClient
-                is created with private and shared as first and second tier, which should be the most common case. 
+                is created with private and shared as first and second tier, which should be the most common case.
                 The private client will be wrapped in an async wrapper if not async already, to be able to execute
-                the coherence protocol asynchronously. This should be adequate for most cases, but in some, 
+                the coherence protocol asynchronously. This should be adequate for most cases, but in some,
                 it may be beneficial to provide a custom client.
-    
+
             tiered_opts: (optional) When using the default-constructed tiered client, you can pass additional (keyword)
                 arguments here.
-    
-            coherence_namespace: (optional) There is usually no need to specify this value, the namespace in use 
+
+            coherence_namespace: (optional) There is usually no need to specify this value, the namespace in use
                 by caching will be used for messaging as well, or if caching uses NO_NAMESPACE, the default that
                 would be used instead. However, for really high-volume channels, sometimes it is beneficial to pick
                 a more compact namespace (an id formatted with struct.pack for example).
-    
+
             coherence_encoding: (optional) Keys will have to be transmitted accross the channel, and this specifies
-                the encoding that will be used. The default 'pyobj' should work most of the time, but it has to 
+                the encoding that will be used. The default 'pyobj' should work most of the time, but it has to
                 be initialized, and 'json' or others could be more compact, depending on keys.
                 (see CoherenceManager for details on encodings)
-    
+
             coherence_timeout: (optional) Time (in ms) of peer silence that will be considered abnormal. Default
                 is 2000ms, which is sensible given the IPSub protocol. You may want to increase it if node load
                 creates longer hiccups.
 
             wait_time: (optional) Time (in ms) a call that is being computed externally will wait blocking for
-                a result. Waiting forever (None, the default) could block the writer threadpool, so it's best to 
+                a result. Waiting forever (None, the default) could block the writer threadpool, so it's best to
                 specify a reasonably adequate (for the application) timeout.
-    
+
             Any extra argument are passed verbatim to CoherenceManager's constructor.
         """
         if async_ttl is None:
             async_ttl = ttl / 2
         elif async_ttl < 0:
             async_ttl = ttl + async_ttl
-        
+
         if ttl_spread is True:
             ttl_spread = min(ttl, async_ttl, abs(ttl-async_ttl)) / 2
-        
+
         if not private.async:
             if async_writer_queue_size is None:
                 async_writer_queue_size = 100
@@ -1270,27 +1270,27 @@ if not no_coherence:
         if async_writer_kwargs is None:
             async_writer_kwargs = {}
         async_writer_kwargs.setdefault('threadpool', async_writer_threadpool)
-        
+
         def decor(f):
             if ttl_spread:
                 spread_type = type(ttl_spread)
                 eff_async_ttl = max(async_ttl / 2, async_ttl - spread_type(ttl_spread * 0.25 * random.random()))
             else:
                 eff_async_ttl = None
-            
+
             if coherence_namespace is None:
                 _coherence_namespace = _make_namespace(f, salt = autonamespace_version_salt)
             else:
                 _coherence_namespace = coherence_namespace
-    
+
             if namespace is None:
                 _namespace = _make_namespace(f, salt = autonamespace_version_salt)
             else:
                 _namespace = namespace
-    
+
             if not private.async:
-                nprivate = async.AsyncWriteCacheClient(private, 
-                    async_writer_queue_size, 
+                nprivate = async.AsyncWriteCacheClient(private,
+                    async_writer_queue_size,
                     async_writer_workers,
                     **async_writer_kwargs)
             else:
@@ -1305,32 +1305,32 @@ if not no_coherence:
             else:
                 shareds = shared
                 sharedt = tiered.TieredInclusiveClient(*shareds, **(tiered_opts or {}))
-            
+
             if tiered_ is None:
                 ntiered = tiered.TieredInclusiveClient(nprivate, *shareds, **(tiered_opts or {}))
             else:
                 ntiered = tiered_
-    
+
             if _namespace is not NO_NAMESPACE:
                 ntiered = base.NamespaceWrapper(_namespace, ntiered)
                 nprivate = base.NamespaceMirrorWrapper(ntiered, nprivate)
                 nshared = base.NamespaceMirrorWrapper(ntiered, sharedt)
             else:
                 nshared = sharedt
-    
+
             coherence_manager = coherence.CoherenceManager(
                 _coherence_namespace, nprivate, nshared, ipsub,
                 encoding = coherence_encoding,
                 **coherence_kwargs)
-    
+
             nclient = coherent.CoherentWrapperClient(ntiered, coherence_manager, coherence_timeout)
-    
+
             rv = cached(nclient, ttl,
                 namespace = NO_NAMESPACE, # Already covered
                 key = key,
                 value_serialization_function = value_serialization_function,
                 value_deserialization_function = value_deserialization_function,
-                async_writer_queue_size = async_writer_queue_size, 
+                async_writer_queue_size = async_writer_queue_size,
                 async_writer_workers = async_writer_workers,
                 async_writer_threadpool = async_writer_threadpool,
                 async_writer_kwargs = async_writer_kwargs,

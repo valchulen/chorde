@@ -14,7 +14,7 @@ def registerThreadCleanupFunction(f):
 
 def _callCleanupHooks():
     global _logger
-    
+
     for f in _cleanupHooks:
         try:
             f()

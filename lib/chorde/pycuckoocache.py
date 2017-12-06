@@ -77,7 +77,7 @@ class LazyCuckooCache(object):
 
     def __len__(self):
         return self.nitems
-    
+
     def __contains__(self, key):
         table = self.table
         tsize = len(table)
