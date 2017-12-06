@@ -6,6 +6,13 @@ All notable changes to this project will be documented here.
 ### Bugfixes
 - Fix NamespaceMirrorWrapper.clear by properly proxying
   writes on revision and revmark_ttl
+- Make LazyCuckooCache's rehash (resize) operation
+  atomic to avoid concurrent rehashing, which can cause
+  corruption and crashes in rare corner cases, most
+  notably with non-preallocated caches that grow very
+  rapidly from concurrent writer threads and cause
+  eviction callbacks due to hash collisions during
+  rehashing.
 
 ### Changed
 - Each client has a different logger
@@ -20,13 +27,6 @@ All notable changes to this project will be documented here.
   inadvertantly. Check the values' TTL befure using it
   in a REGET, inhibit caller's reget, and use promotion
   logic instead.
-- Make LazyCuckooCache's rehash (resize) operation
-  atomic to avoid concurrent rehashing, which can cause
-  corruption and crashes in rare corner cases, most
-  notably with non-preallocated caches that grow very
-  rapidly from concurrent writer threads and cause
-  eviction callbacks due to hash collisions during
-  rehashing.
 
 ## [0.2.0] - 2017-09-20
 ### Changed
