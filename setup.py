@@ -60,29 +60,29 @@ for req in all_requirements:
 extra = {}
 
 packages = [
-      "chorde",
-      "chorde.clients",
-      "chorde.mq",
-      "chorde.mq.ipsub",
+    "chorde",
+    "chorde.clients",
+    "chorde.mq",
+    "chorde.mq.ipsub",
 ]
 
 if not no_pyrex:
     extra.update(dict(
         ext_modules=cythonize([
-          Extension("chorde.lrucache", ["lib/lrucache/lrucache.pyx"],
-                    depends = ["lib/lrucache/lrucache.pxd"],
-                    cython_include_dirs = [os.path.join(os.path.dirname(__file__), "lib/lrucache")],
-                    extra_compile_args = [ "-O3" ] ),
-                    #extra_compile_args = ["-march=pentium4","-mfpmath=sse","-msse2"] ),
-          Extension("chorde.cuckoocache", ["lib/cuckoocache/cuckoocache.pyx"],
-                    depends = ["lib/cuckoocache/cuckoocache.pxd"],
-                    cython_include_dirs = [os.path.join(os.path.dirname(__file__), "lib/cuckoocache")],
-                    extra_compile_args = [ "-O3" ] ),
-          Extension("chorde.clients._async", ["lib/chorde/clients/_async.pyx"],
-                    depends = ["lib/chorde/clients/_async.pxd"],
-                    extra_compile_args = [ "-O3" ] ),
-                    #extra_compile_args = ["-march=pentium4","-mfpmath=sse","-msse2"] ),
-          ]),
+            Extension("chorde.lrucache", ["lib/lrucache/lrucache.pyx"],
+                depends = ["lib/lrucache/lrucache.pxd"],
+                cython_include_dirs = [os.path.join(os.path.dirname(__file__), "lib/lrucache")],
+                extra_compile_args = [ "-O3" ] ),
+                #extra_compile_args = ["-march=pentium4","-mfpmath=sse","-msse2"] ),
+            Extension("chorde.cuckoocache", ["lib/cuckoocache/cuckoocache.pyx"],
+                depends = ["lib/cuckoocache/cuckoocache.pxd"],
+                cython_include_dirs = [os.path.join(os.path.dirname(__file__), "lib/cuckoocache")],
+                extra_compile_args = [ "-O3" ] ),
+            Extension("chorde.clients._async", ["lib/chorde/clients/_async.pyx"],
+                depends = ["lib/chorde/clients/_async.pxd"],
+                extra_compile_args = [ "-O3" ] ),
+                #extra_compile_args = ["-march=pentium4","-mfpmath=sse","-msse2"] ),
+        ]),
         cmdclass = {'build_ext': build_ext},
         data_files = [
             ('chorde', ['lib/lrucache/lrucache.pxd']),
@@ -91,34 +91,34 @@ if not no_pyrex:
     ))
 
 setup(
-  name = "chorde",
-  version = VERSION,
-  description = "Clustered Caching Library",
-  author = "Claudio Freire",
-  author_email = "klaussfreire@gmail.com",
-  url = "https://bitbucket.org/claudiofreire/chorde/",
-  license = "LGPLv3",
-  long_description = readme,
-  packages = packages,
-  package_dir = {'':'lib'},
+    name = "chorde",
+    version = VERSION,
+    description = "Clustered Caching Library",
+    author = "Claudio Freire",
+    author_email = "klaussfreire@gmail.com",
+    url = "https://bitbucket.org/claudiofreire/chorde/",
+    license = "LGPLv3",
+    long_description = readme,
+    packages = packages,
+    package_dir = {'':'lib'},
 
-  tests_require = 'nose',
-  test_suite = 'tests',
+    tests_require = 'nose',
+    test_suite = 'tests',
 
-  install_requires = requirements,
-  extras_require = extras_requirements,
+    install_requires = requirements,
+    extras_require = extras_requirements,
 
-  classifiers=[
-            "Development Status :: 4 - Beta",
-            "Intended Audience :: Developers",
-            "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
-            "Programming Language :: Python",
-            "Programming Language :: Cython",
-            "Programming Language :: Python :: 2",
-            "Topic :: Software Development :: Libraries",
-            "Operating System :: OS Independent",
-            ],
-  zip_safe = False,
-  **extra
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+        "Programming Language :: Python",
+        "Programming Language :: Cython",
+        "Programming Language :: Python :: 2",
+        "Topic :: Software Development :: Libraries",
+        "Operating System :: OS Independent",
+    ],
+    zip_safe = False,
+    **extra
 )
 
