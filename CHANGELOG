@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented here.
 
+## [0.3.1] - Unreleased
+### Bugfixes
+- Fix broker state listener states on some corner-case
+  error handling in coherence manager that might cause it
+  to have both listener and broker event listeners registered
+  with the ipsub channel
+
 ## [0.3.0] - 2017-12-06
 ### Bugfixes
 - Fix NamespaceMirrorWrapper.clear by properly proxying

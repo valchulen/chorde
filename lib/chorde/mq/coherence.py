@@ -217,6 +217,12 @@ class CoherenceManager(object):
         # Broker -> Listener requests
         self.listpendqprefix = namespace + '|c|listpendq|'
 
+        # FSM state event lister handles, not registered yet
+        self.encoded_pending = None
+        self.encoded_done = None
+        self.encoded_abort = None
+        self.encoded_pending_query = None
+
         self.bound_pending = _bound_weak_callback(self, self._on_pending)
         self.bound_done = _bound_weak_callback(self, self._on_done)
         self.bound_abort = _bound_weak_callback(self, self._on_abort)
@@ -242,7 +248,7 @@ class CoherenceManager(object):
             if ipsub_.is_broker:
                 self._on_enter_broker(weakref.ref(self), None, ipsub.EVENT_ENTER_BROKER, None)
             else:
-                self._on_enter_listener(weakref.ref(self), None, ipsub.EVENT_ENTER_BROKER, None)
+                self._on_enter_listener(weakref.ref(self), None, ipsub.EVENT_ENTER_LISTENER, None)
 
     @property
     def txid(self):
@@ -479,7 +485,13 @@ class CoherenceManager(object):
                     # It happens here that the IPSub returns its OK reply, when
                     # there are no registered brokers on our namespace. Means it's up to us.
                     # Enter broker mode and answer our caller locally
-                    self._on_enter_broker(weakref.ref(self), None, ipsub.EVENT_ENTER_BROKER, None)
+                    if ipsub_.is_running:
+                        if ipsub_.is_broker:
+                            self._on_leave_listener(weakref.ref(self), None, ipsub.EVENT_LEAVE_LISTENER, None)
+                            self._on_enter_broker(weakref.ref(self), None, ipsub.EVENT_ENTER_BROKER, None)
+                        else:
+                            self._on_leave_broker(weakref.ref(self), None, ipsub.EVENT_LEAVE_BROKER, None)
+                            self._on_enter_listener(weakref.ref(self), None, ipsub.EVENT_ENTER_LISTENER, None)
                     return self._query_pending_locally(key, expired, timeout, optimistic_lock)
                 if rv is not None:
                     rv = rv[-1]
