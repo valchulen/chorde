@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.3.1] - Unreleased
+## [0.3.1] - 2018-02-07
 ### Bugfixes
 - Fix broker state listener states on some corner-case
   error handling in coherence manager that might cause it
