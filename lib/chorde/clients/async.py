@@ -82,6 +82,11 @@ class Defer(object):
             else:
                 future.set(rv)
 
+def _renew_undefer(self, key, ttl, kw, value):
+    self = self()
+    self.client.renew(key, ttl, **(kw or {}))
+    return value.undefer()
+
 _global_cleanup_tasks = []
 
 class AsyncCacheWriterThreadPool(ThreadPool):
@@ -372,6 +377,17 @@ class AsyncCacheWriterPool:
                     else:
                         # Why not
                         delayed = functools.partial(future.set, queue_value)
+            else:
+                queue_value = queueset.get(key)
+                if queue_value is not None:
+                    queue_value, queue_ttl, queue_kwargs = queue_value
+                    if queue_value is _RENEW:
+                        # Turn renew + put serial operations into a single renew-then-put defer
+                        queueset[key] = (
+                            Defer(_renew_undefer, self._wself, key, queue_ttl, queue_kwargs, value),
+                            ttl,
+                            (kw or None)
+                        )
         else:
             # New one wins, we just have to chain any queued future
             queue_value = queueset.get(key)

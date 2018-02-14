@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented here.
 
+## [0.3.2] - Unreleased
+### Bugfixes
+- Fix combined use of coherence and renew_ttl. Renew
+  would take precedence over the refresh operation,
+  perpetuating stale results
+
 ## [0.3.1] - 2018-02-07
 ### Bugfixes
 - Fix broker state listener states on some corner-case

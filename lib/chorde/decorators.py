@@ -1325,6 +1325,12 @@ if not no_coherence:
 
             nclient = coherent.CoherentWrapperClient(ntiered, coherence_manager, coherence_timeout)
 
+            expired_ttl = async_ttl
+            if eff_async_ttl:
+                expired_ttl = max(expired_ttl, eff_async_ttl)
+            if renew_time:
+                expired_ttl = max(expired_ttl, (eff_async_ttl or async_ttl) + renew_time)
+
             rv = cached(nclient, ttl,
                 namespace = NO_NAMESPACE, # Already covered
                 key = key,
@@ -1349,8 +1355,8 @@ if not no_coherence:
                 future_sync_check = future_sync_check,
                 ttl_spread = ttl_spread,
                 _eff_async_ttl = eff_async_ttl,
-                _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl, None),
-                _fput_deferred = partial(_coherent_put_deferred, nshared, async_ttl, wait_time=wait_time) )(f)
+                _put_deferred = partial(_coherent_put_deferred, nshared, expired_ttl, None),
+                _fput_deferred = partial(_coherent_put_deferred, nshared, expired_ttl, wait_time=wait_time) )(f)
             rv.coherence = coherence_manager
             rv.ipsub = ipsub
             return rv
