@@ -25,6 +25,25 @@ except:
         "explicit synchronization. Decreased performance will be noticeable")
     del warnings
 
+try:
+
+    import chorde.cuckoocache
+    CuckooCache = chorde.cuckoocache.LazyCuckooCache
+    assert issubclass(chorde.cuckoocache.CacheMissError, CacheMissError)
+
+except:
+
+    import chorde.pycuckoocache
+    CuckooCache = chorde.pycuckoocache.LazyCuckooCache
+    assert issubclass(chorde.pycuckoocache.CacheMissError, CacheMissError)
+
+    if CacheIsThreadsafe:
+        import warnings
+        warnings.warn("CuckooCache extension module not built in, "
+            "but LRUCache module was built. InprocCacheClient will be assumed "
+            "thread-safe, you will need to wrap it in a synchronized adapter "
+            "to be used with CuckooCache!")
+
 _caches_mutex = threading.RLock()
 _caches = weakref.WeakKeyDictionary()
 
@@ -39,18 +58,18 @@ def cacheStats():
         rv = {}
         for cache in _caches.iterkeys():
             fname = cache.func_name
-            
+
             # Sometimes, functions are different but named the same. Usually
             # they're related, so we aggregate those stats.
             ocsize, oclen = rv.get(fname, (0,0))
             rv[fname] = ( cache.store.size + ocsize, len(cache.store)+oclen )
-            
+
         return rv
 
 def cachePurge(timeout = 0, sleeptime = None):
     with _caches_mutex:
         caches = _caches.keys()
-    
+
     for cache in caches:
         if sleeptime is not None:
             time.sleep(sleeptime)
@@ -93,7 +112,7 @@ def cacheClear():
 
     with _caches_mutex:
         caches = _caches.keys()
-    
+
     for cache in caches:
         cache.clear()
 
@@ -105,10 +124,10 @@ class CacheJanitorThread(threading.Thread):
         self.purge_timeout = purge_timeout
         self.logger = None
         self.setDaemon(True)
-        
+
     def run(self):
         global cachePurge
-        
+
         while True:
             time.sleep(self.sleep_interval)
             try:
@@ -184,18 +203,13 @@ class InprocCacheClient(base.BaseCacheClient):
         except CacheMissError:
             pass
 
-    def getTtl(self, key, default = base.NONE, ttl_skip=None, 
+    def getTtl(self, key, default = base.NONE, ttl_skip=None,
             promote_callback=None, baseNONE = base.NONE, time=time.time):
         rv = self.store.get(key, baseNONE)
         if rv is not baseNONE:
             rv, ttl = rv
             ttl = ttl - time()
-            if ttl_skip is None or ttl >= ttl_skip:
-                return rv, ttl
-            elif default is baseNONE:
-                raise CacheMissError, key
-            else:
-                return default, -1
+            return rv, ttl
         elif default is baseNONE:
             raise CacheMissError, key
         else:
@@ -230,7 +244,7 @@ class InprocCacheClient(base.BaseCacheClient):
         retentions_append = retentions.append
         cache_pop = cache.pop
         for k in deletions:
-            # keep them alive so that no finalizations occur within the mutex's scope 
+            # keep them alive so that no finalizations occur within the mutex's scope
             # (when wrapped inside a ReadWriteSyncAdapter), otherwise weird deadlocks
             # could arise.
             retentions_append(cache_pop(k, None))

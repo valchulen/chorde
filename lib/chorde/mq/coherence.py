@@ -29,7 +29,7 @@ class CLEAR:
     pass
 
 DEFAULT_P2P_BINDHOSTS = (
-    "ipc:///tmp/coherence-%(identity)s-%(randport)s", 
+    "ipc:///tmp/coherence-%(identity)s-%(randport)s",
     "tcp://localhost"
 )
 
@@ -62,7 +62,7 @@ HASHES = {
     int : lambda x : hash(x) & 0xFFFFFFFF, # hash(x:int) = x, but must be 64/32-bit compatible
     long : lambda x : hash(x) & 0xFFFFFFFF, # must be 64/32-bit compatible
     str : _psufix, # prefix+suffix is ok for most
-    unicode : lambda x : _psufix(x.encode("utf8")), 
+    unicode : lambda x : _psufix(x.encode("utf8")),
     list : len,
     set : len,
     dict : len,
@@ -122,8 +122,8 @@ def _noop(*p, **kw):
     return
 
 class CoherenceManager(object):
-    def __init__(self, namespace, private, shared, ipsub_, 
-            p2p_pub_bindhosts = DEFAULT_P2P_BINDHOSTS, 
+    def __init__(self, namespace, private, shared, ipsub_,
+            p2p_pub_bindhosts = DEFAULT_P2P_BINDHOSTS,
             encoding = 'pyobj',
             synchronous = False,
             quick_refresh = False,
@@ -134,7 +134,7 @@ class CoherenceManager(object):
         Params
             namespace: A namespace that will use to identify events in subscription
                 chatter. If granular enough, it will curb chatter considerably.
-            
+
             private: A client to a private cache
 
             shared: (optional) A client to a shared cache. If not given,
@@ -174,7 +174,7 @@ class CoherenceManager(object):
                 by expiring old pending entries as the list reaches this limit.
         """
         assert value_pickler or shared
-        
+
         self.private = private
         self.shared = shared
         self.ipsub = ipsub_
@@ -217,6 +217,12 @@ class CoherenceManager(object):
         # Broker -> Listener requests
         self.listpendqprefix = namespace + '|c|listpendq|'
 
+        # FSM state event lister handles, not registered yet
+        self.encoded_pending = None
+        self.encoded_done = None
+        self.encoded_abort = None
+        self.encoded_pending_query = None
+
         self.bound_pending = _bound_weak_callback(self, self._on_pending)
         self.bound_done = _bound_weak_callback(self, self._on_done)
         self.bound_abort = _bound_weak_callback(self, self._on_abort)
@@ -226,15 +232,15 @@ class CoherenceManager(object):
         self.bound_tic = _bound_weak_callback(self, self._on_tic)
         self.encoded_pending = self.encoded_done = self.encoded_pending_query = None
 
-        ipsub_.listen_decode(self.delprefix, ipsub.EVENT_INCOMING_UPDATE, 
+        ipsub_.listen_decode(self.delprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.bound_deletion )
-        ipsub_.listen('', ipsub.EVENT_ENTER_BROKER, 
+        ipsub_.listen('', ipsub.EVENT_ENTER_BROKER,
             _bound_weak_callback(self, self._on_enter_broker) )
-        ipsub_.listen('', ipsub.EVENT_LEAVE_BROKER, 
+        ipsub_.listen('', ipsub.EVENT_LEAVE_BROKER,
             _bound_weak_callback(self, self._on_leave_broker) )
-        ipsub_.listen('', ipsub.EVENT_ENTER_LISTENER, 
+        ipsub_.listen('', ipsub.EVENT_ENTER_LISTENER,
             _bound_weak_callback(self, self._on_enter_listener) )
-        ipsub_.listen('', ipsub.EVENT_LEAVE_LISTENER, 
+        ipsub_.listen('', ipsub.EVENT_LEAVE_LISTENER,
             _bound_weak_callback(self, self._on_leave_listener) )
 
         if ipsub_.is_running:
@@ -242,7 +248,7 @@ class CoherenceManager(object):
             if ipsub_.is_broker:
                 self._on_enter_broker(weakref.ref(self), None, ipsub.EVENT_ENTER_BROKER, None)
             else:
-                self._on_enter_listener(weakref.ref(self), None, ipsub.EVENT_ENTER_BROKER, None)
+                self._on_enter_listener(weakref.ref(self), None, ipsub.EVENT_ENTER_LISTENER, None)
 
     @property
     def txid(self):
@@ -275,7 +281,7 @@ class CoherenceManager(object):
                 self.private.delete(key)
             except CacheMissError:
                 pass
-        
+
         if self.synchronous:
             self.ipsub.publish_encode(self.delackprefix, self.encoding, txid)
 
@@ -284,13 +290,13 @@ class CoherenceManager(object):
     @_weak_callback
     def _on_enter_broker(self, prefix, event, payload):
         ipsub_ = self.ipsub
-        self.encoded_pending = ipsub_.listen_decode(self.pendprefix, ipsub.EVENT_INCOMING_UPDATE, 
+        self.encoded_pending = ipsub_.listen_decode(self.pendprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.bound_pending )
-        self.encoded_done = ipsub_.listen_decode(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE, 
+        self.encoded_done = ipsub_.listen_decode(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.bound_done )
-        self.encoded_abort = ipsub_.listen_decode(self.abortprefix, ipsub.EVENT_INCOMING_UPDATE, 
+        self.encoded_abort = ipsub_.listen_decode(self.abortprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.bound_abort )
-        self.encoded_pending_query = ipsub_.listen_decode(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
+        self.encoded_pending_query = ipsub_.listen_decode(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.bound_pending_query )
         ipsub_.listen('', ipsub.EVENT_TIC, self.bound_tic)
         ipsub_.publish_encode(self.listpendqprefix, self.encoding, None)
@@ -299,13 +305,13 @@ class CoherenceManager(object):
     @_weak_callback
     def _on_leave_broker(self, prefix, event, payload):
         ipsub_ = self.ipsub
-        ipsub_.unlisten(self.pendprefix, ipsub.EVENT_INCOMING_UPDATE, 
+        ipsub_.unlisten(self.pendprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.encoded_pending )
-        ipsub_.unlisten(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE, 
+        ipsub_.unlisten(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.encoded_done )
-        ipsub_.unlisten(self.abortprefix, ipsub.EVENT_INCOMING_UPDATE, 
+        ipsub_.unlisten(self.abortprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.encoded_abort )
-        ipsub_.unlisten(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
+        ipsub_.unlisten(self.pendqprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.encoded_pending_query )
         ipsub_.unlisten('', ipsub.EVENT_TIC, self.bound_tic)
         return True
@@ -313,24 +319,24 @@ class CoherenceManager(object):
     @_weak_callback
     def _on_enter_listener(self, prefix, event, payload):
         ipsub_ = self.ipsub
-        ipsub_.listen(self.listpendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
+        ipsub_.listen(self.listpendqprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.bound_list_pending_query )
         if self.quick_refresh:
-            self.encoded_done = ipsub_.listen_decode(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE, 
+            self.encoded_done = ipsub_.listen_decode(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE,
                 self.bound_done )
-            self.encoded_abort = ipsub_.listen_decode(self.abortprefix, ipsub.EVENT_INCOMING_UPDATE, 
+            self.encoded_abort = ipsub_.listen_decode(self.abortprefix, ipsub.EVENT_INCOMING_UPDATE,
                 self.bound_abort )
         return True
 
     @_weak_callback
     def _on_leave_listener(self, prefix, event, payload):
         ipsub_ = self.ipsub
-        ipsub_.unlisten(self.listpendqprefix, ipsub.EVENT_INCOMING_UPDATE, 
+        ipsub_.unlisten(self.listpendqprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.bound_list_pending_query )
         if self.quick_refresh:
-            ipsub_.unlisten(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE, 
+            ipsub_.unlisten(self.doneprefix, ipsub.EVENT_INCOMING_UPDATE,
                 self.encoded_done )
-            ipsub_.unlisten(self.abortprefix, ipsub.EVENT_INCOMING_UPDATE, 
+            ipsub_.unlisten(self.abortprefix, ipsub.EVENT_INCOMING_UPDATE,
                 self.encoded_abort )
         return True
 
@@ -338,10 +344,10 @@ class CoherenceManager(object):
     def _on_tic(self, prefix, event, payload):
         # Bye recents, no longer recent
         self.recent_done.clear()
-        
+
         if not self.ipsub.is_broker:
             return False
-        
+
         # Check pending freshness, ask for refreshers
         now = time.time()
         needs_refresh = False
@@ -443,11 +449,11 @@ class CoherenceManager(object):
         ipsub_ = self.ipsub
         txid = self.txid if optimistic_lock else None
         req = ipsub_.encode_payload(self.encoding, (
-            key, 
+            key,
             txid,
-            self.p2p_pub_binds, 
+            self.p2p_pub_binds,
             optimistic_lock))
-        
+
         ctx = ipsub_.context
         waiter, waiter_id = _mkwaiter(ctx, zmq.PAIR, "qpw")
         try:
@@ -479,7 +485,13 @@ class CoherenceManager(object):
                     # It happens here that the IPSub returns its OK reply, when
                     # there are no registered brokers on our namespace. Means it's up to us.
                     # Enter broker mode and answer our caller locally
-                    self._on_enter_broker(weakref.ref(self), None, ipsub.EVENT_ENTER_BROKER, None)
+                    if ipsub_.is_running:
+                        if ipsub_.is_broker:
+                            self._on_leave_listener(weakref.ref(self), None, ipsub.EVENT_LEAVE_LISTENER, None)
+                            self._on_enter_broker(weakref.ref(self), None, ipsub.EVENT_ENTER_BROKER, None)
+                        else:
+                            self._on_leave_broker(weakref.ref(self), None, ipsub.EVENT_LEAVE_BROKER, None)
+                            self._on_enter_listener(weakref.ref(self), None, ipsub.EVENT_ENTER_LISTENER, None)
                     return self._query_pending_locally(key, expired, timeout, optimistic_lock)
                 if rv is not None:
                     rv = rv[-1]
@@ -492,7 +504,7 @@ class CoherenceManager(object):
             ipsub_.unlisten(self.namespace, ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
         finally:
             waiter.close()
-        
+
         if optimistic_lock and rv is None:
             # We acquired it
             self.recent_done.pop(key,None)
@@ -503,8 +515,8 @@ class CoherenceManager(object):
         # Publish pending notification for anyone listening
         payload = (
             # pending data
-            self.txid, 
-            keys, 
+            self.txid,
+            keys,
             # contact info data
             self.p2p_pub_binds,
         )
@@ -629,7 +641,7 @@ class CoherenceManager(object):
             if txid is None:
                 txid = self.txid
             first_key = iter(keys).next()
-            self.ipsub.publish_encode(self.doneprefix+str(self.stable_hash(first_key)), self.encoding, 
+            self.ipsub.publish_encode(self.doneprefix+str(self.stable_hash(first_key)), self.encoding,
                 (txid, keys, self.p2p_pub_binds),
                 timeout = timeout)
         return NoopWaiter()
@@ -640,7 +652,7 @@ class CoherenceManager(object):
             if txid is None:
                 txid = self.txid
             first_key = iter(keys).next()
-            self.ipsub.publish_encode(self.abortprefix+str(self.stable_hash(first_key)), self.encoding, 
+            self.ipsub.publish_encode(self.abortprefix+str(self.stable_hash(first_key)), self.encoding,
                 (txid, keys, self.p2p_pub_binds),
                 timeout = timeout)
         return NoopWaiter()
@@ -662,7 +674,7 @@ class CoherenceManager(object):
             key: The key to wait for
             poll_interval: A timeout(ms), pending status
                 rechecks will be performed in this interval.
-            timeout: maximum time to wait (in ms). If not None, 
+            timeout: maximum time to wait (in ms). If not None,
                 the method's return value must be checked for success.
         """
 
@@ -671,12 +683,12 @@ class CoherenceManager(object):
         if recent is not None and (time.time() - recent) < (poll_interval * 1.01):
             # don't wait then
             return True
-        
+
         ipsub_ = self.ipsub
         keysuffix = str(self.stable_hash(key))
         doneprefix = self.doneprefix+keysuffix
         abortprefix = self.abortprefix+keysuffix
-        
+
         ctx = ipsub_.context
         waiter, waiter_id = _mkwaiter(ctx, zmq.PAIR, "qpw")
         dsignaler = asignaler = ssignaler = None

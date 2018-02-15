@@ -28,14 +28,14 @@ def _register_files(cache):
 def cachePurge(timeout = 0):
     with _caches_mutex:
         caches = _caches.keys()
-    
+
     for cache in caches:
         cache.purge(timeout)
 
 def cacheClear():
     with _caches_mutex:
         caches = _caches.keys()
-    
+
     for cache in caches:
         cache.clear()
 
@@ -47,10 +47,10 @@ class CacheJanitorThread(threading.Thread):
         self.purge_timeout = purge_timeout
         self.logger = None
         self.setDaemon(True)
-        
+
     def run(self):
         global cachePurge
-        
+
         while True:
             time.sleep(self.sleep_interval)
             try:
@@ -150,7 +150,7 @@ def _clean(path, sizeback = None):
         except:
             # Doesn't exist...
             return
-    
+
     try:
         os.unlink(path)
     except:
@@ -220,8 +220,8 @@ class FilesCacheClient(base.BaseCacheClient):
                 way of grabbing a counter slot implemented in those platforms). The default should
                 work on most posix platforms.
 
-            key_pickler: Pickling *function* used to serialize keys. By default, it's json. This 
-                function should be stable: equal keys must serialize to equal strings. 
+            key_pickler: Pickling *function* used to serialize keys. By default, it's json. This
+                function should be stable: equal keys must serialize to equal strings.
                 Important Note: Pickle doesn't always respect this invariant.
 
             value_pickler: Pickling *function* used to serialize values. It should take a signature
@@ -234,7 +234,10 @@ class FilesCacheClient(base.BaseCacheClient):
                 function is based on pickling, otherwise malicious injection into the cache
                 file heirarchy could result in arbitrary code execution.
 
-            value_opener: opener *function* used to return non-file object. It should take a fileobject parameter
+            value_opener: opener *function* used to return non-file object. The function must expect two
+                arguments:
+                    * filename (str): The complete path where the file is located.
+                    * mode (str): The same modes expected by built-in `open` function.
 
             checksum_key: When using the default picklers, this *private* key is necessary
                 in order to authenticate values and make sure they have been written by this process
@@ -283,7 +286,7 @@ class FilesCacheClient(base.BaseCacheClient):
         else:
             self.value_pickler = value_pickler
             self.value_unpickler = value_unpickler
-        
+
         _register_files(self)
 
     def _make_counter(self):
@@ -312,11 +315,11 @@ class FilesCacheClient(base.BaseCacheClient):
             # Re-open it
             rv = cls.from_path(counter_slots, path)
         if int(rv) == 0:
-            logger = logging.getLogger('chorde')
+            logger = logging.getLogger('chorde.files')
 
             t0 = time.time()
             logger.info("Initializing concurrent counter for file-based cache on %r", self.basepath)
-            
+
             # Um... uninitialized
             # Compute size
             actual_size = self._compute_size()
@@ -326,9 +329,9 @@ class FilesCacheClient(base.BaseCacheClient):
                 # Nop, set
                 rv += actual_size
                 rv.flush()
-            
+
             t1 = time.time()
-            logger.info("Initialized concurrent counter for file-based cache on %r (%.3fs)", 
+            logger.info("Initialized concurrent counter for file-based cache on %r (%.3fs)",
                 self.basepath, t1 - t0)
 
         return rv
@@ -410,7 +413,7 @@ class FilesCacheClient(base.BaseCacheClient):
 
         def setPermsf(fileobj):
             os.fchmod(fileobj.fileno(), self.filemode)
-        
+
         if not reuse_keyfile:
             # Create a key file
             # Yeah, can't use a context manager, pity
@@ -421,37 +424,37 @@ class FilesCacheClient(base.BaseCacheClient):
             except:
                 keyfile.close()
                 raise
-            
-            # On posix systems, where swap does an atomic rename, 
+
+            # On posix systems, where swap does an atomic rename,
             # which preserves source attributes, this avoids instants
             # where the entry is there but expired. Its TTL will be reset
             # with the proper time from insertion in the cache later on.
             setTtl(keyfile.name)
             setPermsf(keyfile)
-        
+
         try:
             try:
                 if hasattr(value, 'fileno') and hasattr(value, 'name') and os.path.isabs(value.name):
                     # Looks like a file, so we can simply link, try
                     name = value.name
-                    
+
                     # Overwiting from unknown location, must take extra care
                     _link(name, targetpath+'.file', self.size.__iadd__, self.filemode)
                     if not reuse_keyfile:
                         _swap(keyfile.name, keypath, self.size.__iadd__)
                         keyfile.delete = False
-                    
+
                     # Succeeded, clean up other representations, if they exist, set ttl
                     _clean(targetpath+'.raw', self.size.__isub__)
                     _clean(targetpath+'.ser', self.size.__isub__)
                     setTtl(keypath)
-                    
+
                     return True
             except:
                 logging.error("Oops", exc_info = True)
                 # Meh, linking didn't work
                 pass
-                
+
             # Else, must stuff the values into a file
             if isinstance(value, (bytes,buffer)):
                 # Quite easily... stuff it
@@ -464,32 +467,32 @@ class FilesCacheClient(base.BaseCacheClient):
                     if not reuse_keyfile:
                         _swap(keyfile.name, keypath, self.size.__iadd__)
                         keyfile.delete = False
-                    
+
                     # Succeeded, clean up other representations, if they exist
                     _clean(targetpath+'.file', self.size.__isub__)
                     _clean(targetpath+'.ser', self.size.__isub__)
                     setTtl(keypath)
-                    
+
                 return True
             else:
                 if not self.checksum_key:
                     raise RuntimeError, "Cannot encode arbitrary objects without a checksum key"
-                
+
                 with self._mktmp() as rawfile:
                     self.value_pickler(value, rawfile, 2)
                     rawfile.flush()
-                    
+
                     _swap(rawfile.name, targetpath+'.ser', self.size.__iadd__)
                     rawfile.delete = False
                     if not reuse_keyfile:
                         _swap(keyfile.name, keypath, self.size.__iadd__)
                         keyfile.delete = False
-                    
+
                     # Succeeded, clean up other representations, if they exist
                     _clean(targetpath+'.file', self.size.__isub__)
                     _clean(targetpath+'.raw', self.size.__isub__)
                     setTtl(keypath)
-                    
+
                 return True
         finally:
             if not reuse_keyfile:
@@ -499,7 +502,7 @@ class FilesCacheClient(base.BaseCacheClient):
 
     def put(self, key, value, ttl):
         self._put(key, value, ttl, True)
-        
+
         try:
             del self._failfast_cache[key]
         except:
@@ -538,7 +541,7 @@ class FilesCacheClient(base.BaseCacheClient):
 
     def add(self, key, value, ttl):
         rv = self._put(key, value, ttl, False)
-        
+
         try:
             del self._failfast_cache[key]
         except:
@@ -575,8 +578,8 @@ class FilesCacheClient(base.BaseCacheClient):
             except:
                 pass
 
-    def _getTtl(self, key, default = base.NONE, baseNONE = base.NONE, ttl_skip=None, 
-            promote_callback = None, decode=True):
+    def _getTtl(self, key, default = base.NONE, baseNONE = base.NONE, ttl_skip=None,
+            promote_callback = None, decode=True, return_stale=False):
         key = self.key_pickler(key)
         kpath = self._mkpath(key)
         targetpath = os.path.join(self.basepath, *kpath)
@@ -594,14 +597,14 @@ class FilesCacheClient(base.BaseCacheClient):
         # Check fail-fast cache before opening files and all taht
         if self._failfast_cache.get(key) > (time.time() - self.failfast_time):
             return default, -1
-        
+
         with open(keypath) as ekey:
             if ekey.read() == key:
                 # Um... check the validity of the current value before going further
                 ttl = os.path.getmtime(keypath)
                 rttl = ttl - time.time()
 
-                if ttl_skip is not None and rttl < ttl_skip:
+                if not return_stale and (ttl_skip is not None and rttl < ttl_skip):
                     return default, -1
                 elif decode:
                     try:
@@ -627,7 +630,7 @@ class FilesCacheClient(base.BaseCacheClient):
                             return default, -1
                     except:
                         # Oops
-                        logging.getLogger('chorde').error("Error retrieving file contents", exc_info = True)
+                        logging.getLogger('chorde.files').error("Error retrieving file contents", exc_info = True)
                         return default, -1
                 else:
                     return default, rttl
@@ -639,7 +642,7 @@ class FilesCacheClient(base.BaseCacheClient):
         # This trampoline is necessary to avoid re-entrancy issues when this client
         # is wrapped inside a SyncWrapper. Internal calls go directly to _getTtl
         # to avoid locking the wrapper's mutex.
-        return self._getTtl(key, default, ttl_skip = ttl_skip, **kw)
+        return self._getTtl(key, default, ttl_skip = ttl_skip, return_stale = True, **kw)
 
     def get(self, key, default=NONE, **kw):
         rv, ttl = self._getTtl(key, default, ttl_skip = 0, **kw)
@@ -647,9 +650,9 @@ class FilesCacheClient(base.BaseCacheClient):
             raise CacheMissError, key
         else:
             return rv
-    
+
     def contains(self, key, ttl = None):
-        rv, ettl = self._getTtl(key, ttl_skip = 0, decode = False)
+        rv, ettl = self._getTtl(key, ttl_skip = 0, decode = False, return_stale = False)
         if ettl < 0:
             return False
         else:
@@ -664,7 +667,7 @@ class FilesCacheClient(base.BaseCacheClient):
         # Free up stuff
         self.size.close()
         self.size = None
-    
+
     def clear(self):
         # Bye bye everything
         self.size.flush()
@@ -683,7 +686,7 @@ class FilesCacheClient(base.BaseCacheClient):
                     pass
             del dirnames[:]
             del filenames[:]
-        
+
         # Must reset counter now
         self.size.close()
         self.size = self._make_counter()
@@ -702,7 +705,7 @@ class FilesCacheClient(base.BaseCacheClient):
     def _try_purge(self, timeout):
         # Non-blocking trampoline
         self.__do_purge(timeout)
-    
+
     def __do_purge(self, timeout):
         # Abbreviations to make it more readable
         exists = os.path.exists
@@ -714,7 +717,7 @@ class FilesCacheClient(base.BaseCacheClient):
         fullsize = 0
         expired_items = expired_bytes = evicted_items = evicted_bytes = 0
 
-        logger = logging.getLogger('chorde')
+        logger = logging.getLogger('chorde.files')
         logger.info('Purging file-based cache at %r, cached size %d / %d',
             basepath, int(self.size), self.max_size)
 
@@ -820,9 +823,9 @@ class FilesCacheClient(base.BaseCacheClient):
                     fullsize -= delta
                     evicted_items += 1
                     evicted_bytes += delta
-                    logger.debug('Removed overflow entry of size %d LRU %fs ago at %r', 
+                    logger.debug('Removed overflow entry of size %d LRU %fs ago at %r',
                         delta, time.time() - atime, bpath)
-        
+
         self._failfast_cache.clear()
 
         logger.info('Expired %d bytes in %d items', expired_bytes, expired_items)
@@ -833,4 +836,4 @@ class FilesCacheClient(base.BaseCacheClient):
         if adjustment != 0:
             self.size += adjustment
             logger.info('Adjusted size discrepancy of %+d (final %d)', adjustment, int(self.size))
-        
+

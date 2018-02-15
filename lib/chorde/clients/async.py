@@ -46,7 +46,7 @@ class Defer(object):
     If a future is attached during execution, set_running_or_notify_cancelled will
     not be invoked, but set_result will.
     """
-    
+
     def __init__(self, callable_, *args, **kwargs):
         self.callable_ = callable_
         self.args = args
@@ -67,7 +67,7 @@ class Defer(object):
         else:
             future = getattr(self, 'future', None)
             if future is not None and not future.done():
-                future.exception(CancelledError())
+                future.set_exception(CancelledError())
             return _NONE
 
     def set(self, value):
@@ -78,7 +78,7 @@ class Defer(object):
         if future is not None and not future.done():
             rv = getattr(self, 'rv', NONE)
             if rv is _NONE or rv is NONE:
-                future.exception(CancelledError())
+                future.set_exception(CancelledError())
             else:
                 future.set(rv)
 
@@ -88,23 +88,23 @@ class AsyncCacheWriterThreadPool(ThreadPool):
     class AsyncCacheWriterThread(ThreadPool.Process):
         pass
     Process = AsyncCacheWriterThread
-    
+
     def __init__(self, workers):
         if ThreadPool is multiprocessing.pool.ThreadPool:
-            # This patches ThreadPool, which is broken when instanced 
+            # This patches ThreadPool, which is broken when instanced
             # from inside a DummyThread (happens after forking)
             current = multiprocessing.dummy.current_process()
             if not hasattr(current, '_children'):
                 current._children = weakref.WeakKeyDictionary()
-        
+
         ThreadPool.__init__(self, workers)
 
 class AsyncCacheWriterPool:
-    def __init__(self, size, workers, client, overflow = False, cleanup_cycles = 500, 
+    def __init__(self, size, workers, client, overflow = False, cleanup_cycles = 500,
             defer_threadpool = None, writer_threadpool = None):
-        
+
         self.client = client
-        self.logger = logging.getLogger("chorde")
+        self.logger = logging.getLogger("chorde.async")
         self.size = size
         self.workers = workers
         self._spawnlock = threading.Lock()
@@ -120,7 +120,7 @@ class AsyncCacheWriterPool:
         else:
             self._writer_threadpool_factory = None
             self._writer_threadpool = writer_threadpool
-        
+
         # queueset holds the values to be written, associated
         # by key, providing some write-back coalescense in
         # high-load environments
@@ -200,13 +200,13 @@ class AsyncCacheWriterPool:
                 except:
                     self.logger.error("Error in background cache refresh", exc_info=True)
                     value = _NONE
-            
+
             if value is _NONE or value is NONE:
                 # undefer probably decided not to compute anything (or an error arose, whatever)
                 if deferred is not _NONE:
                     deferred.done()
                 return
-                
+
             elif value is _DELETE:
                 try:
                     self.client.delete(key)
@@ -218,25 +218,25 @@ class AsyncCacheWriterPool:
                     self.client.renew(key, ttl, **(kw or {}))
                 except:
                     self.logger.error("Error renewing key", exc_info=True)
-            
+
             elif value is _EXPIRE:
                 try:
                     self.client.expire(key)
                 except:
                     self.logger.error("Error expiring key", exc_info=True)
-            
+
             elif value is _CLEAR:
                 try:
                     self.client.clear()
                 except:
                     self.logger.error("Error clearing cache", exc_info = True)
-            
+
             elif value is _PURGE:
                 try:
                     self.client.purge()
                 except:
                     self.logger.error("Error purging cache", exc_info = True)
-            
+
             else:
                 try:
                     self.client.put(key, value, ttl, **(kw or {}))
@@ -253,13 +253,13 @@ class AsyncCacheWriterPool:
             else:
                 kev = None
             del w
-            
+
             if thread_id is not None and thread_id not in map(operator.itemgetter(0), self.workset.values()):
                 try:
                     self.threadset.remove(thread_id)
                 except KeyError:
                     pass
-            
+
             ev.set()
             if kev is not None:
                 kev.set()
@@ -277,7 +277,7 @@ class AsyncCacheWriterPool:
                     task()
         except:
             self.logger.error("Error during cleanup", exc_info = True)
-        
+
     @property
     def capacity(self):
         return self.size
@@ -302,7 +302,7 @@ class AsyncCacheWriterPool:
         return rv
 
     def enqueue(self, key, value, ttl=None, **kw):
-        if (thread.get_ident() in self.threadset 
+        if (thread.get_ident() in self.threadset
                  or (hasattr(self.defer_threadpool, 'in_worker') and self.defer_threadpool.in_worker()) ):
             # Oops, recursive call, bad idea
             # Run inline
@@ -406,11 +406,11 @@ class AsyncCacheWriterPool:
                 # defers go in concurrently, only the first will be invoked,
                 # instead of the last - the first cannot be canceled after all,
                 # and we want to only invoke one. So no choice.
-                
+
                 # ...if the defer has a future attached
                 future = getattr(value, 'future', None)
                 if future is not None and hasattr(future, 'add_done_callback'):
-                    # we do have to hook into the future though... 
+                    # we do have to hook into the future though...
                     working = workset.get(key)
                     if working is not None:
                         working = working[1]
@@ -431,7 +431,7 @@ class AsyncCacheWriterPool:
         else:
             delayed = self._coalesce(key, value, ttl, **kw)
         return delayed
-    
+
     def waitkey(self, key, timeout=None):
         if thread.get_ident() in self.threadset:
             # Oops, recursive call, bad idea
@@ -460,7 +460,7 @@ class AsyncCacheWriterPool:
                 else:
                     break
                 timeout = tfin - time.time()
-    
+
     def getTtl(self, key, default = None):
         # Speeding up things - we have the same signature and semantics
         self.getTtl = getTtl = self.queueset.get
@@ -471,7 +471,7 @@ class AsyncCacheWriterPool:
         if key in self.queueset:
             return True
         else:
-            # Exclude keys being computed by this thread, such calls 
+            # Exclude keys being computed by this thread, such calls
             # want the async wrapper out of their way
             tid = thread.get_ident()
             return self.workset.get(key, (tid,))[0] != tid
@@ -538,37 +538,37 @@ class AsyncWriteCacheClient(BaseCacheClient):
         self.spawning_lock = threading.Lock()
         self._defer_threadpool = defer_threadpool or threadpool
         self._writer_threadpool = writer_threadpool or threadpool
-        
+
     def assert_started(self):
         if self.writer is None:
             with self.spawning_lock:
                 if self.writer is None:
                     self.writer = AsyncCacheWriterPool(
-                        self.writer_queue_size, 
+                        self.writer_queue_size,
                         self.writer_workers,
                         self.client,
                         self.overflow,
                         defer_threadpool = self._defer_threadpool,
                         writer_threadpool = self._writer_threadpool)
-    
+
     def is_started(self):
         return self.writer is not None
-    
+
     def start(self):
         if self.writer is not None:
             raise AssertionError, "Starting AsyncCacheClient twice"
         self.assert_started()
-    
+
     def stop(self, abort_tasks=False):
         if self.writer is not None:
             if not abort_tasks:
                 self.writer.join()
             self.writer.terminate()
-    
+
     @property
     def async(self):
         return True
-    
+
     @property
     def capacity(self):
         return (self.client.capacity, self.writer.capacity if self.writer is not None else 0)
@@ -580,11 +580,11 @@ class AsyncWriteCacheClient(BaseCacheClient):
     def put(self, key, value, ttl, **kw):
         self.assert_started()
         self.writer.put(key, value, ttl, **kw)
-    
+
     def renew(self, key, ttl, **kw):
         self.assert_started()
         self.writer.renew(key, ttl, **kw)
-    
+
     def delete(self, key):
         self.assert_started()
         self.writer.delete(key)
@@ -603,9 +603,9 @@ class AsyncWriteCacheClient(BaseCacheClient):
         """
         if self.is_started():
             self.writer.purge()
-    
-    def getTtl(self, key, default = NONE, 
-            _DELETE = _DELETE, _EXPIRE = _EXPIRE, _RENEW = _RENEW, _CLEAR = _CLEAR, 
+
+    def getTtl(self, key, default = NONE,
+            _DELETE = _DELETE, _EXPIRE = _EXPIRE, _RENEW = _RENEW, _CLEAR = _CLEAR,
             NONE = NONE, _NONE = _NONE,
             hasattr = hasattr,
             **kw):
@@ -635,12 +635,12 @@ class AsyncWriteCacheClient(BaseCacheClient):
 
             # Check pending clear - after checking the queue for sorted semantics
             if writer._contains(_CLEAR):
-                # Well, 
+                # Well,
                 if default is NONE:
                     raise CacheMissError, key
                 else:
                     return default, -1
-        
+
         # Ok, read the cache then
         value, ttl = self.client.getTtl(key, default, **kw)
         if ettl is not None:
@@ -650,16 +650,153 @@ class AsyncWriteCacheClient(BaseCacheClient):
         else:
             return value, ttl
 
+    def get(self, key, default = NONE, ttl_skip = None,
+            _DELETE = _DELETE, _EXPIRE = _EXPIRE, _RENEW = _RENEW, _CLEAR = _CLEAR,
+            NONE = NONE, _NONE = _NONE,
+            hasattr = hasattr,
+            **kw):
+        writer = self.writer
+        if writer is not None: # self.is_started() inlined for speed
+            # Try to read pending writes as if they were on the cache
+            value = writer.getTtl(key, _NONE)
+            if value is not _NONE:
+                value, ttl, _ = value
+                if value is _DELETE or value is _EXPIRE:
+                    # Deletion means a miss... right?
+                    if default is NONE:
+                        raise CacheMissError, key
+                    else:
+                        return default
+                elif value is _RENEW and (ttl_skip is None or ttl >= ttl_skip):
+                    # The value is renewed, ttl_skip will be meaningless
+                    ttl_skip = None
+                elif not hasattr(value, 'undefer'):
+                    return value
+            # Yep, _NONE when querying the writer, because we don't want
+            # to return a default if the writer doesn't have it, we must
+            # still check the client.
+
+            # Check pending clear - after checking the queue for sorted semantics
+            if writer._contains(_CLEAR):
+                # Well,
+                if default is NONE:
+                    raise CacheMissError, key
+                else:
+                    return default
+
+        # Ok, read the cache then
+        return self.client.get(key, default, ttl_skip = ttl_skip, **kw)
+
+    def getTtlMulti(self, keys, default = NONE,
+            _DELETE = _DELETE, _EXPIRE = _EXPIRE, _RENEW = _RENEW, _CLEAR = _CLEAR,
+            NONE = NONE, _NONE = _NONE,
+            hasattr = hasattr,
+            **kw):
+        ettl = {}
+        writer = self.writer
+        default_rv = (default, -1)
+        if writer is not None: # self.is_started() inlined for speed
+            # Try to read pending writes as if they were on the cache
+            wgetTtl = writer.getTtl
+            nkeys = []
+            nkeys_append = nkeys.append
+            for key in keys:
+                value = wgetTtl(key, _NONE)
+                if value is not _NONE:
+                    value, ttl, _ = value
+                    if value is _DELETE:
+                        # Deletion means a miss... right?
+                        yield key, default_rv
+                        continue
+                    elif value is _EXPIRE:
+                        # Expiration just sets the TTL
+                        ettl[key] = -1
+                    elif value is _RENEW:
+                        ettl[key] = ttl
+                    elif not hasattr(value, 'undefer'):
+                        yield key, (value, ttl)
+                        continue
+                # Yep, _NONE when querying the writer, because we don't want
+                # to return a default if the writer doesn't have it, we must
+                # still check the client.
+                nkeys_append(key)
+            keys = nkeys
+            del nkeys, nkeys_append
+
+            # Check pending clear - after checking the queue for sorted semantics
+            if writer._contains(_CLEAR):
+                for key in keys:
+                    yield key, default_rv
+                return
+
+        # Ok, read the cache then
+        ettlget = ettl.get
+        for key, (value, ttl) in self.client.getTtlMulti(keys, default, **kw):
+            ttl = ettlget(key, ttl)
+            yield key, (value, ttl)
+
+    def getMulti(self, keys, default = NONE, ttl_skip = None,
+            _DELETE = _DELETE, _EXPIRE = _EXPIRE, _RENEW = _RENEW, _CLEAR = _CLEAR,
+            NONE = NONE, _NONE = _NONE,
+            hasattr = hasattr,
+            **kw):
+        ettl = []
+        ettl_append = ettl.append
+        writer = self.writer
+        if writer is not None: # self.is_started() inlined for speed
+            # Try to read pending writes as if they were on the cache
+            wgetTtl = writer.getTtl
+            nkeys = []
+            nkeys_append = nkeys.append
+            for key in keys:
+                value = wgetTtl(key, _NONE)
+                if value is not _NONE:
+                    value, ttl, _ = value
+                    if value is _DELETE or value is _EXPIRE:
+                        # Deletion/expiration means a miss...
+                        yield key, default
+                        continue
+                    elif value is _RENEW and (ttl_skip is None or ttl >= ttl_skip):
+                        if ttl_skip is not None:
+                            # We'll do these without ttl_skip
+                            ettl_append(key)
+                            continue
+                    elif not hasattr(value, 'undefer'):
+                        yield key, value
+                        continue
+                # Yep, _NONE when querying the writer, because we don't want
+                # to return a default if the writer doesn't have it, we must
+                # still check the client.
+                nkeys_append(key)
+            keys = nkeys
+            del nkeys, nkeys_append
+
+            # Check pending clear - after checking the queue for sorted semantics
+            if writer._contains(_CLEAR):
+                for key in keys:
+                    yield key, default
+                for key in ettl:
+                    yield key, default
+                return
+
+        # Ok, read the cache then
+        if ettl:
+            for key, value in self.client.getMulti(keys, default, **kw):
+                yield key, value
+        if keys:
+            for key, value in self.client.getMulti(keys, default, ttl_skip = ttl_skip, **kw):
+                yield key, value
+
     def promote(self, key, *p, **kw):
         if self.is_started() and self.writer.contains(key):
             return
         else:
             return self.client.promote(key, *p, **kw)
-    
+
     def wait(self, key, timeout = None):
         if self.is_started() and self.writer.contains(key):
             self.writer.waitkey(key, timeout)
-    
+
     def contains(self, key, ttl = None, **kw):
         if self.is_started():
             if self.writer.contains(key):
@@ -692,10 +829,10 @@ except ImportError:
         "using pure-python version which is not atomic and requires"
         "explicit synchronization. Decreased performance will be noticeable")
     del warnings
-    
+
     class ExceptionWrapper(object):  # lint:ok
         __slots__ = ('value',)
-    
+
         def __init__(self, value):
             self.value = value
 
@@ -706,15 +843,15 @@ except ImportError:
 
     class Future(object):  # lint:ok
         __slots__ = (
-            '_cb', '_value', '_logger', '_running', '_cancel_pending', '_cancelled', '_done_event', 
+            '_cb', '_value', '_logger', '_running', '_cancel_pending', '_cancelled', '_done_event',
             '_lock', '__weakref__',
         )
-        
+
         def __init__(self, logger = None):
             self._cb = []
             self._logger = logger
             self._lock = threading.Lock()
-    
+
         def _set_nothreads(self, value, hasattr = hasattr, tuple = tuple, getattr = getattr):
             """
             Like set(), but assuming no threading is involved. It won't wake waiting threads,
@@ -724,9 +861,9 @@ except ImportError:
             if hasattr(self, '_value'):
                 # No setting twice
                 return
-            
+
             self._value = value
-    
+
             if self._cb:
                 for cb in list(self._cb):
                     try:
@@ -738,7 +875,7 @@ except ImportError:
                             error = logging.error
                         error("Error in async callback", exc_info = True)
             self._running = False
-        
+
         def set(self, value, hasattr = hasattr, tuple = tuple, getattr = getattr):
             """
             Set the future's result as either a value, an exception wrappedn in ExceptionWrapper, or
@@ -747,13 +884,13 @@ except ImportError:
             if hasattr(self, '_value'):
                 # No setting twice
                 return
-            
+
             with self._lock:
                 old = getattr(self, '_value', None) # avoid deadlocks due to finalizers
                 cbs = list(self._cb)
                 self._value = value
             del old
-            
+
             for cb in cbs:
                 try:
                     cb(value)
@@ -764,58 +901,58 @@ except ImportError:
                         error = logging.error
                     error("Error in async callback", exc_info = True)
             self._running = False
-            
+
             event = getattr(self, '_done_event', None)
             if event is not None:
                 # wake up waiting threads
                 event.set()
-    
+
         set_result = set
-    
+
         def miss(self):
             """
             Shorthand for setting a cache miss result
             """
             self.set(CacheMissError)
-    
+
         def _miss_nothreads(self):
             """
             Shorthand for setting a cache miss result without thread safety.
             See _set_nothreads
             """
             self._set_nothreads(CacheMissError)
-    
+
         def exc(self, exc_info):
             """
             Shorthand for setting an exception result from an exc_info tuple
             as returned by sys.exc_info()
             """
             self.set(ExceptionWrapper(exc_info))
-    
+
         def _exc_nothreads(self, exc_info):
             """
             Shorthand for setting an exception result from an exc_info tuple
-            as returned by sys.exc_info(), without thread safety. 
+            as returned by sys.exc_info(), without thread safety.
             See _set_nothreads
             """
             self._set_nothreads(ExceptionWrapper(exc_info))
-    
+
         def set_exception(self, exception):
             """
             Set the Future's exception object.
             """
             self.exc((type(exception),exception,None))
-    
+
         def on_value(self, callback):
             """
-            When and if the operation completes without exception, the callback 
+            When and if the operation completes without exception, the callback
             will be invoked with its result.
             """
             def value_callback(value):
                 if value is not CacheMissError and not isinstance(value, ExceptionWrapper):
                     return callback(value)
             return self._on_stuff(value_callback)
-    
+
         def on_miss(self, callback):
             """
             If the operation results in a cache miss, the callback will be invoked
@@ -825,7 +962,7 @@ except ImportError:
                 if value is CacheMissError:
                     return callback()
             return self._on_stuff(miss_callback)
-    
+
         def on_exc(self, callback):
             """
             If the operation results in an exception, the callback will be invoked
@@ -835,7 +972,7 @@ except ImportError:
                 if isinstance(value, ExceptionWrapper):
                     return callback(value.value)
             return self._on_stuff(exc_callback)
-    
+
         def on_any(self, on_value = None, on_miss = None, on_exc = None):
             """
             Handy method to set callbacks for all kinds of results, and it's actually
@@ -859,7 +996,7 @@ except ImportError:
             """
             if not self._cb:
                 self.on_any(on_value, on_miss, on_exc)
-        
+
         def on_done(self, callback):
             """
             When the operation is done, the callback will be invoked without arguments,
@@ -868,13 +1005,13 @@ except ImportError:
             def done_callback(value):
                 return callback()
             return self._on_stuff(done_callback)
-    
+
         def chain(self, defer):
             """
             Invoke all the callbacks of the other defer
             """
             self._on_stuff(defer.set)
-    
+
         def chain_std(self, defer):
             """
             Invoke all the callbacks of the other defer, without assuming the other
@@ -885,7 +1022,7 @@ except ImportError:
                 functools.partial(defer.set_exception, CacheMissError()),
                 lambda value : defer.set_exception(value[1] or value[0])
             )
-    
+
         def _on_stuff(self, callback, hasattr=hasattr):
             cbap = self._cb.append
             docall = hasattr(self, '_value')
@@ -897,7 +1034,7 @@ except ImportError:
             if docall:
                 callback(self._value)
             return self
-    
+
         def add_done_callback(self, callback):
             """
             When the operatio is done, the callback will be invoked with the
@@ -909,32 +1046,32 @@ except ImportError:
                 if self is not None:
                     return callback(self)
             return self._on_stuff(weak_callback)
-    
+
         def done(self, hasattr=hasattr, getattr=getattr):
             """
             Return True if the operation has finished, in a result or exception or cancelled, and False if not.
             """
             return hasattr(self, '_value') or getattr(self, '_cancelled', False)
-    
+
         def running(self, getattr=getattr):
             """
             Return True if the operation is running and cannot be cancelled. False if not running
             (yet or done).
             """
             return getattr(self, '_running', False)
-    
+
         def cancelled(self, getattr=getattr):
             """
             Return True if the operation has been cancelled successfully.
             """
             return getattr(self, '_cancelled', False)
-    
+
         def cancel_pending(self, getattr=getattr):
             """
             Return True if cancel was called.
             """
             return getattr(self, '_cancel_pending', False)
-    
+
         def cancel(self, getattr=getattr):
             """
             Request cancelling of the operation. If the operation cannot be cancelled,
@@ -945,7 +1082,7 @@ except ImportError:
             else:
                 self._cancel_pending = True
                 return True
-    
+
         def set_running_or_notify_cancelled(self, getattr=getattr):
             """
             To be invoked by executors before executing the operation. If it returns True,
@@ -956,15 +1093,15 @@ except ImportError:
             if getattr(self, '_cancel_pending', False):
                 self._cancelled = True
                 self._running = False
-    
+
                 # Notify waiters and callbacks
-                self.set_exception(CancelledError()) 
-                
+                self.set_exception(CancelledError())
+
                 return False
             else:
                 self._running = True
                 return True
-    
+
         def result(self, timeout=None, hasattr=hasattr, getattr=getattr, isinstance=isinstance, norecurse=False):
             """
             Return the operation's result, if any. If an exception was the result, re-raise it.
@@ -1003,12 +1140,12 @@ except ImportError:
                             event = self._done_event
                     else:
                         raise TimeoutError
-    
+
         def exception(self, timeout=None):
             """
             If the operation resulted in an exception, return the exception object.
             Otherwise, return None. If the operation has been cancelled, raises CancelledError,
-            and if timeout is specified and not None, and the specified time elapses without 
+            and if timeout is specified and not None, and the specified time elapses without
             a result available, raises TimeoutError.
             """
             if hasattr(self, '_value'):
@@ -1029,7 +1166,7 @@ except ImportError:
                     raise
                 except Exception,e:
                     return e
-            
+
 
 def makeFutureWrapper(base):
     """
@@ -1057,10 +1194,10 @@ class AsyncCacheProcessorThreadPool(ThreadPool):
     class AsyncCacheProcessorThread(ThreadPool.Process):
         pass
     Process = AsyncCacheProcessorThread
-    
+
     def __init__(self, workers):
         if ThreadPool is multiprocessing.pool.ThreadPool:
-            # This patches ThreadPool, which is broken when instanced 
+            # This patches ThreadPool, which is broken when instanced
             # from inside a DummyThread (happens after forking)
             current = multiprocessing.dummy.current_process()
             if not hasattr(current, '_children'):
@@ -1069,10 +1206,10 @@ class AsyncCacheProcessorThreadPool(ThreadPool):
 
 class ProcessorStats(object):
     __slots__ = (
-        'tasks_queued', 
-        'tasks_started', 
+        'tasks_queued',
+        'tasks_started',
         'tasks_cancelled',
-        'tasks_completed', 
+        'tasks_completed',
         'wait_time_sum',
         'wait_time_min',
         'wait_time_max',
@@ -1124,7 +1261,7 @@ class AsyncCacheProcessor(object):
     instead of a value, upon which an on_value(callback)
     method will retrieve the result, if any.
 
-    If there is a cache miss, on_miss callbacks will be invoked 
+    If there is a cache miss, on_miss callbacks will be invoked
     instead, and in case of an exception, on_exc.
 
     Futures also implement Python 3's concurrent.futures.Future
@@ -1134,8 +1271,8 @@ class AsyncCacheProcessor(object):
     tasks on this processor's async processing pool (in case
     you need to do it for synchronization)
     """
-    
-    def __init__(self, workers, client, 
+
+    def __init__(self, workers, client,
             coalescence_buffer_size = 500, maxqueue = None, cleanup_cycles = 500,
             threadpool = None):
         self.client = client
@@ -1158,7 +1295,7 @@ class AsyncCacheProcessor(object):
         self.tl = threading.local()
         self.cleanup_tasks = []
         self.cleanup_cycles = cleanup_cycles
-        
+
         self._tit_tat = itertools.cycle(iter((True,False))).next
 
         self.stats = ProcessorStats()
@@ -1213,7 +1350,7 @@ class AsyncCacheProcessor(object):
                                 del coalesce[coalesce_key]
                             except:
                                 pass
-    
+
                         self = wself()
                         if self is not None:
                             try:
@@ -1228,7 +1365,7 @@ class AsyncCacheProcessor(object):
                                         task()
                             except:
                                 self.logger.error("Error during background thread cleanup", exc_info = True)
-                    
+
                     # discard queue head quickly when we're overloaded
                     # head is always less relevant
                     self = wself()
@@ -1284,7 +1421,7 @@ class AsyncCacheProcessor(object):
     def do_async_coalescent(self, coalesce, coalesce_key, func, *args, **kwargs):
         """
         Returns an already-queued future if there is one, or a new one if not.
-        
+
         Params:
             coalesce: A coalescence map (dict, Cache, or simialr)
             coalesce_key: A coalesence key
@@ -1299,7 +1436,7 @@ class AsyncCacheProcessor(object):
         Returns a proxy of this processor bound to the specified client instead.
         """
         return WrappedCacheProcessor(self, client)
-    
+
     def getTtl(self, key, default = NONE, **kw):
         if not kw or not (kw.viewkeys() - COALESCE_IGNORE_KWARGS):
             if default is NONE:
@@ -1310,7 +1447,7 @@ class AsyncCacheProcessor(object):
             ckey = NONE
         return self._enqueue(functools.partial(self.client.getTtl, key, default, **kw),
             self.coalesce_getTtl, ckey)
-    
+
     def get(self, key, default = NONE, **kw):
         if not kw or not (kw.viewkeys() - COALESCE_IGNORE_KWARGS):
             if default is NONE:
@@ -1321,7 +1458,7 @@ class AsyncCacheProcessor(object):
             ckey = NONE
         return self._enqueue(functools.partial(self.client.get, key, default, **kw),
             self.coalesce_get, ckey)
-    
+
     def contains(self, key, *p, **kw):
         if not p and not kw:
             ckey = key
@@ -1352,7 +1489,7 @@ class AsyncCacheProcessor(object):
 
     def purge(self):
         return self._enqueue(self.client.purge)
-    
+
     def register_cleanup(self, task):
         """
         Register a callable that will take no arguments, and will
@@ -1411,7 +1548,7 @@ class WrappedCacheProcessor(object):
             return self
         else:
             return WrappedCacheProcessor(self.processor, client)
-    
+
     def getTtl(self, key, default = NONE, **kw):
         if not kw:
             if default is NONE:
@@ -1420,9 +1557,9 @@ class WrappedCacheProcessor(object):
                 ckey = (key, default)
         else:
             ckey = NONE
-        return self.processor.do_async_coalescent(self.coalesce_getTtl, ckey, 
+        return self.processor.do_async_coalescent(self.coalesce_getTtl, ckey,
             self.client.getTtl, key, default, **kw)
-    
+
     def get(self, key, default = NONE):
         if default is NONE:
             ckey = key
@@ -1430,7 +1567,7 @@ class WrappedCacheProcessor(object):
             ckey = (key, default)
         return self.processor.do_async_coalescent(self.coalesce_get, ckey,
             self.client.get, key, default)
-    
+
     def contains(self, key, *p, **kw):
         if not p and not kw:
             ckey = key
@@ -1461,7 +1598,7 @@ class WrappedCacheProcessor(object):
 
     def purge(self, *p, **kw):
         return self.processor.do_async(self.client.purge, *p, **kw)
-    
+
     def register_cleanup(self, task):
         self.processor.register_cleanup(task)
 

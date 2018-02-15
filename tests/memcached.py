@@ -18,7 +18,7 @@ def memcachedBuiltIn():
         import memcache # lint:ok
     except ImportError:
         return False
-    
+
     return True
 
 def memcachedReachable():
@@ -26,7 +26,7 @@ def memcachedReachable():
         import memcache
     except ImportError:
         return False
-    
+
     c = memcache.Client([DEFAULT_CLIENT_ADDR])
     return bool(c.get_stats())
 
@@ -51,10 +51,35 @@ class MemcacheStoreTest(TestCase):
     def testEmptyServerList(self):
         from chorde.clients.memcached import MemcachedClient
         import threading
-        client = MemcachedClient([], 
+        client = MemcachedClient([],
             checksum_key = "test",
             encoding_cache = threading.local() )
         self.assertRaises(CacheMissError, client.get, 4)
+
+    def testConsistentHashing(self):
+        from chorde.clients.memcached import MemcachedClient
+        import threading
+        c1 = MemcachedClient(["127.0.0.1:11211","127.0.0.2:11211","127.0.0.3:11211"],
+            checksum_key = "test",
+            encoding_cache = threading.local() )
+        c2 = MemcachedClient(["127.0.0.1:11211","127.0.0.3:11211"],
+            checksum_key = "test",
+            encoding_cache = threading.local() )
+        c3 = MemcachedClient(["127.0.0.3:11211"],
+            checksum_key = "test",
+            encoding_cache = threading.local() )
+
+        # mock connects
+        for c in (c1, c2, c3):
+            for s in c.client.servers:
+                s.connect = lambda *p, **kw : True
+
+        s1 = c1.client._get_server("127.0.0.3:11211")[0]
+        s2 = c2.client._get_server("127.0.0.3:11211")[0]
+        s3 = c3.client._get_server("127.0.0.3:11211")[0]
+        self.assertEqual(s1.address, c1.client.servers[-1].address)
+        self.assertEqual(s2.address, c2.client.servers[-1].address)
+        self.assertEqual(s3.address, c3.client.servers[-1].address)
 
 @skipIfNoMemcached
 class MemcacheTest(CacheClientTestMixIn, TestCase):
@@ -68,7 +93,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def setUpClient(self, **kwargs):
         from chorde.clients.memcached import MemcachedClient
         import threading
-        rv = MemcachedClient([DEFAULT_CLIENT_ADDR], 
+        rv = MemcachedClient([DEFAULT_CLIENT_ADDR],
             checksum_key = "test",
             encoding_cache = threading.local(),
             **kwargs )
@@ -104,7 +129,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
 
     def testLongStringKey(self):
         client = self.client
-        k = "abracadabra" 
+        k = "abracadabra"
         k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
         client.put(k, "patadecabra2", 10)
         self.assertEqual(client.get(k), "patadecabra2")
@@ -143,7 +168,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
 
     def testSpacedLongStringKey(self):
         client = self.client
-        k = "abra cadabra" 
+        k = "abra cadabra"
         k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
         client.put(k, "patadecabra4", 10)
         self.assertEqual(client.get(k), "patadecabra4")
@@ -206,11 +231,11 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         # Force re-decoding
         if hasattr(client, 'encoding_cache'):
             client.encoding_cache.cache = None
-        
+
         self.assertTrue(client.contains(bigkey, 50))
 
     def testTTLTooBig(self):
-        from chorde.clients.memcached import MAX_MEMCACHE_TTL 
+        from chorde.clients.memcached import MAX_MEMCACHE_TTL
         client = self.client
         k = "abra cadabra"
         client.put(k, "patadecabra3", MAX_MEMCACHE_TTL * 2)
@@ -339,11 +364,11 @@ class BuiltinNamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
         import threading
         self.rclient = self.setUpClient()
         self.rclient.client.flush_all()
-        self.bclient = MemcachedClient([DEFAULT_CLIENT_ADDR], 
+        self.bclient = MemcachedClient([DEFAULT_CLIENT_ADDR],
             checksum_key = "test2",
             namespace = "testns1",
             encoding_cache = threading.local() )
-        return MemcachedClient([DEFAULT_CLIENT_ADDR], 
+        return MemcachedClient([DEFAULT_CLIENT_ADDR],
             checksum_key = "test3",
             namespace = "testns2",
             encoding_cache = threading.local() )
@@ -356,7 +381,7 @@ class FastMemcacheTest(CacheClientTestMixIn, TestCase):
     is_lru = False
     capacity_means_entries = False
     meaningful_capacity = False # controlled externally so it may not be consistent for testing purposes
-    
+
     def setUpClient(self):
         from chorde.clients.memcached import FastMemcachedClient
         rv = FastMemcachedClient([DEFAULT_CLIENT_ADDR])
@@ -380,6 +405,14 @@ class FastMemcacheTest(CacheClientTestMixIn, TestCase):
     testContainsBigValue = None
     testContainsBigValueTTLExact = None
     testContainsBigValueTTLInexact = None
+
+@skipIfNoMemcached
+class FastLowLatencyCacheTest(FastMemcacheTest):
+    def setUpClient(self):
+        from chorde.clients.memcached import FastMemcachedClient
+        rv = FastMemcachedClient([DEFAULT_CLIENT_ADDR], tcp_nodelay = True)
+        rv.client.flush_all()
+        return rv
 
 @skipIfNoMemcached
 class FastElastiCacheTest(FastMemcacheTest):
@@ -406,7 +439,7 @@ class FastFailFastMemcacheTest(FastMemcacheTest):
     def testFailFast(self):
         client = self.client
         client2 = self.client2
-        
+
         self.assertRaises(CacheMissError, client.get, 1)
         self.assertRaises(CacheMissError, client2.get, 1)
 

@@ -348,7 +348,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         get_random()
         r = get_random.future()().result()
         self.assertEquals(r, val[0])
-    
+
     def test_value_callback(self):
         # Should return the value using on_value function
         val = []
@@ -364,7 +364,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         r = get_random.future()().result()
         self.assertEquals(r, val[0])
         self.assertEquals(val, cval)
-    
+
     def test_broken_value_callback(self):
         # Should return the value using on_value function
         val = []
@@ -381,7 +381,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         r = get_random.future()().result()
         self.assertEquals(r, val[0])
         self.assertEquals(val, cval)
-    
+
     def test_future_on_value_bad_key(self):
         # Should return the value using on_value function, even when given a bad callkey callable
         # To-do: validate bad key logged
@@ -393,7 +393,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         get_random(set())
         r = get_random.future()(set()).result()
         self.assertEquals(r, val[0])
-    
+
     def test_future_lazy(self):
         # Should start calculating the value in background
         @cached(self.client, ttl=5)
@@ -442,7 +442,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         # Should start calculating the value in background
         ev = threading.Event()
         ev2 = threading.Event()
-        @cached(self.client, ttl=50, 
+        @cached(self.client, ttl=50,
             future_sync_check=True, async_lazy_recheck=True,
             renew_time = 20)
         def get_nain():
@@ -467,7 +467,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         # Should start calculating the value in background
         ev = threading.Event()
         ev2 = threading.Event()
-        @cached(self.client, ttl=50, 
+        @cached(self.client, ttl=50,
             future_sync_check=True, async_lazy_recheck=True,
             renew_time = 20)
         def get_nain():
@@ -524,7 +524,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.assertRaises(CacheMissError, get_number_async.lazy)
         time.sleep(0.1)
         self.assertEquals(get_number_async.lazy(), 4)
-            
+
     def test_recalculate_async_on_lower_ttl(self):
         # When the value is expired it's recalculated
         key = lambda: 'test_async_ttl'
@@ -543,7 +543,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.assertEquals(get_random, get_random.async())
         val = get_random()
         self.assertEquals(val, get_random())
-            
+
     def test_value_callback(self):
         # Puts a random number in cache and checks the value in the client
         key = lambda: 'test_async_cached'
@@ -558,7 +558,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         val = get_random()
         self.assertEquals(val, get_random())
         self.assertEquals([val], values)
-            
+
     def test_broken_value_callback(self):
         # Puts a random number in cache and checks the value in the client
         key = lambda: 'test_async_cached'
@@ -574,7 +574,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         val = get_random()
         self.assertEquals(val, get_random())
         self.assertEquals([val], values)
-            
+
     def test_put_async(self):
         # Should change the cached value
         key = lambda: 'test_put_async'
@@ -597,7 +597,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.assertRaises(CacheMissError, get_random.async().lazy)
         time.sleep(0.2)
         self.assertEquals(val[0], get_random.async().lazy())
-            
+
     def test_lazy_recheck_async(self):
         # Should touch the key with async_lazy_recheck
         key = lambda: 'test_async_lazy_recheck'
@@ -608,7 +608,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         self.assertRaises(CacheMissError, get_random.async().lazy)
         self.assertTrue(get_random.client.contains(key()))
         time.sleep(0.2)
-            
+
     def test_refresh_async(self):
         # Should refresh the cache value
         @cached(self.client, ttl=10)
@@ -646,7 +646,7 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
     @classmethod
     def setUpClass(cls):
         ipsub.IPSub.register_default_pyobj()
-        
+
         ctx = zmq.Context.instance()
         s1 = ctx.socket(zmq.REQ)
         s2 = ctx.socket(zmq.REQ)
@@ -655,13 +655,13 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         s1.close()
         s2.close()
         del s1,s2
-        
-        cls.ipsub = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, 
+
+        cls.ipsub = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1,
             pub="tcp://127.0.0.1:%d" % port2)], ctx=ctx)
         cls.ipsub_thread = threading.Thread(target=cls.ipsub.run)
         cls.ipsub_thread.daemon = True
 
-        cls.ipsub2 = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1, 
+        cls.ipsub2 = ipsub.IPSub([dict(rep="tcp://127.0.0.1:%d" % port1,
             pub="tcp://127.0.0.1:%d" % port2)], ctx=ctx)
         cls.ipsub2_thread = threading.Thread(target=cls.ipsub2.run)
         cls.ipsub2_thread.daemon = True
@@ -671,10 +671,10 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         cls.shared = InprocCacheClient(100)
 
         time.sleep(0.1)
-        
+
         cls.ipsub_thread.start()
         cls.ipsub2_thread.start()
-        
+
         for i in xrange(11):
             time.sleep(0.1)
             if cls.ipsub2.is_running and cls.ipsub.is_running:
@@ -683,9 +683,9 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
 
     def setUp(self):
         super(CoherentCachedDecoratorTest, self).setUp()
-        self.decorator = functools.partial(coherent_cached, self.private, 
+        self.decorator = functools.partial(coherent_cached, self.private,
                 self.shared, self.ipsub)
-        self.decorator2 = functools.partial(coherent_cached, self.private2, 
+        self.decorator2 = functools.partial(coherent_cached, self.private2,
                 self.shared, self.ipsub2)
         self.tiered_decorator = self.decorator2
 

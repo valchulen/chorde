@@ -9,3 +9,4 @@ dist
 *.so
 *.c
 *.swp
+*.egg-info

@@ -114,7 +114,7 @@ class SharedCounterGenericBase(object):
     """
     Maps size() bytes from the buffer into a shared counters
     structure with process-local subcounters. Reading the
-    counters takes O(slots) time, updating takes 
+    counters takes O(slots) time, updating takes
     O(1) and no operation blocks on other processes.
     Reads are only guaranteed to be eventually consistent,
     no snapshot semantics are guaranteed.
@@ -255,7 +255,7 @@ class SharedCounterGenericBase(object):
             except OSError:
                 # Let the fallback below try
                 pass
-        
+
         # We have a locking implementation, so it's as easy as just opening
         # the file and using it. The locks will take care of only using
         # an initialized counter file
@@ -280,8 +280,8 @@ class SharedCounterGenericBase(object):
     @classmethod
     def from_fileno(cls, slots, fileno, offset = 0):
         """
-        Maps the contents of the given file descriptor at offset "offset" 
-        interpreting them as shared counters of "slots" slots, locking the 
+        Maps the contents of the given file descriptor at offset "offset"
+        interpreting them as shared counters of "slots" slots, locking the
         file for exclusive access during the duration of slot acquisition
         (which is quick) if a suitable locking implementation is present.
 
@@ -303,8 +303,8 @@ class SharedCounterGenericBase(object):
         """
         Maps the contents of buf interpreting
         it as shared counters of "slots" slots, locking the file descriptor
-        given by fileno if not None, for exclusive access during the duration 
-        of slot acquisition (which is quick) if a suitable locking 
+        given by fileno if not None, for exclusive access during the duration
+        of slot acquisition (which is quick) if a suitable locking
         implementation is present.
 
         If given, fileoffs is the start of the region to be locked
@@ -324,7 +324,7 @@ class SharedCounterGenericBase(object):
 
     def __int__(self):
         return int(self.value)
-    
+
     def __long__(self):
         return long(self.value)
 
@@ -374,7 +374,7 @@ if numpy is not None:
     class SharedCounterBaseNumpyCtypes(SharedCounterGenericBase):
         btype = numpy.bool8
         bitmap_item_size = btype().itemsize
-    
+
         @staticmethod
         def is_supported():
             if numpy is not None and getattr(numpy, 'frombuffer', None) is not None \
@@ -388,33 +388,33 @@ if numpy is not None:
                 except:
                     return False
             return False
-    
+
         def __init__(self, slots, buf, offset = 0, locked = False):
             assert ctypes.sizeof(ctypes.c_bool()) == self.bitmap_item_size
             assert ctypes.sizeof(self.cdtype()) == self.slots_item_size
-    
+
             timestamp = ctypes.c_uint64.from_buffer(buf, offset)
             offset += ctypes.sizeof(timestamp)
-            
+
             # Slow, read-write bitmap
             bitmap = (ctypes.c_bool * slots).from_buffer(buf, offset)
             bitmap_slot = lambda slot : ctypes.c_bool.from_buffer(buf, offset + self.bitmap_item_size * slot)
-    
+
             # Fast, read-only counters
-            counters = numpy.frombuffer(buf, self.dtype, slots, 
+            counters = numpy.frombuffer(buf, self.dtype, slots,
                 offset + self.bitmap_item_size * slots)
             super(SharedCounterBaseNumpyCtypes, self).__init__(slots, bitmap, counters, locked, bitmap_slot)
-    
+
             # Fast read-only bitmap ]:-]
             self.bitmap = numpy.frombuffer(buf, numpy.bool8, slots, offset)
-    
+
             # Map my slot as a single item, it makes += atomic
-            self.myslot = self.cdtype.from_buffer(buf, 
+            self.myslot = self.cdtype.from_buffer(buf,
                 offset + ctypes.sizeof(bitmap) + self.slots_item_size * self.slot)
-    
+
             # Map timestamp
             self.timestamp = timestamp
-    
+
     class SharedCounter32NumpyCtypes(SharedCounterBaseNumpyCtypes):
         dtype = numpy.int32
         cdtype = ctypes.c_int32
@@ -423,12 +423,12 @@ if numpy is not None:
         dtype = numpy.int64
         cdtype = ctypes.c_int64
         slots_item_size = dtype().itemsize
-    
-    
+
+
     class SharedCounterBaseNumpy(SharedCounterGenericBase):
         btype = numpy.bool8
         bitmap_item_size = btype().itemsize
-    
+
         @staticmethod
         def is_supported():
             if numpy is not None and getattr(numpy, 'memmap', None) is not None:
@@ -442,53 +442,53 @@ if numpy is not None:
                     return False
             else:
                 return False
-    
+
         def __init__(self, slots, fileobj, offset = 0, locked = False):
             ts_mmap = numpy.memmap(fileobj, numpy.uint64, 'r+', offset, 1)
             timestamp = Slot(ts_mmap, 0, numpy.uint64)
             offset += numpy.uint64().itemsize
-    
+
             bitmap = numpy.memmap(fileobj, self.btype, 'r+', offset, slots)
             bitmap_slot = lambda slot : Slot(bitmap, slot, self.btype)
             offset += self.btype().itemsize * slots
-            
+
             counters = numpy.memmap(fileobj, self.dtype, 'r+', offset, slots)
             offset += self.dtype().itemsize * slots
             super(SharedCounterBaseNumpy, self).__init__(slots, bitmap, counters, locked, bitmap_slot)
-    
+
             self.myslot = Slot(counters, self.slot, self.dtype)
-    
+
             self.timestamp = timestamp
-    
+
         @classmethod
         def from_fileno(cls, slots, fileno, offset = 0):
             fd = os.dup(fileno)
             fileobj =  os.fdopen(fd, 'r+')
             return cls.from_file(slots, fileobj, offset)
-        
+
         @classmethod
         def from_file(cls, slots, fileobj, offset = 0):
             base_offset = offset - (offset % mmap.ALLOCATIONGRANULARITY)
             remnant_offset = offset - base_offset
             size = cls.size(slots)
-    
+
             rv = cls(slots, fileobj, offset)
             rv.basemap = mmap.mmap(fileobj.fileno(), size + remnant_offset, offset = base_offset)
             return rv
-    
+
     class SharedCounter32Numpy(SharedCounterBaseNumpy):
         dtype = numpy.int32
         slots_item_size = numpy.dtype(dtype).itemsize
     class SharedCounter64Numpy(SharedCounterBaseNumpy):
         dtype = numpy.int64
         slots_item_size = numpy.dtype(dtype).itemsize
-    
-    
+
+
     class SharedCounterBaseReadOnlyNumpy(SharedCounterGenericBase):
         btype = numpy.bool8
         cbtype = ctypes.c_bool
         bitmap_item_size = btype().itemsize
-    
+
         @staticmethod
         def is_supported():
             if numpy is not None and getattr(numpy, 'memmap', None) is not None:
@@ -504,11 +504,11 @@ if numpy is not None:
                     return False
             else:
                 return False
-    
+
         def __init__(self, slots, fileobj, offset = 0, locked = False):
             assert ctypes.sizeof(ctypes.c_bool()) == self.bitmap_item_size
             assert ctypes.sizeof(self.cdtype()) == self.slots_item_size
-            
+
             ts_mmap = numpy.memmap(fileobj, numpy.uint64, 'r+', offset, 1)
             if getattr(self, 'basemap', None) is not None:
                 raw_mmap = self.basemap
@@ -516,36 +516,36 @@ if numpy is not None:
                 raw_mmap = self.basemap = mmap.mmap(fileobj.fileno(), self.size(slots), offset = offset)
             timestamp = SlowSlot(raw_mmap, offset, ts_mmap, 0, numpy.uint64, ctypes.c_uint64)
             offset += numpy.uint64().itemsize
-    
+
             bitmap = numpy.memmap(fileobj, self.btype, 'r+', offset, slots)
             bitmap_slot = lambda slot : SlowSlot(raw_mmap, offset + slot, bitmap, slot, self.btype, self.cbtype)
             offset += self.btype().itemsize * slots
-            
+
             counters = numpy.memmap(fileobj, self.dtype, 'r+', offset, slots)
-            super(SharedCounterBaseReadOnlyNumpy, self).__init__(slots, bitmap, counters, locked, 
+            super(SharedCounterBaseReadOnlyNumpy, self).__init__(slots, bitmap, counters, locked,
                 bitmap_slot = bitmap_slot)
-    
-            self.myslot = SlowSlot(raw_mmap, offset + self.dtype().itemsize * self.slot, counters, 
+
+            self.myslot = SlowSlot(raw_mmap, offset + self.dtype().itemsize * self.slot, counters,
                 self.slot, self.dtype, self.cdtype)
-    
+
             self.timestamp = timestamp
-    
+
         @classmethod
         def from_fileno(cls, slots, fileno, offset = 0):
             fd = os.dup(fileno)
             fileobj =  os.fdopen(fd, 'r+')
             return cls.from_file(slots, fileobj, offset)
-        
+
         @classmethod
         def from_file(cls, slots, fileobj, offset = 0):
             base_offset = offset - (offset % mmap.ALLOCATIONGRANULARITY)
             remnant_offset = offset - base_offset
             size = cls.size(slots)
-    
+
             rv = cls(slots, fileobj, offset)
             rv.basemap = mmap.mmap(fileobj.fileno(), size + remnant_offset, offset = base_offset)
             return rv
-    
+
     class SharedCounter32ReadOnlyNumpy(SharedCounterBaseReadOnlyNumpy):
         dtype = numpy.int32
         cdtype = ctypes.c_int32
@@ -554,12 +554,12 @@ if numpy is not None:
         dtype = numpy.int64
         cdtype = ctypes.c_int64
         slots_item_size = numpy.dtype(dtype).itemsize
-    
-    
+
+
 class SharedCounterBaseCtypes(SharedCounterGenericBase):  # lint:ok
     btype = ctypes.c_bool
     bitmap_item_size = ctypes.sizeof(btype())
-    
+
     @staticmethod
     def is_supported():
         if hasattr(ctypes.c_uint64, 'from_buffer'):
@@ -576,14 +576,14 @@ class SharedCounterBaseCtypes(SharedCounterGenericBase):  # lint:ok
     def __init__(self, slots, buf, offset = 0, locked = False):
         timestamp = ctypes.c_uint64.from_buffer(buf, offset)
         offset += ctypes.sizeof(timestamp)
-        
+
         bitmap = (ctypes.c_bool * slots).from_buffer(buf, offset)
         bitmap_slot = lambda slot : ctypes.c_bool.from_buffer(buf, offset + self.bitmap_item_size * slot)
         counters = (self.dtype * slots).from_buffer(buf, offset + ctypes.sizeof(bitmap))
         super(SharedCounterBaseCtypes, self).__init__(slots, bitmap, counters, locked, bitmap_slot)
 
         # Map my slot as a single item, it makes += atomic
-        self.myslot = self.dtype.from_buffer(buf, 
+        self.myslot = self.dtype.from_buffer(buf,
             offset + ctypes.sizeof(bitmap) + self.slots_item_size * self.slot)
 
         # Map timestamp

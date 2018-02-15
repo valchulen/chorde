@@ -42,11 +42,11 @@ class WithTempdir:
 @skipIfNoFiles
 class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
     capacity_means_entries = False
-    
+
     def setUpClient(self):
         from chorde.clients.files import FilesCacheClient
-        return FilesCacheClient(SIZE, self.tempdir, 
-            checksum_key = "test", 
+        return FilesCacheClient(SIZE, self.tempdir,
+            checksum_key = "test",
             sync_purge = 1,
             mmap_raw = True)
 
@@ -61,7 +61,7 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
 
     def testFile(self):
         client = self.client
-        
+
         tmp = tempfile.NamedTemporaryFile(dir=self.tempdir)
         self.assertTrue(os.path.exists(tmp.name))
         self.assertFalse(client.contains("weefile"))
@@ -113,9 +113,9 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
 
         for i in xrange(maxentries+1):
             client.put(i, bigval+str(i), 86400)
-            
+
             time.sleep(TIME_RESOLUTION*2)
-            
+
             if i > 0:
                 self.assertTrue(client.contains(i-1))
             self.assertTrue(client.contains(i))
@@ -143,14 +143,14 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
         client.put(1, 1, 86400)
         usage = client.usage
         client.close()
-        
+
         # Break it
         with open(os.path.join(client.basepath, "sizemap.32.100"), "w") as f:
             f.seek(0, os.SEEK_END)
             sz = f.tell()
             f.seek(0)
             f.write("\xff" * sz)
-        
+
         self.client = client = self.setUpClient()
         self.assertEqual(client.usage, usage)
 

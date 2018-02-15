@@ -5,7 +5,7 @@ Dependencies:
 * python-memcached *(for MemcachedClient)*
 * pyzmq < 14 *(for coherence support)*
 * dnspython  *(for dynamic dns-based load-balancing of MemcachedClient)*
-* cython or pyrex *(for optimizations in InprocCacheClient)*
+* cython *(for optimizations in InprocCacheClient)*
 
 Optional features
 =================
@@ -25,32 +25,53 @@ and use it directly, like
 
 .. code:: python
 
-	from chorde.clients.inproc import InprocCacheClient
-	from chorde import CacheMissError
-	c = InprocCacheClient(200)
-	c.put(3, 10, 300) # put value 10 on key 3, TTL 5min
-	assert 10 == c.get(3)
-	try:
-		c.get(5)
-	except CacheMissError:
-		print "miss"
+    from chorde.clients.inproc import InprocCacheClient
+    from chorde import CacheMissError
+    c = InprocCacheClient(200)
+    c.put(3, 10, 300) # put value 10 on key 3, TTL 5min
+    assert 10 == c.get(3)
+    try:
+        c.get(5)
+    except CacheMissError:
+        print "miss"
 
 This creates an In-process LRU cache. The in-process part indicates that it
 is process-private, and not shared with other processes.
+
+There are two implementations of the LRU, with different performance
+characteristics. The `InprocCacheClient` can take alternative store
+implementations as an argument, see the module for details.
+
+The default LRUCache, accessible as `chorde.clients.inproc.Cache`,
+is a regular LRU implemented with
+a priority queue and a hash table in tandem, so it has *O(log n)* writes
+and *O(1)* reads, but by default all reads entail a write (to update the
+LRU). That can be disabled by specifying custom options, see the module's
+documentation for more details.
+
+There's an alternative approximate LRU, accessible in
+`chorde.clients.inproc.CuckooCache`, that implements a lazy version of
+a cuckoo hash table, and has *O(1)* reads and amortized *O(1)* writes.
+It's also quite more space-efficient than the regular LRU, so it's better
+suited for very large caches, but its eviction strategy will be approximate,
+and thus not guaranteed to always evict the actual least-recently-used item.
+
+Shared Caches
+=============
 
 The most straightforward way to get a shared cache, is to use a memcache:
 
 .. code:: python
 
-	from chorde.clients.memcached import MemcachedClient
-	from chorde import CacheMissError
-	c = MemcachedClient(["localhost:11211"], checksum_key = "testing")
-	c.put(3, 10, 300)
-	assert 10 == c.get(3)
-	try:
-		c.get(5)
-	except CacheMissError:
-		print "miss"
+    from chorde.clients.memcached import MemcachedClient
+    from chorde import CacheMissError
+    c = MemcachedClient(["localhost:11211"], checksum_key = "testing")
+    c.put(3, 10, 300)
+    assert 10 == c.get(3)
+    try:
+        c.get(5)
+    except CacheMissError:
+        print "miss"
 
 The MemcachedClient is used just like any other client, only it talks to, in this
 example, a local memcached listening on localhost port 11211. Multiple clients
@@ -60,7 +81,7 @@ among them.
 If a hostname is given, and the hostname points to multiple IP addresses, the
 same effect will be obtained, and the distribution will be dynamically updated
 according to the TTL specified on the DNS entry. This, for example, makes the
-client work seamlessly with Amazon ElastiCache's "configuration endpoint", 
+client work seamlessly with Amazon ElastiCache's "configuration endpoint",
 which is a DNS entry that points to one of the cache nodes. But it only works
 like that with single-node clusters. For multi-node clusters, use
 ``chorde.clients.elasticache.ElastiCacheClient``, which goes a step further
@@ -83,6 +104,20 @@ In case the compression becomes a bottleneck, which shouldn't be a problem unles
 it is a high-traffic cache with rarely compressible values, one can disable it.
 Check MemcachedClient's documentation for more details.
 
+To reduce roundtrips, all clients (in particular MemcachedClients) support
+getMulti and getTtlMulti, to fetch multiple keys at once:
+
+.. code:: python
+
+    from chorde.clients.memcached import MemcachedClient
+    from chorde import CacheMissError
+    c = MemcachedClient(["localhost:11211"], checksum_key = "testing")
+    c.put(3, 10, 300)
+    c.put(4, 20, 300)
+    assert {3:10, 4:20, 5:None} == dict(c.getMulti([3,4,5], None))
+
+See the documentation on clients.base for more details.
+
 Multilevel caches
 =================
 
@@ -94,26 +129,26 @@ This can be done straightforwardly with the tiered clients:
 
 .. code:: python
 
-	from chorde.clients.memcached import MemcachedClient
-	from chorde.clients.inproc import InprocCacheClient
-	from chorde.clients.tiered import TieredInclusiveClient
-	from chorde import CacheMissError
-	l1 = InprocCacheClient(10)
-	l2 = MemcachedClient(["localhost:11211"], checksum_key="test")
-	c = TieredInclusiveClient(l1,l2)
-        c.put(3, 10, 300)
-        assert 10 == c.get(3)
-        try:
-                c.get(5)
-        except CacheMissError:
-                print "miss"
+    from chorde.clients.memcached import MemcachedClient
+    from chorde.clients.inproc import InprocCacheClient
+    from chorde.clients.tiered import TieredInclusiveClient
+    from chorde import CacheMissError
+    l1 = InprocCacheClient(10)
+    l2 = MemcachedClient(["localhost:11211"], checksum_key="test")
+    c = TieredInclusiveClient(l1,l2)
+    c.put(3, 10, 300)
+    assert 10 == c.get(3)
+    try:
+            c.get(5)
+    except CacheMissError:
+            print "miss"
 
-Here we build an *inclusive* tiered client, in which elements on higher levels are 
+Here we build an *inclusive* tiered client, in which elements on higher levels are
 promoted into the lower levels by copying, rather than swapping. This means there
 is duplication among them, but this is usually best in cases like these, where the
 upper levels are shared among processes.
 
-An exclusive client isn't provided at this moment, since there is seldom any use 
+An exclusive client isn't provided at this moment, since there is seldom any use
 for the exclusive pattern on these types of caches.
 
 Decorators
@@ -131,21 +166,21 @@ Assuming *c* is the client we want to use for caching,
 
 .. code:: python
 
-	from chorde.decorators import cached
-	import random
-	
-	@cached(c, ttl=300, async_ttl=-60)
-	def expensive_func(x):
-		return x * random.random()
+    from chorde.decorators import cached
+    import random
 
-	print expensive_func(1)
-	print expensive_func(1) # Should return the same
-	print expensive_func.async()(1) # will refresh asynchronously every minute
-	print expensive_func.future()(1).result() # same as before, but using the futures interface
-	print expensive_func.peek(1) # just check the cache
-	print expensive_func.put(1, _cache_put=5) # write an explicit value
-	print expensive_func.async().lazy(1) # don't wait, raise CacheMissError if not available, compute in background
-	print expensive_func.future().lazy(1).result() # same as before, but using the futures interface
+    @cached(c, ttl=300, async_ttl=-60)
+    def expensive_func(x):
+        return x * random.random()
+
+    print expensive_func(1)
+    print expensive_func(1) # Should return the same
+    print expensive_func.async()(1) # will refresh asynchronously every minute
+    print expensive_func.future()(1).result() # same as before, but using the futures interface
+    print expensive_func.peek(1) # just check the cache
+    print expensive_func.put(1, _cache_put=5) # write an explicit value
+    print expensive_func.async().lazy(1) # don't wait, raise CacheMissError if not available, compute in background
+    print expensive_func.future().lazy(1).result() # same as before, but using the futures interface
 
 There, the async_ttl means the minimum TTL that triggers
 an asynchronous recomputation (you can use it to avoid ever having to wait on a recomputation).
@@ -154,7 +189,7 @@ every minute (60 seconds). The plain ttl is an absolute limit, no result older t
 that will ever be returned.
 
 The documentation on chorde.decorators.cached will have more to say about the ways of
-invoking cached functions. 
+invoking cached functions.
 
 In general, the terms are:
 
@@ -177,17 +212,17 @@ wrapped like so:
 
 .. code:: python
 
-	import tornado.web
-	import tornado.gen
-	from chorde.clients.async import makeFutureWrapper
-	
-	WF = makeFutureWrapper(tornado.web.Future)
-	
-	...
-	
-	@tornado.gen.coroutine
-	def get(self):
-		some_result = yield WF(some_func.future()(some_args))
+    import tornado.web
+    import tornado.gen
+    from chorde.clients.async import makeFutureWrapper
+
+    WF = makeFutureWrapper(tornado.web.Future)
+
+    ...
+
+    @tornado.gen.coroutine
+    def get(self):
+        some_result = yield WF(some_func.future()(some_args))
 
 
 There is a better way to integrate with tornado >= 4.0

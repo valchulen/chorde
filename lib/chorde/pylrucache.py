@@ -30,7 +30,7 @@ class _node(object):
 
 class LRUCache(object):
     """Least-Recently-Used (LRU) cache.
-    
+
     Instances of this class behave like a Python mapping type, except that
     its size is guaranteed to never surpass the assigned limit and when
     spillover occurs, the least recently used items get removed first.
@@ -45,7 +45,7 @@ class LRUCache(object):
 
     def __len__(self):
         return len(self.pqueue)
-    
+
     def __contains__(self, key):
         return key in self.emap
 
@@ -141,7 +141,7 @@ class LRUCache(object):
             if self.touch_on_read:
                 self.decrease(node)
             return node.value
-    
+
     def __delitem__(self, key):
         if key not in self.emap:
             raise CacheMissError(key)
@@ -163,8 +163,10 @@ class LRUCache(object):
             if node.value is oldvalue:
                 node.value = newvalue
                 self.decrease(node)
+                return True
             elif self.touch_on_read:
                 self.decrease(node)
+        return False
 
     def get(self, key, deflt = None):
         if key not in self.emap:
@@ -173,7 +175,7 @@ class LRUCache(object):
             node = self.emap[key]
             self.decrease(node)
             return node.value
-    
+
     def pop(self, key, deflt = CacheMissError):
         if key not in self.emap:
             if deflt is CacheMissError:
@@ -206,7 +208,7 @@ class LRUCache(object):
         self.pqueue = []
         self.emap = {}
         self.next_prio = 0
-    
+
     def defrag(self):
         self.pqueue = list(self.pqueue)
         self.emap = self.emap.copy()
@@ -230,7 +232,7 @@ class LRUCacheItemsIterator(object):
             return ( node.key, node.value )
     def __iter__(self):
         return self
-        
+
     next = __next__
 
 class LRUCacheValuesIterator(object):

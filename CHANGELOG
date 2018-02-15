@@ -1,0 +1,63 @@
+# Change Log
+
+All notable changes to this project will be documented here.
+
+## [0.3.1] - 2018-02-07
+### Bugfixes
+- Fix broker state listener states on some corner-case
+  error handling in coherence manager that might cause it
+  to have both listener and broker event listeners registered
+  with the ipsub channel
+
+## [0.3.0] - 2017-12-06
+### Bugfixes
+- Fix NamespaceMirrorWrapper.clear by properly proxying
+  writes on revision and revmark_ttl
+- Make LazyCuckooCache's rehash (resize) operation
+  atomic to avoid concurrent rehashing, which can cause
+  corruption and crashes in rare corner cases, most
+  notably with non-preallocated caches that grow very
+  rapidly from concurrent writer threads and cause
+  eviction callbacks due to hash collisions during
+  rehashing.
+
+### Changed
+- Each client has a different logger
+
+## [0.2.1] - 2017-10-12
+### Bugfixes
+- Fix TieredInclusiveClient's handling of REGET during
+  coherence. In cases where high load might make the
+  L1 expiration be missed by the time putnext gets
+  the REGET reply, the way REGET was implemented might
+  step on fresh values of the cache with old ones
+  inadvertantly. Check the values' TTL befure using it
+  in a REGET, inhibit caller's reget, and use promotion
+  logic instead.
+
+## [0.2.0] - 2017-09-20
+### Changed
+- Made ttl_skip not return default/CacheMissError when the
+  only available value is below the skip threshold. Instead,
+  return the available item as does TieredInclusiveCache.
+  The logic works better with lazy decorators and async
+  refresh in this way, and is more uniform across clients.
+- FastMemcachedClient: Refresh DNS in the bgwriter thread
+  to avoid latency spikes caused by DNS queries
+
+### Added
+- Support for getMulti and getTtlMulti to all clients,
+  with optimized versions for memcached
+- An option tcp_nodelay to MemcachedStoreClient to reduce
+  latency in latency-sensitive applications
+- Add a LazyCuckooCache implementing a lazy form of
+  cuckoo hashing (ie: without relocation) to implement a
+  quasi-LRU eviction strategy with O(1) reads and updates
+
+## [0.1.0]
+
+Initial release
+
+
+[Note]
+This changelog format is taken from http://keepachangelog.com/.

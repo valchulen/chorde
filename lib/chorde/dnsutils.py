@@ -27,7 +27,7 @@ try:
         except ValueError:
             return False
 except ImportError:
-    import re  
+    import re
     def is_ip6(x, ip6match = re.compile(r'^[0-9a-fA-F:]{6,32}$').match): # lint:ok
         return bool(ip6match(x))
     def is_ip(x):  # lint:ok
@@ -77,7 +77,7 @@ try:
 except ImportError:
     import warnings
     warnings.warn("dnspython missing, will not support dynamic CNAME server lists")
-    
+
     # basic fallback that serves to dected round-robin dns at least
     dnsquery = basic_dnsquery
 
@@ -113,6 +113,9 @@ class DynamicResolvingClient(object):
 
     @property
     def servers(self):
+        return self._servers()
+
+    def _servers(self):
         """
         Returns a set of server names derived from client_addresses.
         When the addresses in client_addresses point to specific hosts, this will
@@ -193,7 +196,7 @@ class DynamicResolvingClient(object):
                 rv = self._client_addresses
             else:
                 self._static_client_addresses = static_addresses
-                
+
                 # Schedule a recheck when TTL expires (or 5 seconds, whichever is higher)
                 self._dynamic_client_checktime = max(expiration, time.time() + 5)
                 self._dynamic_client_addresses = servers
@@ -253,3 +256,23 @@ class ThreadLocalDynamicResolvingClient(DynamicResolvingClient):
         if tl is None:
             self._tl = tl = DynamicResolvingClientLocalStore()
         return tl
+
+class AsyncThreadLocalDynamicResolvingClient(ThreadLocalDynamicResolvingClient):
+    def __init__(self, *p, **kw):
+        super(AsyncThreadLocalDynamicResolvingClient, self).__init__(*p, **kw)
+        self._cached_servers = None
+        self._cached_servers_exptime = None
+
+    @property
+    def servers(self):
+        servers = self._cached_servers
+        exptime = self._cached_servers_exptime
+        if servers is None or exptime is None or (exptime < time.time()):
+            servers = self.refresh_servers()
+        return servers
+
+    def refresh_servers(self):
+        # Expires in 5 minutes if refresh_servers isn't called
+        servers = self._cached_servers = self._servers()
+        self._cached_servers_exptime = time.time() + 300
+        return servers

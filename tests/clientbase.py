@@ -10,13 +10,13 @@ class CacheClientTestMixIn:
     is_lru = True
     contains_touches = True
     meaningful_capacity = True
-    
+
     def setUpClient(self):
         raise NotImplementedError
 
     def _setUpClient(self):
         return self.setUpClient()
-    
+
     def setUp(self):
         try:
             self.client = self._setUpClient()
@@ -63,6 +63,11 @@ class CacheClientTestMixIn:
         self.assertRaises(CacheMissError, client.get, 3)
         self.assertEqual(client.get(3, None), None)
         self.assertEqual(client.get(3, 1), 1)
+
+    def testGetMulti(self):
+        client = self.client
+        client.put(4, 10, 10)
+        self.assertItemsEqual([(3,None), (4,10), (5,None)], list(client.getMulti([3,4,5], None)))
 
     def testGetPromoteCB(self):
         from chorde.clients.inproc import InprocCacheClient
@@ -118,13 +123,33 @@ class CacheClientTestMixIn:
         self.assertEqual(v, 10)
         self.assertTrue(ttl < 10)
 
+    def testGetTtlMulti(self):
+        client = self.client
+        client.put(4, 10, 10)
+        time.sleep(0.1)
+        rv = dict(client.getTtlMulti([3, 4, 5], None))
+        rv[4] = (rv[4][0], rv[4][1] < 10)
+        self.assertItemsEqual([(3, (None, -1)), (4, (10, True)), (5, (None, -1))], rv.items())
+
     def testGetTtlSkip(self):
         client = self.client
         client.put(4, 10, 10)
         time.sleep(0.1)
         v,ttl = client.getTtl(4, None, ttl_skip = 10)
-        self.assertEqual(v, None)
-        self.assertTrue(ttl < 0)
+        self.assertEqual(v, 10)
+        self.assertTrue(ttl >= 0)
+
+    def testGetTtlSkipMulti(self):
+        client = self.client
+        client.put(4, 10, 10)
+        client.put(5, 11, 20)
+        time.sleep(0.1)
+        rv = dict(client.getTtlMulti([4,5], None, ttl_skip = 10))
+        rv[5] = (rv[5][0], min(rv[5][1], 12))
+        rv[4] = (rv[4][0], max(rv[4][1], 10))
+        self.assertItemsEqual(
+            [(4, (10, 10)), (5, (11, 12))],
+            rv.items())
 
     def testGetTtlPromoteCB(self):
         client = self.client
@@ -187,7 +212,7 @@ class CacheClientTestMixIn:
         cap = client.capacity
 
         self.assertEqual(client.usage, 0)
-        
+
         for i in xrange(cap):
             client.put(i,i,86400)
             self.assertEqual(client.usage, i+1)
@@ -242,19 +267,19 @@ class NamespaceWrapperTestMixIn(CacheClientTestMixIn):
         self.client.put(4, 5, 10)
         self.bclient.put(4, 6, 10)
         self.rclient.put(4, 7, 10)
-        
+
         self.assertEqual(self.client.get(1), 2)
         self.assertRaises(CacheMissError, self.bclient.get, 1)
         self.assertRaises(CacheMissError, self.rclient.get, 1)
-        
+
         self.assertRaises(CacheMissError, self.client.get, 2)
         self.assertEqual(self.bclient.get(2), 3)
         self.assertRaises(CacheMissError, self.rclient.get, 2)
-        
+
         self.assertRaises(CacheMissError, self.client.get, 3)
         self.assertRaises(CacheMissError, self.bclient.get, 3)
         self.assertEqual(self.rclient.get(3), 4)
-        
+
         self.assertEqual(self.client.get(4), 5)
         self.assertEqual(self.bclient.get(4), 6)
         self.assertEqual(self.rclient.get(4), 7)
@@ -266,19 +291,19 @@ class NamespaceWrapperTestMixIn(CacheClientTestMixIn):
         self.client.put(4, 5, 10)
         self.bclient.put(4, 6, 10)
         self.rclient.put(4, 7, 10)
-        
+
         self.assertEqual(self.client.get(1), 2)
         self.assertRaises(CacheMissError, self.bclient.get, 1)
         self.assertRaises(CacheMissError, self.rclient.get, 1)
-        
+
         self.assertRaises(CacheMissError, self.client.get, 2)
         self.assertEqual(self.bclient.get(2), 3)
         self.assertRaises(CacheMissError, self.rclient.get, 2)
-        
+
         self.assertRaises(CacheMissError, self.client.get, 3)
         self.assertRaises(CacheMissError, self.bclient.get, 3)
         self.assertEqual(self.rclient.get(3), 4)
-        
+
         self.assertEqual(self.client.get(4), 5)
         self.assertEqual(self.bclient.get(4), 6)
         self.assertEqual(self.rclient.get(4), 7)

@@ -16,7 +16,7 @@ class CoherentDefer(Defer):
     computing, or if the shared cache is re-validated somehow when this method is
     called.
     """
-    
+
     def __init__(self, callable_, *args, **kwargs):
         """
         Params
@@ -29,8 +29,8 @@ class CoherentDefer(Defer):
 
             key: The key associated with this computation, to be provided to the CoherenceManager.
 
-            timeout: Coherence protocol timeout, in ms, if the peers don't answer in this time, 
-                detached operation will be assumed and computation will proceed. 
+            timeout: Coherence protocol timeout, in ms, if the peers don't answer in this time,
+                detached operation will be assumed and computation will proceed.
                 Default: whatever the heartbeat timeout is on the underlying IPSub channel
 
             wait_time: Whether and how long to wait for other node's computation to be done.
@@ -126,19 +126,19 @@ class CoherentWrapperClient(BaseCacheClient):
     a callable rather than a value, as defers do).
 
     The regular put method will publish being done, if the manager is configured
-    in quick refresh mode, but will not attempt to obtain a computation lock, 
-    resulting in less overhead, decent consistency, but some duplication of 
+    in quick refresh mode, but will not attempt to obtain a computation lock,
+    resulting in less overhead, decent consistency, but some duplication of
     effort. Therefore, put_coherently should be applied to expensive computations.
 
-    If the underlying client isn't asynchronous, put_coherently will implicitly 
+    If the underlying client isn't asynchronous, put_coherently will implicitly
     undefer the values, executing the coherence protocol in the calling thread.
     """
-    
+
     def __init__(self, client, manager, timeout = 2000):
         self.client = client
         self.manager = manager
         self.timeout = timeout
-        
+
     @property
     def async(self):
         return self.client.async
@@ -152,7 +152,7 @@ class CoherentWrapperClient(BaseCacheClient):
         return self.client.usage
 
     def wait(self, key, timeout = None):
-        # Hey, look at that. Since locally it it all happens on a Defer, 
+        # Hey, look at that. Since locally it it all happens on a Defer,
         # we can just wait on the wrapped client first to wait for ourselves
         if timeout is not None:
             deadline = time.time() + timeout
@@ -166,7 +166,7 @@ class CoherentWrapperClient(BaseCacheClient):
         else:
             timeout = None
         self.manager.wait_done(key, timeout=timeout)
-    
+
     def put(self, key, value, ttl, coherence_timeout = None, **kw):
         manager = self.manager
         if manager.quick_refresh:
@@ -188,11 +188,11 @@ class CoherentWrapperClient(BaseCacheClient):
 
     def put_coherently(self, key, ttl, expired, future, callable_, *args, **kwargs):
         """
-        Another method of putting, that will additionally ensure that only one node 
-        is working on computing the result. As such, it takes  a callable rather 
+        Another method of putting, that will additionally ensure that only one node
+        is working on computing the result. As such, it takes  a callable rather
         than a value, as defers do.
-    
-        If the underlying client isn't asynchronous, put_coherently will implicitly 
+
+        If the underlying client isn't asynchronous, put_coherently will implicitly
         undefer the value, executing the coherence protocol in the calling thread.
 
         Params
@@ -211,7 +211,7 @@ class CoherentWrapperClient(BaseCacheClient):
         wait_time = kwargs.pop('wait_time', 0)
         put_kwargs = kwargs.pop('put_kwargs', None) or None
         value = CoherentDefer(
-            callable_, 
+            callable_,
             key = key,
             manager = self.manager,
             expired = expired,
@@ -233,13 +233,13 @@ class CoherentWrapperClient(BaseCacheClient):
         finally:
             if deferred is not None:
                 deferred.done()
-    
+
     def renew(self, key, ttl):
         self.client.renew(key, ttl)
 
     def delete(self, key, coherence_timeout = None):
         self.client.delete(key)
-        
+
         # Warn others
         self.manager.fire_deletion(key, timeout = coherence_timeout)
 
@@ -254,10 +254,19 @@ class CoherentWrapperClient(BaseCacheClient):
 
     def purge(self, *p, **kw):
         self.client.purge(*p, **kw)
-    
+
     def getTtl(self, key, default = NONE, **kw):
         return self.client.getTtl(key, default, **kw)
-    
+
+    def get(self, key, default = NONE, **kw):
+        return self.client.get(key, default, **kw)
+
+    def getTtlMulti(self, keys, default = NONE, **kw):
+        return self.client.getTtlMulti(keys, default, **kw)
+
+    def getMulti(self, keys, default = NONE, **kw):
+        return self.client.getMulti(keys, default, **kw)
+
     def contains(self, key, ttl = None, **kw):
         return self.client.contains(key, ttl, **kw)
 
