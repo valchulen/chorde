@@ -782,6 +782,25 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         for f in futures[1:] + futures2[1:]:
             self.assertEqual(f.result(0.1), retval)
 
+    def test_coherent_renew_time(self):
+        # Without namespace, should create one with the function name
+        ev = threading.Event()
+        @self.decorator(3.8, ttl_spread=False)
+        def get_random():
+            ev.set()
+            return random.random()
+        get_random2 = self.decorator2(5, async_ttl=4, renew_time=0.5, future_sync_check=True)(get_random.uncached)
+
+        retval = get_random.future()().result(0.25)
+
+        # For get_random2, this looks expired. It should start an async refresh.
+        # It might fail if renew_time isn't taken into account on the expiration check during coherence.
+        ev.clear()
+        retval2 = get_random2.future()().result(0.25)
+        self.assertEqual(retval, retval2)
+        ev.wait(1)
+        self.assertTrue(ev.isSet())
+
     def test_put_l1(self):
         # Should change the cached value
         key = lambda: 'test_put'
