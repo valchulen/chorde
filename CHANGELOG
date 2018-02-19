@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.4.0] - Unreleased
+## [0.4.0] - 2018-02-19
 ### Added
 - Add expire() calling mode to decorated functions to perform
   an expire on the relevant key.
