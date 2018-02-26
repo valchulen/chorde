@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented here.
 
+## [0.4.1] - Unreleased
+### Bugfixes
+- Throttle coherence tics when trying to refresh stale pending
+  entries in the broker. Under some conditions (forgotten
+  tasks and very high timeouts), a very high rate of tic
+  requests could be generated, causing channel overload.
+
+### Changed
+- Added some useful debug logging to chorde.mq.coherence
+
 ## [0.4.0] - 2018-02-19
 ### Added
 - Add expire() calling mode to decorated functions to perform

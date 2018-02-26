@@ -8,6 +8,7 @@ import json
 import zmq
 import time
 import operator
+import logging
 
 from . import ipsub
 
@@ -129,7 +130,8 @@ class CoherenceManager(object):
             quick_refresh = False,
             stable_hash = stable_hash,
             value_pickler = None,
-            max_pending = 10240):
+            max_pending = 10240,
+            logger = None):
         """
         Params
             namespace: A namespace that will use to identify events in subscription
@@ -172,8 +174,14 @@ class CoherenceManager(object):
                 notifications within a task timeout period, and that could eat all
                 your node's RAM rather quickly. This setting avoids OOM conditions,
                 by expiring old pending entries as the list reaches this limit.
+
+            logger: Optionally override the default logger (chorde.mq.coherence)
         """
         assert value_pickler or shared
+
+        if logger is None:
+            logger = logging.getLogger('chorde.mq.coherence')
+        self.logger = logger
 
         self.private = private
         self.shared = shared
@@ -191,6 +199,7 @@ class CoherenceManager(object):
         self.group_pending = inproc.Cache(max_pending, False)
         self.recent_done = inproc.Cache(max_pending, False)
         self.selfdone_subs = set()
+        self._last_tic_request = 0
 
         if synchronous:
             self.waiter = SyncWaiter
@@ -275,6 +284,7 @@ class CoherenceManager(object):
         txid, key = payload
         if key is CLEAR:
             # Wowowow
+            self.logger.debug('CLEAR')
             self.private.clear()
         else:
             try:
@@ -289,6 +299,7 @@ class CoherenceManager(object):
 
     @_weak_callback
     def _on_enter_broker(self, prefix, event, payload):
+        self.logger.debug('Entered broker for prefix %s', prefix)
         ipsub_ = self.ipsub
         self.encoded_pending = ipsub_.listen_decode(self.pendprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.bound_pending )
@@ -304,6 +315,7 @@ class CoherenceManager(object):
 
     @_weak_callback
     def _on_leave_broker(self, prefix, event, payload):
+        self.logger.debug('Left broker for prefix %s', prefix)
         ipsub_ = self.ipsub
         ipsub_.unlisten(self.pendprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.encoded_pending )
@@ -318,6 +330,7 @@ class CoherenceManager(object):
 
     @_weak_callback
     def _on_enter_listener(self, prefix, event, payload):
+        self.logger.debug('Entered listener for prefix %s', prefix)
         ipsub_ = self.ipsub
         ipsub_.listen(self.listpendqprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.bound_list_pending_query )
@@ -330,6 +343,7 @@ class CoherenceManager(object):
 
     @_weak_callback
     def _on_leave_listener(self, prefix, event, payload):
+        self.logger.debug('Left listener for prefix %s', prefix)
         ipsub_ = self.ipsub
         ipsub_.unlisten(self.listpendqprefix, ipsub.EVENT_INCOMING_UPDATE,
             self.bound_list_pending_query )
@@ -381,6 +395,7 @@ class CoherenceManager(object):
                         needs_refresh = True
             except RuntimeError:
                 # Bah, gotta snapshot
+                del clean[:]
                 for k,rv in group_pending.items():
                     delta = now - rv[1]
                     if delta > _PENDING_TIMEOUT:
@@ -390,24 +405,38 @@ class CoherenceManager(object):
 
             # Expire them
             try:
+                pop_pending = group_pending.pop
                 for k in clean:
-                    del group_pending[k]
+                    pop_pending(k, None)
+                if len(clean) > 0:
+                    self.logger.debug("Cleaned %d expired pending items", len(clean))
             except KeyError:
                 pass
 
             if needs_refresh:
                 # Ask for a refreshment
+                self.logger.debug("Requesting fresh pending items list")
                 self.ipsub.publish_encode(self.listpendqprefix, self.encoding, None)
 
         return True
 
+    def _request_tic(self, now = None):
+        if now is not None:
+            now = time.time()
+        if (now - self._last_tic_request) > (PENDING_TIMEOUT/2):
+            self._last_tic_request = now
+            self.ipsub.request_tic()
+            return True
+
     def _query_pending_locally(self, key, expired, timeout = 2000, optimistic_lock = False):
         rv = self.group_pending.get(key)
-        if rv is not None and (time.time() - rv[1]) > PENDING_TIMEOUT:
+        now = time.time()
+        if rv is not None and (now - rv[1]) > PENDING_TIMEOUT:
             rv = None
-        elif rv is not None and (time.time() - rv[1]) > (PENDING_TIMEOUT/2):
+        elif rv is not None and (now - rv[1]) > (PENDING_TIMEOUT/2):
             # Um... belated tick?
-            self.ipsub.request_tic()
+            if self._request_tic(now):
+                self.logger.debug("Requesting async fresh pending items list")
         if rv is not None:
             return rv[-1]
         else:
@@ -416,9 +445,10 @@ class CoherenceManager(object):
                 return self.p2p_pub_binds
             elif expired():
                 if optimistic_lock:
+                    now = time.time()
                     txid = self.txid
                     self.recent_done.pop(key,None)
-                    self.group_pending[key] = (txid, time.time(), self.p2p_pub_binds)
+                    self.group_pending[key] = (txid, now, self.p2p_pub_binds)
                     self.pending[key] = txid
                 return None
             else:
@@ -526,19 +556,21 @@ class CoherenceManager(object):
     def _on_pending_query(self, prefix, event, payload):
         key, txid, contact, lock = payload
         rv = self.group_pending.get(key)
-        if rv is not None and (time.time() - rv[1]) > PENDING_TIMEOUT:
+        now = time.time()
+        if rv is not None and (now - rv[1]) > PENDING_TIMEOUT:
             # Expired
             rv = None
-        elif rv is not None and (time.time() - rv[1]) > (PENDING_TIMEOUT/2):
+        elif rv is not None and (now - rv[1]) > (PENDING_TIMEOUT/2):
             # Um... belated tick?
-            self.ipsub.request_tic()
+            if self._request_tic(now):
+                self.logger.debug("Requesting async fresh pending items list")
         if rv is None:
             # Maybe the broker itself is computing...
             rv = self.pending.get(key)
             if rv is not None:
-                rv = (rv, time.time(), self.p2p_pub_binds)
+                rv = (rv, now, self.p2p_pub_binds)
         if lock and rv is None:
-            self.group_pending[key] = (txid, time.time(), contact)
+            self.group_pending[key] = (txid, now, contact)
         return ipsub.BrokerReply(json.dumps(rv))
 
     @_weak_callback
