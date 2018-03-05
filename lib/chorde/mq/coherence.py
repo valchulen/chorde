@@ -427,6 +427,8 @@ class CoherenceManager(object):
             self._last_tic_request = now
             self.ipsub.request_tic()
             return True
+        else:
+            return False
 
     def _query_pending_locally(self, key, expired, timeout = 2000, optimistic_lock = False):
         rv = self.group_pending.get(key)
