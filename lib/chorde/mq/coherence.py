@@ -421,7 +421,7 @@ class CoherenceManager(object):
         return True
 
     def _request_tic(self, now = None):
-        if now is not None:
+        if now is None:
             now = time.time()
         if (now - self._last_tic_request) > (PENDING_TIMEOUT/2):
             self._last_tic_request = now
