@@ -7,10 +7,10 @@ cdef extern from "Python.h":
     void* PyList_GET_ITEM(void *o, Py_ssize_t i)
     Py_ssize_t PyList_GET_SIZE(void *o)
 
+cdef extern from "lrucache_cy028_compat.h":
+    pass
+
 cdef extern from *:
-    """
-#define __pyx_obj_8lrucache__node __pyx_obj_6chorde_8lrucache__node
-    """
     # Note: the C name below is extracted from the generated code. As such,
     #       it can change from time to time. It's a hack. Beware.
     #       the C above is a compatibility define for Cython 0.28 and above

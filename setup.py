@@ -17,7 +17,7 @@ else:
     except:
         no_pyrex = True
 
-VERSION = "0.4.1"
+VERSION = "0.4.2"
 
 version_path = os.path.join(os.path.dirname(__file__), 'lib', 'chorde', '_version.py')
 if not os.path.exists(version_path):
@@ -72,7 +72,7 @@ if not no_pyrex:
     extra.update(dict(
         ext_modules=cythonize([
             Extension("chorde.lrucache", ["lib/lrucache/lrucache.pyx"],
-                depends = ["lib/lrucache/lrucache.pxd"],
+                depends = ["lib/lrucache/lrucache.pxd", "lib/lrucache/lrucache_cy028_compat.h"],
                 cython_include_dirs = [libdir, os.path.join(libdir, "lrucache")],
                 extra_compile_args = [ "-O3" ] ),
             Extension("chorde.cuckoocache", ["lib/cuckoocache/cuckoocache.pyx"],
