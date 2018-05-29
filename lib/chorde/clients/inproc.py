@@ -256,14 +256,14 @@ class InprocCacheClient(base.BaseCacheClient):
         # Returning them makes them live at least until the sync-wrapped method ends
         return retentions
 
-    def contains(self, key, ttl = None):
+    def contains(self, key, ttl = None, baseNONE = base.NONE, time = time.time):
         if key in self.store:
             if ttl is None:
                 ttl = 0
 
-            rv = self.store.get(key, base.NONE)
-            if rv is not base.NONE:
-                store_ttl = rv[1] - time.time()
+            rv = self.store.get(key, baseNONE)
+            if rv is not baseNONE:
+                store_ttl = rv[1] - time()
                 return store_ttl > ttl
             else:
                 return False

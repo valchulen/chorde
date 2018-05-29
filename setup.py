@@ -83,6 +83,11 @@ if not no_pyrex:
                 depends = ["lib/chorde/clients/_async.pxd"],
                 cython_include_dirs = [libdir, os.path.join(libdir, "chorde", "clients")],
                 extra_compile_args = [ "-O3" ] ),
+            Extension("chorde.decorators", ["lib/chorde/decorators.py"]),
+            Extension("chorde.clients.base", ["lib/chorde/clients/base.py"]),
+            Extension("chorde.clients.inproc", ["lib/chorde/clients/inproc.py"]),
+            Extension("chorde.clients.tiered", ["lib/chorde/clients/tiered.py"]),
+            Extension("chorde.clients.async", ["lib/chorde/clients/async.py"]),
         ], include_path = [ libdir ]),
         cmdclass = {'build_ext': build_ext},
         data_files = [
