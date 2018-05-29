@@ -874,11 +874,11 @@ cdef int cuckoocache_clear(o):
     return 0
 
 cdef void lazy_cuckoocache_enable_gc(PyTypeObject *t):
-    if t.tp_traverse != cuckoocache_traverse:
+    if t.tp_traverse != <traverseproc>cuckoocache_traverse:
         cuckoocache_cy_traverse = t.tp_traverse
-        t.tp_traverse = cuckoocache_traverse
-    if t.tp_clear != cuckoocache_clear:
-        t.tp_clear = cuckoocache_clear
+        t.tp_traverse = <traverseproc>cuckoocache_traverse
+    if t.tp_clear != <inquiry>cuckoocache_clear:
+        t.tp_clear = <inquiry>cuckoocache_clear
 
 lazy_cuckoocache_enable_gc(<PyTypeObject*>LazyCuckooCache)
 
