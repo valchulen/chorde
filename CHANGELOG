@@ -7,6 +7,9 @@ All notable changes to this project will be documented here.
 - Compatibility with Cython 0.28
 - Cythonized decorators and some base clients to lower caching
   overhead in the most commonly used patterns
+  NOTE: cythonized decorators aren't picklable, so client code
+  may have to be adapted to not depend on the picklability of
+  decorated functions
 
 ## [0.4.1] - 2018-03-08
 ### Bugfixes
