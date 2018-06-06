@@ -8,6 +8,7 @@ All notable changes to this project will be documented here.
 
 ### Improvements
 - Small performance improvements
+- Prevent busy looping in async waitkey in some corner cases
 
 ## [0.4.1] - 2018-03-08
 ### Bugfixes

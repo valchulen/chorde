@@ -459,6 +459,8 @@ class AsyncCacheWriterPool:
             queueset = self.queueset
             workset_get = self.workset.get
             done_event = self.done_event
+            sleep = time.sleep
+            busyloop = 0
             while (key in queueset or workset_get(key, tidt)[0] != tid):
                 ev = workset_get(key)
                 if ev is not None:
@@ -466,7 +468,13 @@ class AsyncCacheWriterPool:
                 elif (key in queueset or workset_get(key, tidt)[0] != tid):
                     ev = done_event
                 if ev is not None:
-                    ev.wait(1.0)
+                    done = ev.wait(1.0)
+                    if not done:
+                        busyloop = 0
+                    else:
+                        busyloop += 1
+                        if busyloop > 5:
+                            sleep(0.05)
                 else:
                     break
         else:
@@ -476,15 +484,23 @@ class AsyncCacheWriterPool:
             workset_get = self.workset.get
             done_event = self.done_event
             time_time = time.time
+            sleep = time.sleep
+            busyloop = 0
             tfin = time_time() + timeout
             while (key in queueset or workset_get(key, tidt)[0] != tid) and tfin >= time_time():
                 ev = workset_get(key)
                 if ev is not None:
                     ev = ev[2]
                 elif (key in queueset or workset_get(key, tidt)[0] != tid):
-                    ev = self.done_event
+                    ev = done_event
                 if ev is not None:
-                    ev.wait(min(1.0, timeout))
+                    done = ev.wait(min(1.0, timeout))
+                    if not done:
+                        busyloop = 0
+                    else:
+                        busyloop += 1
+                        if busyloop > 5:
+                            sleep(0.05)
                 else:
                     break
                 timeout = tfin - time_time()
