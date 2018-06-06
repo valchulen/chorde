@@ -453,14 +453,16 @@ class AsyncCacheWriterPool:
         if tid in self.threadset:
             # Oops, recursive call, bad idea
             return
-        elif timeout is None:
+
+        tidt = (tid,)
+        queueset = self.queueset
+        workset_get = self.workset.get
+        done_event = self.done_event
+        sleep = time.sleep
+        busyloop = 0
+
+        if timeout is None:
             # contains inlined for speed in code below
-            tidt = (tid,)
-            queueset = self.queueset
-            workset_get = self.workset.get
-            done_event = self.done_event
-            sleep = time.sleep
-            busyloop = 0
             while (key in queueset or workset_get(key, tidt)[0] != tid):
                 ev = workset_get(key)
                 if ev is not None:
@@ -481,13 +483,7 @@ class AsyncCacheWriterPool:
                     break
         else:
             # contains inlined for speed in code below
-            tidt = (tid,)
-            queueset = self.queueset
-            workset_get = self.workset.get
-            done_event = self.done_event
             time_time = time.time
-            sleep = time.sleep
-            busyloop = 0
             tfin = time_time() + timeout
             while (key in queueset or workset_get(key, tidt)[0] != tid) and tfin >= time_time():
                 ev = workset_get(key)
