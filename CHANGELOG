@@ -6,6 +6,9 @@ All notable changes to this project will be documented here.
 ### Changed
 - Compatibility with Cython 0.28
 
+### Improvements
+- Small performance improvements
+
 ## [0.4.1] - 2018-03-08
 ### Bugfixes
 - Throttle coherence tics when trying to refresh stale pending
