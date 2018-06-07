@@ -478,7 +478,8 @@ class AsyncCacheWriterPool:
                         if busyloop > 5:
                             if ev is done_event and busyloop > 20 and ev.isSet():
                                 ev.clear()
-                            sleep(0.05)
+                            else:
+                                sleep(0.05)
                 else:
                     break
         else:
@@ -500,7 +501,8 @@ class AsyncCacheWriterPool:
                         if busyloop > 5:
                             if ev is done_event and busyloop > 20 and ev.isSet():
                                 ev.clear()
-                            sleep(0.05)
+                            else:
+                                sleep(0.05)
                 else:
                     break
                 timeout = tfin - time_time()
