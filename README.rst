@@ -139,9 +139,9 @@ This can be done straightforwardly with the tiered clients:
     c.put(3, 10, 300)
     assert 10 == c.get(3)
     try:
-            c.get(5)
+        c.get(5)
     except CacheMissError:
-            print "miss"
+        print "miss"
 
 Here we build an *inclusive* tiered client, in which elements on higher levels are
 promoted into the lower levels by copying, rather than swapping. This means there
@@ -242,3 +242,10 @@ There is a better way to integrate with tornado >= 4.0
         some_result = yield some_func.future()(some_args)
 
 
+Additional documentation
+========================
+
+- `In Depth Look into Caching (Part 1) <https://geeks.jampp.com/python/in-depth-look-into-caching-1/>`__ (English)
+- `In Depth Look into Caching (Part 2) <https://geeks.jampp.com/python/in-depth-look-into-caching-2/>`__ (English)
+- `Caching para hordas y estampidas por Claudio Freire - PyCon 2013 <https://www.youtube.com/watch?v=ZlK4rBlrJlY>`__ (Spanish)
+- `PyCon UY 2013: Caching para hordas y estampidas - Claudio Freire <https://www.youtube.com/watch?v=mb68Y8AkL7c>`__ (Spanish)
