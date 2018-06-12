@@ -248,4 +248,3 @@ Additional documentation
 - `In Depth Look into Caching (Part 1) <https://geeks.jampp.com/python/in-depth-look-into-caching-1/>`__ (English)
 - `In Depth Look into Caching (Part 2) <https://geeks.jampp.com/python/in-depth-look-into-caching-2/>`__ (English)
 - `Caching para hordas y estampidas por Claudio Freire - PyCon 2013 <https://www.youtube.com/watch?v=ZlK4rBlrJlY>`__ (Spanish)
-- `PyCon UY 2013: Caching para hordas y estampidas - Claudio Freire <https://www.youtube.com/watch?v=mb68Y8AkL7c>`__ (Spanish)
