@@ -11,6 +11,10 @@ All notable changes to this project will be documented here.
   may have to be adapted to not depend on the picklability of
   decorated functions
 
+### Improvements
+- Small performance improvements
+- Prevent busy looping in async waitkey in some corner cases
+
 ## [0.4.1] - 2018-03-08
 ### Bugfixes
 - Throttle coherence tics when trying to refresh stale pending

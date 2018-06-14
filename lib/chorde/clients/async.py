@@ -449,33 +449,63 @@ class AsyncCacheWriterPool:
         return delayed
 
     def waitkey(self, key, timeout=None):
-        if thread.get_ident() in self.threadset:
+        tid = thread.get_ident()
+        if tid in self.threadset:
             # Oops, recursive call, bad idea
             return
-        elif timeout is None:
-            while self.contains(key):
-                ev = self.workset.get(key)
+
+        tidt = (tid,)
+        queueset = self.queueset
+        workset_get = self.workset.get
+        done_event = self.done_event
+        sleep = time.sleep
+        busyloop = 0
+
+        if timeout is None:
+            # contains inlined for speed in code below
+            while (key in queueset or workset_get(key, tidt)[0] != tid):
+                ev = workset_get(key)
                 if ev is not None:
                     ev = ev[2]
-                elif self.contains(key):
-                    ev = self.done_event
+                elif (key in queueset or workset_get(key, tidt)[0] != tid):
+                    ev = done_event
                 if ev is not None:
-                    ev.wait(1.0)
+                    done = ev.wait(1.0)
+                    if not done:
+                        busyloop = 0
+                    else:
+                        busyloop += 1
+                        if busyloop > 5:
+                            if ev is done_event and busyloop > 20 and ev.isSet():
+                                ev.clear()
+                            else:
+                                sleep(0.05)
                 else:
                     break
         else:
-            tfin = time.time() + timeout
-            while self.contains(key) and tfin >= time.time():
-                ev = self.workset.get(key)
+            # contains inlined for speed in code below
+            time_time = time.time
+            tfin = time_time() + timeout
+            while (key in queueset or workset_get(key, tidt)[0] != tid) and tfin >= time_time():
+                ev = workset_get(key)
                 if ev is not None:
                     ev = ev[2]
-                elif self.contains(key):
-                    ev = self.done_event
+                elif (key in queueset or workset_get(key, tidt)[0] != tid):
+                    ev = done_event
                 if ev is not None:
-                    ev.wait(min(1.0, timeout))
+                    done = ev.wait(min(1.0, timeout))
+                    if not done:
+                        busyloop = 0
+                    else:
+                        busyloop += 1
+                        if busyloop > 5:
+                            if ev is done_event and busyloop > 20 and ev.isSet():
+                                ev.clear()
+                            else:
+                                sleep(0.05)
                 else:
                     break
-                timeout = tfin - time.time()
+                timeout = tfin - time_time()
 
     def getTtl(self, key, default = None):
         # Speeding up things - we have the same signature and semantics
