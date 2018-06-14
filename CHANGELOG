@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.4.2] - Unreleased
+## [0.4.2] - 2018-06-14
 ### Changed
 - Compatibility with Cython 0.28
 - Cythonized decorators and some base clients to lower caching
