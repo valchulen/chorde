@@ -394,6 +394,9 @@ class FastMemcacheTest(CacheClientTestMixIn, TestCase):
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
 
+    # Unreliable due to async write queue
+    testGetStale = None
+
     # Not supported by the fast client
     testTupleKey = None
     testLongStringKey = None
