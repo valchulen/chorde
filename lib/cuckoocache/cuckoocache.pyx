@@ -660,7 +660,7 @@ cdef class LazyCuckooCache:
             return False
 
     @cython.cdivision(True)
-    def get(self, key, deflt = None):
+    cpdef get(self, key, deflt = None):
         cdef unsigned int tsize, h1, h2
 
         h1 = self._hash1(key)
@@ -737,7 +737,7 @@ cdef class LazyCuckooCache:
                 return deflt
 
     @cython.cdivision(True)
-    def setdefault(self, key, deflt = None):
+    cpdef setdefault(self, key, deflt = None):
         cdef unsigned int tsize, h1, h2, j
 
         for j from 0 <= j <= 2:
