@@ -455,6 +455,7 @@ class ThreadPool:
                 self.__pid = os.getpid()
             # Else, just keep number of workers in sync
             elif len(self.__workers) < self.workers:
+                name_pattern = self.name_pattern
                 new_workers = self.workers - len(self.__workers)
                 index_base = self.__last_worker_index
                 self.__last_worker_index += new_workers

@@ -1390,14 +1390,14 @@ class AsyncCacheProcessor(object):
                 queue_time = time.time()
                 stats.on_task_queued()
                 def wrapped_action():
-                    def clean():
+                    def clean_coalesce():
                         if do_coalescence:
                             try:
                                 del coalesce[coalesce_key]
                             except:
                                 pass
 
-                        self = wself()
+                    def clean(self):
                         if self is not None:
                             try:
                                 if not hasattr(self.tl, 'dirty_rounds'):
@@ -1415,6 +1415,7 @@ class AsyncCacheProcessor(object):
                     # discard queue head quickly when we're overloaded
                     # head is always less relevant
                     self = wself()
+                    cleaned_coalesce = False
                     try:
                         if self is not None and self.maxqueue is not None:
                             if self.queuelen > self.maxqueue:
@@ -1429,23 +1430,30 @@ class AsyncCacheProcessor(object):
                             stats.on_task_started(start_time - queue_time)
                             try:
                                 rv = action()
-                                clean()
+                                clean_coalesce()
+                                cleaned_coalesce = True
                                 cfuture.set(rv)
                             except CacheMissError:
-                                clean()
+                                clean_coalesce()
+                                cleaned_coalesce = True
                                 cfuture.miss()
                             except:
-                                clean()
+                                clean_coalesce()
+                                cleaned_coalesce = True
                                 # Clear up traceback to avoid leaks
                                 cfuture.exc(sys.exc_info()[:-1] + (None,))
                             stats.on_task_completed(time.time() - start_time)
                         else:
+                            clean_coalesce()
+                            cleaned_coalesce = True
                             stats.on_task_cancelled()
-                            clean()
-                    except:
+                            clean(self)
+                    finally:
                         # Just in case, we really need to clean, or we leak cfutures
-                        clean()
-                        raise
+                        if not cleaned_coalesce:
+                            clean_coalesce()
+                            cleaned_coalesce = True
+                        clean(self)
                 self.threadpool.apply_async(wrapped_action, ())
         return cfuture
 
