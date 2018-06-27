@@ -64,6 +64,14 @@ class CacheClientTestMixIn:
         self.assertEqual(client.get(3, None), None)
         self.assertEqual(client.get(3, 1), 1)
 
+    def testGetStale(self):
+        client = self.client
+        client.put(4, 10, 0)
+        time.sleep(0.001)
+        self.assertRaises(CacheMissError, client.get, 4)
+        self.assertEqual(client.get(4, None), None)
+        self.assertEqual(client.get(4, 1), 1)
+
     def testGetMulti(self):
         client = self.client
         client.put(4, 10, 10)
