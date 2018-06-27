@@ -2,7 +2,12 @@
 
 All notable changes to this project will be documented here.
 
-## [0.4.3] - Unreleased
+## [0.5.0] - Unreleased
+### Added
+- Added setdefault and get to exported cython methods
+  in cuckoocache.pxd so external modules can optimally
+  interact with it using its dict interface
+
 ### Bugfixes
 - Fixed bug in clients.Base.get that could cause clients that
   used the base implementation to return stale results when

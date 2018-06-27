@@ -39,3 +39,5 @@ cdef class LazyCuckooCache:
     cdef bint _rnd(LazyCuckooCache self)
 
     cpdef pop(LazyCuckooCache self, key, deflt = ?)
+    cpdef setdefault(self, key, deflt = ?)
+    cpdef get(self, key, deflt = ?)
