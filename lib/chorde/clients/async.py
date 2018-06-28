@@ -1449,7 +1449,6 @@ class AsyncCacheProcessor(object):
                             clean_coalesce()
                             cleaned_coalesce = True
                             stats.on_task_cancelled()
-                            clean(self)
                     finally:
                         # Just in case, we really need to clean, or we leak cfutures
                         if not cleaned_coalesce:
