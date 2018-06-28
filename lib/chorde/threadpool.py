@@ -63,7 +63,7 @@ except ImportError:
             raise exc[0], exc[1], exc[2]
 
 class WaitIter:
-    def __init__(self, event, queues, timeout = 5):
+    def __init__(self, event, queues, timeout = None):
         self.event = event
         self.queues = queues
         self.timeout = timeout
@@ -156,13 +156,14 @@ class ThreadPool:
                 self.logger.error("Error in task cleanup callback", exc_info = True)
 
     def __swap_queues(self, max=max, min=min, len=len):
-        qpop = self.queues.pop
-        qget = self.queues.get
+        queues = self.queues
+        qpop = queues.pop
+        qget = queues.get
         queue_slices = self.__queue_slices
         pget = queue_slices.get
         ppop = queue_slices.pop
         qprio = self.queue_weights.get
-        qnames = self.queues.keys()
+        qnames = queues.keys()
         wqueues = []
         wprios = []
         wposes = []
@@ -290,17 +291,15 @@ class ThreadPool:
         elif self.__not_empty.isSet():
             # Try again
             # Someone may have sneaked in while we were in the above case
+            # and may still neak in after we clear the not_empty event
             self.__not_empty.clear()
             self.__worklen = 0
             self.__busyfactors = {}
             self.__dequeue = self.__exhausted
             self.__swap_queues()
         else:
-            # Still empty, give up
-            self.__not_empty.clear()
-            self.__worklen = 0
-            self.__busyfactors = {}
-            self.__dequeue = self.__exhausted
+            # Still empty, can safely give up until signaled
+            pass
 
     def _dequeue(self):
         tid = thread.get_ident()
