@@ -1358,7 +1358,8 @@ class AsyncCacheProcessor(object):
         return self._threadpool
 
     def _enqueue(self, action, coalesce = None, coalesce_key = NONE):
-        cfuture = future = Future(logger=self.logger)
+        logger = self.logger
+        cfuture = future = Future(logger)
 
         do_coalescence = coalesce is not None and coalesce_key is not NONE
         if do_coalescence:
@@ -1372,10 +1373,11 @@ class AsyncCacheProcessor(object):
                 except:
                     pass
                 cfuture, cwaction = coalesce.setdefault(coalesce_key, (future, waction))
-                self.logger.warning("Found zombie task in coalesce buffer with key %r", coalesce_key)
+                logger.warning("Found zombie task in coalesce buffer with key %r", coalesce_key)
 
         if cfuture is future:
-            if self.maxqueue is not None and self.queuelen > (self.maxqueue*2):
+            maxqueue = self.maxqueue
+            if maxqueue is not None and self.queuelen > (maxqueue*2):
                 # Stop filling it
                 if do_coalescence:
                     try:
@@ -1388,36 +1390,37 @@ class AsyncCacheProcessor(object):
                 wself = self._wself
                 stats = self.stats
                 queue_time = time.time()
-                stats.on_task_queued()
                 def wrapped_action():
-                    def clean():
+                    def clean_coalesce():
                         if do_coalescence:
                             try:
                                 del coalesce[coalesce_key]
                             except:
                                 pass
 
-                        self = wself()
+                    def clean(self):
                         if self is not None:
                             try:
-                                if not hasattr(self.tl, 'dirty_rounds'):
-                                    self.tl.dirty_rounds = 0
-                                self.tl.dirty_rounds += 1
-                                if self.tl.dirty_rounds > self.cleanup_cycles or not self.queuelen:
-                                    self.tl.dirty_rounds = 0
+                                tl = self.tl
+                                if not hasattr(tl, 'dirty_rounds'):
+                                    tl.dirty_rounds = 0
+                                tl.dirty_rounds += 1
+                                if tl.dirty_rounds > self.cleanup_cycles or not self.queuelen:
+                                    tl.dirty_rounds = 0
                                     for task in self.cleanup_tasks:
                                         task()
                                     for task in _global_cleanup_tasks:
                                         task()
                             except:
-                                self.logger.error("Error during background thread cleanup", exc_info = True)
+                                logger.error("Error during background thread cleanup", exc_info = True)
 
                     # discard queue head quickly when we're overloaded
                     # head is always less relevant
                     self = wself()
+                    cleaned_coalesce = False
                     try:
-                        if self is not None and self.maxqueue is not None:
-                            if self.queuelen > self.maxqueue:
+                        if self is not None and maxqueue is not None:
+                            if self.queuelen > maxqueue:
                                 # Only discard half the entries, otherwise we can
                                 # enter a race condition in which really fast input
                                 # to the processor keeps the queue full and discarding all
@@ -1429,24 +1432,31 @@ class AsyncCacheProcessor(object):
                             stats.on_task_started(start_time - queue_time)
                             try:
                                 rv = action()
-                                clean()
+                                clean_coalesce()
+                                cleaned_coalesce = True
                                 cfuture.set(rv)
                             except CacheMissError:
-                                clean()
+                                clean_coalesce()
+                                cleaned_coalesce = True
                                 cfuture.miss()
                             except:
-                                clean()
+                                clean_coalesce()
+                                cleaned_coalesce = True
                                 # Clear up traceback to avoid leaks
                                 cfuture.exc(sys.exc_info()[:-1] + (None,))
                             stats.on_task_completed(time.time() - start_time)
                         else:
+                            clean_coalesce()
+                            cleaned_coalesce = True
                             stats.on_task_cancelled()
-                            clean()
-                    except:
+                    finally:
                         # Just in case, we really need to clean, or we leak cfutures
-                        clean()
-                        raise
+                        if not cleaned_coalesce:
+                            clean_coalesce()
+                            cleaned_coalesce = True
+                        clean(self)
                 self.threadpool.apply_async(wrapped_action, ())
+                stats.on_task_queued()
         return cfuture
 
     @property

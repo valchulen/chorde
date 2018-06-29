@@ -27,6 +27,11 @@ class CoherentDefer(Defer):
             expired: A callable of the sort CoherenceManager takes, to re-check expiration status
                 against the shared cache.
 
+            expire_private: An optional callable that will be called with the given key (see below)
+                right before receiving an OOB update. It should mark any privately held value for
+                that key as expired, since a fresher one will be coming OOB. Usually the expire
+                method of the private cache client works for this purpose.
+
             key: The key associated with this computation, to be provided to the CoherenceManager.
 
             timeout: Coherence protocol timeout, in ms, if the peers don't answer in this time,
@@ -44,6 +49,7 @@ class CoherentDefer(Defer):
         """
         self.manager = kwargs.pop('manager')
         self.expired = kwargs.pop('expired')
+        self.expire_private = kwargs.pop('expire_private', None)
         self.fetch = kwargs.pop('fetch', None)
         self.key = kwargs.pop('key')
         self.timeout = kwargs.pop('timeout', None)
@@ -60,6 +66,8 @@ class CoherentDefer(Defer):
             if not self.expired():
                 logger.debug("Not computing because already fresh, key=%r", self.key)
                 if hasattr(self, 'future'):
+                    if self.expire_private is not None:
+                        self.expire_private(self.key)
                     return REGET
                 else:
                     return NONE
@@ -85,6 +93,8 @@ class CoherentDefer(Defer):
                     # Skip, tiered caches will read it from the shared cache and push it downstream
                     logger.debug("Fresh value available OOB on key=%r", self.key)
                     if hasattr(self, 'future'):
+                        if self.expire_private is not None:
+                            self.expire_private(self.key)
                         return REGET
                     else:
                         return NONE
@@ -93,6 +103,8 @@ class CoherentDefer(Defer):
                     if self.manager.wait_done(self.key, timeout = self.wait_time):
                         logger.debug("Computation done (was waiting on node %r) on key=%r", computer, self.key)
                         if hasattr(self, 'future'):
+                            if self.expire_private is not None:
+                                self.expire_private(self.key)
                             return REGET
                         else:
                             return NONE
