@@ -8,6 +8,10 @@ All notable changes to this project will be documented here.
   in cuckoocache.pxd so external modules can optimally
   interact with it using its dict interface
 
+### Improvements
+- Improved async latency by executing cleanup tasks
+  after notifying the results, rather than before.
+
 ### Bugfixes
 - Fixed bug in clients.Base.get that could cause clients that
   used the base implementation to return stale results when
