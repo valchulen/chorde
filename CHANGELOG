@@ -16,6 +16,9 @@ All notable changes to this project will be documented here.
 - Fixed bug in clients.Base.get that could cause clients that
   used the base implementation to return stale results when
   invoked with a custom default.
+- Fixed coherence OOB updates, which in some circumstances
+  could renew a stale value instead of fetch a fresh shared
+  one.
 
 ## [0.4.2] - 2018-06-14
 ### Changed
