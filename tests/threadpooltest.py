@@ -142,6 +142,40 @@ class ThreadpoolTest(TestCase):
         total_counts = self.pool.apply(sum, (counts.itervalues(),))
         self.assertEqual(total_counts, N*M)
 
+    def testClose(self):
+        N = 100
+        M = 100
+        counts = collections.defaultdict(int)
+        def accounting():
+            counts[thread.get_ident()] += 1
+
+        for i in xrange(N):
+            counts.clear()
+            pool = ThreadPool(2)
+            for j in xrange(M):
+                pool.apply_async(accounting)
+            pool.close()
+            pool.join()
+            total_counts = sum(counts.itervalues())
+            self.assertEqual(total_counts, M)
+
+    def testTerminate(self):
+        N = 100
+        M = 100
+        def accounting(counts):
+            counts[thread.get_ident()] += 1
+
+        for i in xrange(N):
+            counts = collections.defaultdict(int)
+            args = (counts,)
+            pool = ThreadPool(2)
+            for j in xrange(M):
+                pool.apply_async(accounting, args)
+            pool.terminate()
+            pool.join()
+            total_counts = sum(counts.itervalues())
+            self.assertLessEqual(total_counts, M)
+
 class ThreadpoolSubqueueWrapperTest(ThreadpoolTest):
     def setUp(self):
         self.pool = ThreadPool().subqueue("something")

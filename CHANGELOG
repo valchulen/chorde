@@ -19,6 +19,8 @@ All notable changes to this project will be documented here.
 - Fixed coherence OOB updates, which in some circumstances
   could renew a stale value instead of fetch a fresh shared
   one.
+- Fix assorted thread safety issues in the lockless Threadpool
+  implementation
 
 ## [0.4.2] - 2018-06-14
 ### Changed
