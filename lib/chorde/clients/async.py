@@ -450,7 +450,8 @@ class AsyncCacheWriterPool:
 
     def waitkey(self, key, timeout=None):
         tid = thread.get_ident()
-        if tid in self.threadset:
+        if (tid in self.threadset
+                or (hasattr(self.defer_threadpool, 'in_worker') and self.defer_threadpool.in_worker())):
             # Oops, recursive call, bad idea
             return
 

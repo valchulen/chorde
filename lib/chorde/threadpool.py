@@ -67,11 +67,14 @@ class WaitIter:
         self.event = event
         self.queues = queues
         self.timeout = timeout
-        self.terminate = False
+        self._terminate = False
+    def terminate(self):
+        self._terminate = True
+        self.event.set()
     def __iter__(self):
         return self
     def next(self):
-        if self.terminate:
+        if self._terminate:
             threading.current_thread().terminate(False)
         self.event.wait(self.timeout)
         raise StopIteration
@@ -299,13 +302,14 @@ class ThreadPool:
             self.__swap_queues()
         else:
             # Still empty, can safely give up until signaled
-            pass
+            # Wake up threads trying to join
+            self.__empty.set()
 
     def _dequeue(self):
         tid = thread.get_ident()
         workset = self.__workset
         while True:
-            if self.__dequeue is self.__exhausted and not self.queues and not self.__not_empty.is_set():
+            if self.__dequeue is self.__exhausted and not self.queues and not self.__not_empty.isSet():
                 # Sounds like there's nothing to do
                 # Yeah, gonna wait
                 workset.discard(tid)
@@ -336,22 +340,21 @@ class ThreadPool:
 
     def _enqueue(self, queue, task):
         self.queues[queue].append(task)
-        if self.__dequeue is self.__exhausted:
-            # Wake up waiting threads
-            # Note that it's not necessary if dequeue is set to a dequeuing
-            # iterator, since that means threads are busy working already
-            # It is also not necessary to invoke this all the time. If the
-            # flags are the right way at any point within this function being
-            # run, then it already means the respective waiting threads have
-            # woken up (or are in the process of waking up) in time to pick up the
-            # just-queued value, so avoid the actual operation
-            # (which is much more expensive than checking)
-            not_empty = self.__not_empty
-            if not not_empty.isSet():
-                not_empty.set()
-            empty = self.__empty
-            if empty.isSet():
-                empty.clear()
+
+        # Wake up waiting threads
+        # Note that it's not necessary to invoke this all the time. If the
+        # flags are the right way at any point within this function being
+        # run, then it already means the respective waiting threads have
+        # woken up (or are in the process of waking up) in time to pick up the
+        # just-queued value, so avoid the actual operation
+        # (which is much more expensive than checking)
+        not_empty = self.__not_empty
+        if not not_empty.isSet():
+            not_empty.set()
+        empty = self.__empty
+        if empty.isSet():
+            empty.clear()
+
         self.assert_started()
 
     @staticmethod
@@ -401,9 +404,12 @@ class ThreadPool:
                         pass
                 self.__workers = None
 
+            # Wake up threads so they die awake
+            self.__not_empty.set()
+
     def close(self):
         # Signal idle threads to commit suicide
-        self.__exhausted_iter.terminate = True
+        self.__exhausted_iter.terminate()
 
     def terminate(self):
         self.stop()
@@ -417,11 +423,23 @@ class ThreadPool:
             self.populate_workers()
 
     def join(self, timeout = None):
+        if not self.is_started():
+            return
         if timeout is not None:
             now = time.time()
             timeout += now
         while timeout is None or now < timeout:
-            if self.__empty.wait(timeout - now if timeout is not None else None):
+            if timeout is not None:
+                wait_timeout = timeout - now
+            elif self.__exhausted_iter._terminate:
+                # If the pool is shut down in a way that aborts all queued tasks, we can't
+                # merely wait for the empty event to be set, we have to also monitor suiciding threads
+                if not self.is_started():
+                    break
+                wait_timeout = 0.1
+            else:
+                wait_timeout = None
+            if self.__empty.wait(wait_timeout):
                 # The event is not 100% certain, we can still get awakened when there's work to do
                 # We have to check under __swap_lock to be sure
                 with self.__swap_lock:
