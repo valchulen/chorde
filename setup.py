@@ -17,7 +17,7 @@ else:
     except:
         no_pyrex = True
 
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 
 version_path = os.path.join(os.path.dirname(__file__), 'lib', 'chorde', '_version.py')
 if not os.path.exists(version_path):
@@ -90,13 +90,10 @@ if not no_pyrex:
             Extension("chorde.clients.async", ["lib/chorde/clients/async.py"]),
         ], include_path = [ libdir ]),
         cmdclass = {'build_ext': build_ext},
-        data_files = [
-            ('chorde', ['lib/lrucache/lrucache.pxd']),
-            ('chorde', ['lib/cuckoocache/cuckoocache.pxd']),
-            ('chorde/clients', ['lib/chorde/clients/_async.pxd']),
-            ('lrucache', ['lib/lrucache/lrucache.pxd']),
-            ('cuckoocache', ['lib/cuckoocache/cuckoocache.pxd']),
-        ],
+        package_data = {
+            'chorde' : ['lrucache.pxd', 'cuckoocache.pxd'],
+            'chorde.clients' : ['_async.pxd'],
+        },
     ))
 
 setup(
