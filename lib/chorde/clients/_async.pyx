@@ -133,8 +133,9 @@ cdef class Future:
             # No setting twice
             return
 
+        # start atomic op
         old = self._value # avoid deadlocks due to finalizers
-        _cb = self._cb # start atomic op
+        _cb = self._cb
         if _cb is not None:
             self._cb = None
             self._value = value
@@ -143,8 +144,7 @@ cdef class Future:
             cbs = None
             self._value = value # end atomic op
         self._running = 0
-        old = None
-        del _cb
+        del old, _cb
 
         if cbs is not None:
             for cb in cbs:
