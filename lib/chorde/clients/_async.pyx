@@ -137,8 +137,8 @@ cdef class Future:
         _cb = self._cb # start atomic op
         if _cb is not None:
             self._cb = None
-            cbs = list(_cb)
-            self._value = value # end atomic op
+            self._value = value
+            cbs = list(_cb) # end atomic op
         else:
             cbs = None
             self._value = value # end atomic op
