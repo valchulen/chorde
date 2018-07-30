@@ -127,22 +127,24 @@ cdef class Future:
         nor will it try to be thread-safe. Safe to call when the calling
         thread is the only one owning references to this future, and much faster.
         """
-        cdef object old, cbs
+        cdef object old, cbs, _cb
         
         if self._value is not NONE:
             # No setting twice
             return
 
         old = self._value # avoid deadlocks due to finalizers
-        if self._cb is not None: # start atomic op
-            cbs = list(self._cb) 
-            self._value = value 
-            self._cb = None # end atomic op
+        _cb = self._cb # start atomic op
+        if _cb is not None:
+            self._cb = None
+            cbs = list(_cb)
+            self._value = value # end atomic op
         else:
             cbs = None
             self._value = value # end atomic op
         self._running = 0
         old = None
+        del _cb
 
         if cbs is not None:
             for cb in cbs:
