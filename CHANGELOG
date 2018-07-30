@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented here.
 
+## [0.5.2] - Unreleased
+### Improvements
+- Reduced GC pressure by cleaning up callback list on done
+  futures immediately after popping the callbacks for
+  execution. This breaks cycles and allows freeing objects
+  through RC instead of GC, especially since callbacks tend
+  to be closures referencing a lot of application state.
+
 ## [0.5.1] - 2018-07-26
 ### Bugfixes
 - Fixed packaging of pxd files

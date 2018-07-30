@@ -910,9 +910,12 @@ except ImportError:
                 return
 
             self._value = value
+            self._running = False
 
             if self._cb:
-                for cb in list(self._cb):
+                cbs = list(self._cb)
+                del self._cb[:len(cbs)]
+                for cb in cbs:
                     try:
                         cb(value)
                     except:
@@ -921,7 +924,6 @@ except ImportError:
                         else:
                             error = logging.error
                         error("Error in async callback", exc_info = True)
-            self._running = False
 
         def set(self, value, hasattr = hasattr, tuple = tuple, getattr = getattr):
             """

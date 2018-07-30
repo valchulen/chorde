@@ -137,9 +137,11 @@ cdef class Future:
         if self._cb is not None: # start atomic op
             cbs = list(self._cb) 
             self._value = value 
+            self._cb = None # end atomic op
         else:
             cbs = None
             self._value = value # end atomic op
+        self._running = 0
         old = None
 
         if cbs is not None:
@@ -152,7 +154,6 @@ cdef class Future:
                     else:
                         error = logging.error
                     error("Error in async callback", exc_info = True)
-        self._running = 0
     
     cpdef set(self, value):
         """
