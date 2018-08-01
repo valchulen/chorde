@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.5.2] - Unreleased
+## [0.5.2] - 2018-08-01
 ### Improvements
 - Reduced GC pressure by cleaning up callback list on done
   futures immediately after popping the callbacks for
