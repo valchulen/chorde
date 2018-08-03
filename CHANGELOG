@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented here.
 
+## [0.5.3] - Unreleased
+### Bugfixes
+- Fixed placeholder functionality on async() calls
+
 ## [0.5.2] - 2018-08-01
 ### Improvements
 - Reduced GC pressure by cleaning up callback list on done

@@ -486,6 +486,31 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         ev.set()
         self.assertEquals(rv.result(5), 9)
 
+    def test_async_placeholder(self):
+        # Should start calculating the value in background
+        ev = threading.Event()
+        ev2 = threading.Event()
+        @cached(self.client, ttl=50,
+            future_sync_check=True, async_lazy_recheck=True,
+            renew_time = 20)
+        def get_nain():
+            ev.wait(5)
+            return 9
+        @get_nain.placeholder_value
+        def nain_minus_one():
+            ev2.set()
+            return 8
+        rv = get_nain.async()()
+        self.assertEquals(rv, 8) # this first call will have to return a placeholder
+        ev2.wait(1)
+        time.sleep(0.1) # the even is the function call, let the write happen
+        rv2 = get_nain.async()()
+        self.assertEquals(rv2, 8) # this second call too, the computation hasn't finished
+        ev.set()
+        time.sleep(0.1) # the even is the function call, let the write happen
+        rv3 = get_nain.async()()
+        self.assertEquals(rv3, 9) # this one should return the actual value
+
     def test_future_refresh(self):
         # Should refresh the cache value
         @cached(self.client, ttl=10)

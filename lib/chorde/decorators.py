@@ -579,6 +579,8 @@ def cached(client, ttl,
                     elif placeholder_value_fn_cell:
                         placeholder = placeholder_value_fn_cell[0](*p, **kw)
                         nclient.add(callkey, placeholder, eff_async_ttl + renew_time)
+                        rv = placeholder
+                        rvttl = eff_async_ttl + renew_time
                 # Launch background update
                 _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
             elif rv is not __NONE:
