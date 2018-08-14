@@ -6,6 +6,10 @@ All notable changes to this project will be documented here.
 ### Bugfixes
 - Fix PyPy compatibility
 
+### Changed
+- CacheMissError is now a proper alias of KeyError rather
+  than a subclass. Keeping it as a subclass was cumbersome.
+
 ## [0.5.2] - 2018-08-01
 ### Improvements
 - Reduced GC pressure by cleaning up callback list on done

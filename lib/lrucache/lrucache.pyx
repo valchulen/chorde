@@ -20,9 +20,7 @@ cdef extern from *:
 
 IsThreadsafe = True
 
-class CacheMissError(KeyError):
-    """Error raised when a cache miss occurs"""
-    pass
+CacheMissError = KeyError
 cdef object CacheMissError_ = CacheMissError
 
 cdef class _node:

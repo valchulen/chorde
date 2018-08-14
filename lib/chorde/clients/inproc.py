@@ -10,7 +10,7 @@ try:
 except ImportError:
     from chorde import pylrucache as lrucache
 Cache = lrucache.LRUCache
-CacheMissError = base.CacheMissError = lrucache.CacheMissError
+CacheMissError = base.CacheMissError
 CacheIsThreadsafe = lrucache.IsThreadsafe
 
 if not CacheIsThreadsafe:
