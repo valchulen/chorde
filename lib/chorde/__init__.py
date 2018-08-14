@@ -1,3 +1,13 @@
+try:
+    from . import lrucache
+except ImportError:
+    from . import pylrucache as lrucache
+
+try:
+    from . import cuckoocache
+except ImportError:
+    from . import pycuckoocache as cuckoocache
+
 from .sPickle import SecurePickler, SecureUnpickler
 from .clients import *
 from .clients.inproc import Cache as LRUCache, CuckooCache as CuckooCache
