@@ -2,6 +2,8 @@
 
 CacheMissError = KeyError
 
+IsThreadsafe = False
+
 class _node(object):
     __slots__ = ( 'prio', 'index', 'key', 'value' )
 

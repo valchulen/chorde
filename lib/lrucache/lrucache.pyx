@@ -18,6 +18,8 @@ cdef extern from *:
         unsigned int prio
         unsigned int index
 
+IsThreadsafe = True
+
 class CacheMissError(KeyError):
     """Error raised when a cache miss occurs"""
     pass
