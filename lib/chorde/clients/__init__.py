@@ -1,4 +1,18 @@
 # -*- coding: utf-8 -*-
+import sys
+
+try:
+    from .. import lrucache
+except ImportError:
+    from .. import pylrucache as lrucache
+    sys.modules['chorde.lrucache'] = lrucache
+
+try:
+    from .. import cuckoocache
+except ImportError:
+    from .. import pycuckoocache as cuckoocache
+    sys.modules['chorde.cuckoocache'] = cuckoocache
+
 from .inproc import InprocCacheClient # before base, really, it injects CacheMissError
 from .base import BaseCacheClient, ReadWriteSyncAdapter, NONE, CacheMissError, TimeoutError, CancelledError
 from .async import AsyncWriteCacheClient, Defer, AsyncCacheProcessor

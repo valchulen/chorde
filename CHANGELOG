@@ -5,6 +5,11 @@ All notable changes to this project will be documented here.
 ## [0.5.3] - Unreleased
 ### Bugfixes
 - Fixed placeholder functionality on async() calls
+- Fix PyPy compatibility
+
+### Changed
+- CacheMissError is now a proper alias of KeyError rather
+  than a subclass. Keeping it as a subclass was cumbersome.
 
 ## [0.5.2] - 2018-08-01
 ### Improvements
