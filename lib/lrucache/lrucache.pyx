@@ -18,9 +18,9 @@ cdef extern from *:
         unsigned int prio
         unsigned int index
 
-class CacheMissError(KeyError):
-    """Error raised when a cache miss occurs"""
-    pass
+IsThreadsafe = True
+
+CacheMissError = KeyError
 cdef object CacheMissError_ = CacheMissError
 
 cdef class _node:

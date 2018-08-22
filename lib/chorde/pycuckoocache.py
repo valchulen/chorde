@@ -5,6 +5,8 @@ import functools
 
 from chorde.clients.base import CacheMissError
 
+IsThreadsafe = False
+
 class _node(object):
     __slots__ = ( 'key', 'value', 'h1', 'h2', 'prio' )
 

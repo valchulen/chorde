@@ -6,18 +6,14 @@ import weakref
 from . import base
 
 try:
+    from chorde import lrucache
+except ImportError:
+    from chorde import pylrucache as lrucache
+Cache = lrucache.LRUCache
+CacheMissError = base.CacheMissError
+CacheIsThreadsafe = lrucache.IsThreadsafe
 
-    import chorde.lrucache
-    Cache = chorde.lrucache.LRUCache
-    CacheMissError = base.CacheMissError = chorde.lrucache.CacheMissError
-    CacheIsThreadsafe = True
-
-except:
-
-    import chorde.pylrucache
-    Cache = chorde.pylrucache.LRUCache
-    CacheMissError = base.CacheMissError = chorde.pylrucache.CacheMissError
-    CacheIsThreadsafe = False
+if not CacheIsThreadsafe:
 
     import warnings
     warnings.warn("LRUCache extension module not built in, "
@@ -26,23 +22,18 @@ except:
     del warnings
 
 try:
+    from chorde import cuckoocache
+except ImportError:
+    from chorde import pycuckoocache as cuckoocache
+CuckooCache = cuckoocache.LazyCuckooCache
+assert issubclass(cuckoocache.CacheMissError, CacheMissError)
 
-    import chorde.cuckoocache
-    CuckooCache = chorde.cuckoocache.LazyCuckooCache
-    assert issubclass(chorde.cuckoocache.CacheMissError, CacheMissError)
-
-except:
-
-    import chorde.pycuckoocache
-    CuckooCache = chorde.pycuckoocache.LazyCuckooCache
-    assert issubclass(chorde.pycuckoocache.CacheMissError, CacheMissError)
-
-    if CacheIsThreadsafe:
-        import warnings
-        warnings.warn("CuckooCache extension module not built in, "
-            "but LRUCache module was built. InprocCacheClient will be assumed "
-            "thread-safe, you will need to wrap it in a synchronized adapter "
-            "to be used with CuckooCache!")
+if CacheIsThreadsafe and not cuckoocache.IsThreadsafe:
+    import warnings
+    warnings.warn("CuckooCache extension module not built in, "
+        "but LRUCache module was built. InprocCacheClient will be assumed "
+        "thread-safe, you will need to wrap it in a synchronized adapter "
+        "to be used with CuckooCache!")
 
 _caches_mutex = threading.RLock()
 _caches = weakref.WeakKeyDictionary()

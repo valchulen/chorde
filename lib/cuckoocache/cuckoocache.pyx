@@ -21,10 +21,12 @@ cdef extern from "Python.h":
     # due to reference count handling of regular <object> variables
     void PyList_SET_ITEM(object list, Py_ssize_t i, PyObject *o)
 
+IsThreadsafe = True
+
 from random import random
 import functools
 
-from chorde.clients.base import CacheMissError
+CacheMissError = KeyError
 cdef object CacheMissError_ = CacheMissError
 
 # Hash table manipulation helpers
