@@ -6,6 +6,7 @@ All notable changes to this project will be documented here.
 ### Bugfixes
 - Fixed placeholder functionality on async() calls
 - Fix PyPy compatibility
+- Fix threadpool.join's return value
 
 ### Changed
 - CacheMissError is now a proper alias of KeyError rather
