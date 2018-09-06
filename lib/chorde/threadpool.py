@@ -424,7 +424,7 @@ class ThreadPool:
 
     def join(self, timeout = None):
         if not self.is_started():
-            return
+            return True
         if timeout is not None:
             now = time.time()
             timeout += now
@@ -453,6 +453,7 @@ class ThreadPool:
                 return False
             if timeout is not None:
                 now = time.time()
+        return not self.is_started() or (self.__dequeue is self.__exhausted and not self.queues and not self.__workset)
 
     def populate_workers(self):
         with self.__spawnlock:
