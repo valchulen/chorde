@@ -13,7 +13,7 @@ import socket
 import select
 from threading import Event, Thread, Lock
 
-from .base import BaseCacheClient, CacheMissError, NONE
+from .base import BaseCacheClient, CacheMissError, NoServersError, NONE
 from .inproc import Cache
 
 _RENEW = object()
@@ -193,6 +193,7 @@ class MemcachedStoreClient(memcache.Client):
                 Otherwise, leave it in its default, since TCP_NODELAY incurs some overhead.
         """
         self.tcp_nodelay = kwargs.pop('tcp_nodelay', False)
+        self.strict_no_servers = kwargs.pop('strict_no_servers', False)
         memcache.Client.__init__(self, *args, **kwargs)
 
     def set_servers(self, servers):
@@ -251,8 +252,9 @@ class MemcachedStoreClient(memcache.Client):
         server_hashes = self.server_hashes
         server_indexes = self.server_indexes
         if server_hashes:
-            server_ix = server_indexes[bisect.bisect_left(server_hashes, serverhash)]
+            self._server_ix = server_ix = server_indexes[bisect.bisect_left(server_hashes, serverhash)]
         else:
+            self._server_ix = None
             return None, None
 
         for i in xrange(self._SERVER_RETRIES):
@@ -261,10 +263,20 @@ class MemcachedStoreClient(memcache.Client):
                 return server, key
             serverhash = server_hash_function(str(serverhash) + str(i))
             if server_hashes:
-                server_ix = server_indexes[bisect.bisect_left(server_hashes, serverhash)]
+                self._server_ix = server_ix = server_indexes[bisect.bisect_left(server_hashes, serverhash)]
             else:
                 break
+
+        self._server_ix = None
         return None, None
+
+    def _get(self, cmd, key, super_get=memcache.Client._get):
+        self._server_ix = None
+        rv = super_get(self, cmd, key)
+        if (rv is None and self.strict_no_servers
+                and (self._server_ix is None or self.servers[self._server_ix]._check_dead())):
+            raise NoServersError()
+        return rv
 
     # A faster check_key
     def check_key(self, key, key_extra_len=0,

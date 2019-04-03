@@ -4,6 +4,7 @@ import time
 import os
 from .clientbase import CacheClientTestMixIn, NamespaceWrapperTestMixIn, CacheMissError
 from .base import TestCase
+from chorde.clients.base import NoServersError
 
 DEFAULT_CLIENT_ADDR = os.getenv("MEMCACHE_ADDR", "localhost:11211")
 
@@ -55,6 +56,15 @@ class MemcacheStoreTest(TestCase):
             checksum_key = "test",
             encoding_cache = threading.local() )
         self.assertRaises(CacheMissError, client.get, 4)
+
+    def testEmptyServerListStrictNoServers(self):
+        from chorde.clients.memcached import MemcachedClient
+        import threading
+        client = MemcachedClient([],
+            checksum_key = "test",
+            encoding_cache = threading.local(),
+            strict_no_servers = True)
+        self.assertRaises(NoServersError, client.get, 4)
 
     def testConsistentHashing(self):
         from chorde.clients.memcached import MemcachedClient
