@@ -6,6 +6,9 @@ from chorde.serialize import serialize_read, serialize_write, serialize
 # Overridden by inproc_cache based on LRUCache availability
 CacheMissError = KeyError
 
+class NoServersError(Exception):
+    pass
+
 try:
     from concurrent.futures import TimeoutError, CancelledError
 except ImportError:
@@ -522,9 +525,13 @@ class NamespaceWrapper(DecoratedWrapper):
     def __init__(self, namespace, client, revmark_ttl=FOREVER):
         super(NamespaceWrapper, self).__init__(client)
         self.namespace = namespace
-        self.revision = client.get((namespace,'REVMARK'), 0)
         self.key_undecorator = operator.itemgetter(2)
         self.revmark_ttl = revmark_ttl
+
+        try:
+            self.revision = client.get((namespace,'REVMARK'), 0)
+        except NoServersError:
+            self.revision = 0
 
     key_decorator = property(
         operator.attrgetter('_key_decorator'),
