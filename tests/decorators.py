@@ -841,6 +841,5 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         self.assertEquals(get_number.client.get(get_number.callkey()), val+2)
         self.assertEquals(self.shared.get(get_number.callkey()), val)
 
-    @unittest.expectedFailure
     def test_renew(self, *p, **kw):
         return super(CoherentCachedDecoratorTest, self).test_renew(*p, **kw)
