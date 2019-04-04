@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.6.0] - Unreleased
+## [0.6.0] - 2019-04-04
 ### Added
 - Added strict_no_servers option to memcache clients. If passed,
   it will raise NoServersError when no server can be reached,
