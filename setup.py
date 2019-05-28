@@ -19,9 +19,6 @@ else:
 
 VERSION = "0.7.0"
 
-import logging
-logging.basicConfig()
-
 version_path = os.path.join(os.path.dirname(__file__), 'lib', 'chorde', '_version.py')
 if not os.path.exists(version_path):
     with open(version_path, "w") as version_file:
