@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented here.
 
+## [0.7.0] - Unreleased
+### Improvements
+- Optimized threadpool implementation to lower queuing latency
+  and overall overhead. Simplified things considerably by
+  avoiding zero-copy slicing, something that's hard to get
+  right and actually incurred a significant latency penalty.
+  List slicing is quite fast anyway.
+
 ## [0.6.0] - 2019-04-04
 ### Added
 - Added strict_no_servers option to memcache clients. If passed,

@@ -107,7 +107,7 @@ class ThreadpoolTest(TestCase):
             ev = Event()
             self.pool.apply_async(ev.set)
             t1 = time.time()
-            ev.wait()
+            self.assertTrue(ev.wait(1))
             self.assertLess(t1-t0, 0.05)
 
     def testSyncLatency(self):
@@ -173,7 +173,7 @@ class ThreadpoolTest(TestCase):
                 pool.apply_async(accounting, args)
             pool.terminate()
             pool.join()
-            total_counts = sum(counts.itervalues())
+            total_counts = sum(counts.values())
             self.assertLessEqual(total_counts, M)
 
 class ThreadpoolSubqueueWrapperTest(ThreadpoolTest):
@@ -246,6 +246,7 @@ class MultiQueueTest(TestCase):
         self.pool.min_batch = 1
 
         counts = collections.defaultdict(int)
+        refcounts = collections.defaultdict(int)
         def accounting(i):
             counts[i] += 1
         self.pool.set_queueprio(3,"mean")
@@ -254,9 +255,10 @@ class MultiQueueTest(TestCase):
         for i in xrange(10000):
             for q in qsequence:
                 self.pool.apply_async(accounting, (q,), queue=q)
+                refcounts[q] += 1
         countsnap = self.pool.apply(counts.copy, queue = "mean")
-        self.pool.join(60)
         self.assertLess(countsnap["simple"]*2, countsnap["mean"])
+        self.pool.join(60)
 
     def testWrapper(self):
         # Calibrate for maximum fairness accuracy (needed by test)
