@@ -383,7 +383,7 @@ cdef class Future:
                 # Wait for it
                 if self._done_event is None:
                     self._done_event = threading.Event()
-                if self._done_event.wait(timeout) and not norecurse:
+                if not norecurse and (self._value is not NONE or self._done_event.wait(timeout)):
                     return self.c_result(0, 1)
                 elif self._cancelled:
                     raise CancelledErrorCached

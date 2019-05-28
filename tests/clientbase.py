@@ -17,6 +17,9 @@ class CacheClientTestMixIn:
     def _setUpClient(self):
         return self.setUpClient()
 
+    def _sync(self, client):
+        pass
+
     def setUp(self):
         try:
             self.client = self._setUpClient()
@@ -195,6 +198,7 @@ class CacheClientTestMixIn:
         client = self.client
         client.put(4, 11, 10)
         client.put(5, 12, 10)
+        self._sync(client)
         self.assertEqual(client.get(4), 11)
         self.assertEqual(client.get(5), 12)
 

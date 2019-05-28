@@ -78,6 +78,12 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
         from chorde.clients.async import AsyncWriteCacheClient
         return AsyncWriteCacheClient(InprocCacheClient(100), 100, 1)
 
+    def _sync(self, client):
+        from chorde.clients.async import Defer
+        ev = threading.Event()
+        client.put('__sync_key', Defer(ev.set), 120)
+        ev.wait(1)
+
     def testDeferreds(self):
         from chorde.clients.async import Defer
         done = []
@@ -109,20 +115,25 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
 
     def testChainFutures(self):
         from chorde.clients.async import Defer, Future
+        ev = threading.Event()
+        ev2 = threading.Event()
         def sleepit():
-            time.sleep(0.1)
+            ev.wait()
             return 2
         def sleepit2():
-            time.sleep(0.1)
+            ev2.wait()
             return 3
         d1 = Defer(sleepit)
         d2 = Defer(sleepit2)
         d1.future = Future()
         d2.future = Future()
+        self.addCleanup(ev.set)
+        self.addCleanup(ev2.set)
         self.client.put(1, sleepit, 120) # Delay the pool
         self.client.put(3, d1, 120)
         self.client.put(3, d2, 120)
         self.assertTrue(self.client.contains(3))
+        ev.set()
         self.assertEquals(d1.future.result(1), 2)
         self.assertEquals(d2.future.result(1), 2)
         self.assertTrue(self.client.contains(3))
@@ -130,28 +141,37 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
 
     def testReentrantChainFutures(self):
         from chorde.clients.async import Defer, Future
+        ev = threading.Event()
+        ev2 = threading.Event()
+        ev3 = threading.Event()
         def sleepit():
-            time.sleep(0.1)
+            ev3.set()
+            ev.wait()
             return 2
         def sleepit2():
-            time.sleep(0.1)
             return 3
         d1 = Defer(sleepit)
         d2 = Defer(sleepit2)
         d1.future = Future()
         d2.future = Future()
+        self.addCleanup(ev.set)
+        self.addCleanup(ev2.set)
         client = self.client
-        client.put(1, sleepit, 120) # Delay the pool
         def putit():
+            # Delay reentrant call until d1 was queued
+            ev2.wait()
             client.put(4, d2, 120)
             return 4
         d3 = Defer(putit)
         d3.future = Future()
         self.client.put(3, d3, 120)
         self.client.put(4, d1, 120)
+        ev2.set()  # Unblock reentrant call now
         self.assertTrue(self.client.contains(3))
         self.assertEquals(d3.future.result(1), 4)
+        ev3.wait(1)  # Avoid catching 4 in the blind spot between queuing and execution
         self.assertTrue(self.client.contains(4))
+        ev.set()  # Unblock d1
         self.assertEquals(d1.future.result(1), 2)
         self.assertEquals(d2.future.result(1), 2)
         self.assertTrue(self.client.contains(4))
@@ -159,12 +179,16 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
 
     def testStepFutures(self):
         from chorde.clients.async import Defer, Future
+        ev = threading.Event()
+        ev2 = threading.Event()
         def sleepit():
-            time.sleep(0.1)
+            ev2.set()
+            ev.wait()
             return 2
         d1 = Defer(sleepit)
         d1.future = Future()
-        self.client.put(1, sleepit, 120) # Delay the pool
+        self.addCleanup(ev.set)
+        self.client.put(1, Defer(sleepit), 120)  # Delay the pool
         self.client.put(4, d1, 120)
         self.client.put(4, 7, 120)
         self.assertTrue(self.client.contains(4))
