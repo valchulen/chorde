@@ -301,7 +301,7 @@ class ThreadPool:
                         if self.__dequeue is self.__exhausted:
                             # Pointless to wait, just swap again
                             if termcount > 0:
-                                raise TerminateWorker
+                                raise TerminateWorker()
                             else:
                                 # First time we get the terminate signal, we try to swap queues
                                 # to flush any queued tasks. If we get 2 consecutive signals,
@@ -347,7 +347,7 @@ class ThreadPool:
     def worker(self, TerminateWorker=TerminateWorker):
         self = self()
         if self is None:
-            raise TerminateWorker
+            raise TerminateWorker()
 
         task = self._dequeue()
         local = self.local
