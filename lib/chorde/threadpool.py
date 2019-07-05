@@ -79,7 +79,7 @@ class WaitIter:
         return self
     def next(self, TerminateWorker=TerminateWorker):
         if self._terminate:
-            raise TerminateWorker
+            raise TerminateWorker()
         self.event.wait(self.timeout)
         raise StopIteration
 
