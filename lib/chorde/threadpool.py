@@ -26,12 +26,17 @@ class WorkerThread(threading.Thread):
         self.kwargs = kwargs
         self.__terminate = False
 
-    def run(self):
+    def run(self, TerminateWorker=TerminateWorker):
         while not self.__terminate:
             try:
                 try:
                     self.target(*self.args,**self.kwargs)
                 finally:
+                    worker_ = worker
+                    if worker_ is None:
+                        # The None check is necessary to avoid errors during interpreter shutdown
+                        self.logger.info("Interpreter shutdown in progress, terminating worker thread")
+                        raise TerminateWorker()
                     worker._callCleanupHooks()
             except TerminateWorker:
                 self.logger.info("Worker terminated")
@@ -63,9 +68,8 @@ except ImportError:
             raise exc[0], exc[1], exc[2]
 
 class WaitIter:
-    def __init__(self, event, queues, timeout = None):
+    def __init__(self, event, timeout = None):
         self.event = event
-        self.queues = queues
         self.timeout = timeout
         self._terminate = False
     def terminate(self):
@@ -73,9 +77,9 @@ class WaitIter:
         self.event.set()
     def __iter__(self):
         return self
-    def next(self):
+    def next(self, TerminateWorker=TerminateWorker):
         if self._terminate:
-            threading.current_thread().terminate(False)
+            raise TerminateWorker()
         self.event.wait(self.timeout)
         raise StopIteration
 
@@ -120,7 +124,7 @@ class ThreadPool:
         self.__workset = set()
         self.__busyqueues = set()
         self.__busyfactors = {}
-        self.__exhausted_iter = WaitIter(self.__not_empty, self.queues)
+        self.__exhausted_iter = WaitIter(self.__not_empty)
         self.__dequeue = self.__exhausted = self.__exhausted_iter.next
 
         self.min_batch = min_batch
@@ -160,7 +164,6 @@ class ThreadPool:
 
     def __swap_queues(self, max=max, min=min, len=len):
         queues = self.queues
-        qpop = queues.pop
         qget = queues.get
         queue_slices = self.__queue_slices
         pget = queue_slices.get
@@ -169,10 +172,8 @@ class ThreadPool:
         qnames = queues.keys()
         wqueues = []
         wprios = []
-        wposes = []
         iquantities = {}
         itotal = 0
-        can_straggle = False
 
         if qnames:
             # Compute batch size
@@ -185,48 +186,36 @@ class ThreadPool:
             min_batch = self.min_batch
             max_batch = self.max_batch
             max_slice = self.max_slice
-            qslots = min(max_batch, max(min_batch,min([len(qget(q)) / qprio(q,1) for q in qnames])))
+            qslots = min(max_batch, max(min_batch, min([
+                (len(qget(q)) or max_batch) / qprio(q,1)
+                for q in qnames
+            ])))
             for qname in qnames:
                 q = qget(qname)
+                if not q:
+                    continue
+
                 qpos = pget(qname,0)
                 prio = qprio(qname,1)
-                margin = max(prio,min_batch)
                 batch = qslots * prio
-                if batch >= (len(q) - margin - qpos):
-                    #print "move %s" % (qname,)
-                    q = qpop(qname)
-                    if qpos:
-                        del q[:qpos] # atomic re. pushes
-                        ppop(qname,None) # reset
-                    wqueues.append(q)
-                    wposes.append(0)
-                    qlen = len(q)
+
+                # copy-slicing
+                qslice = q[qpos:qpos+batch]
+                qlen = len(qslice)
+                if qlen:
                     iquantities[qname] = qlen
                     itotal += qlen
-                    can_straggle = True
-                else:
-                    if qpos > (max_slice or (len(q)/2)):
-                        # copy-slicing
-                        #print "copy-slice %s[%d:%d] of %d" % (qname,qpos,qpos+batch,len(q))
-                        qslice = q[qpos:qpos+batch]
-                        qlen = len(qslice)
-                        iquantities[qname] = qlen
-                        itotal += qlen
-                        wqueues.append(qslice)
-                        del q[:qpos+batch]
-                        del qslice
+                    wqueues.append(qslice)
+                    wprios.append(prio)
+                del qslice
+
+                if qlen < batch or qpos > (max_slice or (len(q)/2)):
+                    del q[:qpos+qlen]
+                    if qpos:
                         ppop(qname,None)
-                        wposes.append(0)
-                    else:
-                        # zero-copy slicing
-                        #print "iter-slice %s[%d:%d] of %d" % (qname,qpos,qpos+batch,len(q))
-                        qlen = min(batch, max(1, len(q) - qpos))
-                        iquantities[qname] = qlen
-                        itotal += qlen
-                        wqueues.append(itertools.islice(q, qpos, qpos+batch)) # queue heads are immutable
-                        queue_slices[qname] = qpos+batch
-                        wposes.append(None)
-                wprios.append(prio)
+                else:
+                    # move slice position
+                    queue_slices[qname] = qpos+qlen
 
         if wqueues:
             self.__busyqueues.clear()
@@ -241,38 +230,20 @@ class ThreadPool:
             izip = itertools.izip
             repeat = itertools.repeat
             partial = functools.partial
-            retry = True
 
-            while retry:
-                if can_straggle:
-                    # Wait for stragglers
-                    time.sleep(0.0001)
+            queues = []
+            for q,qprio in izip(wqueues, wprios):
+                queues.append(partial(repeat, iter(q).next, qprio))
 
-                queues = []
-                qposes = []
-                for q,qprio,wpos in izip(wqueues, wprios, wposes):
-                    if wpos is not None:
-                        # must slice to make sure we take a stable snapshot of the list
-                        # we'll process stragglers on the next iteration
-                        qlen = len(q)
-                        qiter = iter(islice(q,wpos,wpos+qlen))
-                        qposes.append(wpos+qlen)
-                    else:
-                        qiter = iter(q)
-                        qposes.append(None)
-                    queues.append(partial(repeat, qiter.next, qprio))
-                wposes = qposes
+            ioffs = 0
+            while queues:
+                try:
+                    for ioffs,q in islice(cycle(enumerate(queues)), ioffs, None):
+                        for q in q():
+                            iappend(q())
+                except StopIteration:
+                    del queues[ioffs]
 
-                ioffs = 0
-                ilen = len(iqueue)
-                while queues:
-                    try:
-                        for ioffs,q in islice(cycle(enumerate(queues)), ioffs, None):
-                            for q in q():
-                                iappend(q())
-                    except StopIteration:
-                        del queues[ioffs]
-                retry = can_straggle and len(iqueue) != ilen
             self.__worklen = len(iqueue)
             self.__dequeue = iter(iqueue).next
             if itotal:
@@ -305,15 +276,17 @@ class ThreadPool:
             # Wake up threads trying to join
             self.__empty.set()
 
-    def _dequeue(self):
+    def _dequeue(self, TerminateWorker=TerminateWorker):
         tid = thread.get_ident()
         workset = self.__workset
+        termcount = 0
         while True:
-            if self.__dequeue is self.__exhausted and not self.queues and not self.__not_empty.isSet():
+            if (self.__dequeue is self.__exhausted and not self.__not_empty.isSet()
+                    and (not self.queues or not any(self.queues.values()))):
                 # Sounds like there's nothing to do
                 # Yeah, gonna wait
                 workset.discard(tid)
-                if not workset and not self.queues:
+                if not workset and (not self.queues or not any(self.queues.values())):
                     self.__empty.set()
             else:
                 workset.add(tid)
@@ -321,13 +294,21 @@ class ThreadPool:
                 rv = self.__dequeue()
                 self.__worklen -= 1 # not atomic, but we don't care
                 return rv
-            except StopIteration:
+            except (TerminateWorker, StopIteration) as e:
                 # Exhausted whole workqueue?
                 with self.__swap_lock:
                     try:
                         if self.__dequeue is self.__exhausted:
                             # Pointless to wait, just swap again
-                            raise StopIteration
+                            if termcount > 0:
+                                raise TerminateWorker()
+                            else:
+                                # First time we get the terminate signal, we try to swap queues
+                                # to flush any queued tasks. If we get 2 consecutive signals,
+                                # that means we're done with the queue.
+                                if isinstance(e, TerminateWorker):
+                                    termcount += 1
+                                raise StopIteration
                         else:
                             # Try it
                             workset.add(tid)
@@ -337,6 +318,11 @@ class ThreadPool:
                     except StopIteration:
                         # Yep, exhausted queue, build up new workqueue
                         self.__swap_queues()
+                    except TerminateWorker:
+                        # Wake up others so they check, if they're sleeping
+                        workset.discard(tid)
+                        self.__not_empty.set()
+                        raise
 
     def _enqueue(self, queue, task):
         self.queues[queue].append(task)
@@ -358,10 +344,10 @@ class ThreadPool:
         self.assert_started()
 
     @staticmethod
-    def worker(self):
+    def worker(self, TerminateWorker=TerminateWorker):
         self = self()
         if self is None:
-            raise TerminateWorker
+            raise TerminateWorker()
 
         task = self._dequeue()
         local = self.local
@@ -443,17 +429,20 @@ class ThreadPool:
                 # The event is not 100% certain, we can still get awakened when there's work to do
                 # We have to check under __swap_lock to be sure
                 with self.__swap_lock:
-                    if self.__dequeue is self.__exhausted and not self.queues and not self.__workset:
+                    if (self.__dequeue is self.__exhausted and not self.__workset
+                            and (not self.queues or not any(self.queues.values()))):
                         return True
                     else:
                         # False alarm, clear it so we don't spin
                         self.__empty.clear()
             else:
                 # Timeout
-                return False
+                if timeout is not None or not self.__workset:
+                    return False
             if timeout is not None:
                 now = time.time()
-        return not self.is_started() or (self.__dequeue is self.__exhausted and not self.queues and not self.__workset)
+        return not self.is_started() or (self.__dequeue is self.__exhausted and not self.__workset
+            and (not self.queues or not any(self.queues.values())))
 
     def populate_workers(self):
         with self.__spawnlock:
