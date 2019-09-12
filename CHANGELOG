@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented here.
 
+## [0.7.1] - Unreleased
+### Bugfixes
+- Fix MemcachedStoreClient.set_multi when sockets become broken.
+  It would error out trying to unregister them from the poller.
+
 ## [0.7.0] - 2019-07-11
 ### Improvements
 - Optimized threadpool implementation to lower queuing latency

@@ -588,7 +588,11 @@ class MemcachedStoreClient(memcache.Client):
                             server, pending_keys = sockets[sock]
                             server.mark_dead("connection reset by peer")
                             sockets.pop(sock)
-                            poller.unregister(sock)
+                            try:
+                                poller.unregister(sock)
+                            except socket.error:
+                                # Already marked dead
+                                pass
                             notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
                     elif not rlist:
                         # No error, no ready socket, means timeout
@@ -618,7 +622,11 @@ class MemcachedStoreClient(memcache.Client):
                             pending_keys = state[1]
                             notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
                             sockets.pop(sock)
-                            poller.unregister(sock)
+                            try:
+                                poller.unregister(sock)
+                            except socket.error:
+                                # Already marked dead
+                                pass
             return notstored
 
     else:
