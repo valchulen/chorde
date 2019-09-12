@@ -818,9 +818,11 @@ def cached(client, ttl,
                             return frv.set(value[0])
                         else:
                             # Too stale
+                            stats.misses += 1
                             return frv.miss()
                     def on_miss():
                         # Ok, real miss, report it
+                        stats.misses += 1
                         return frv.miss()
                     def on_exc(exc_info):
                         stats.errors += 1
@@ -897,7 +899,7 @@ def cached(client, ttl,
             nclient.expire(callkey)
         if decorate is not None:
             expire_f = decorate(expire_f)
-        
+
         @wraps(of)
         def async_expire_f(*p, **kw):
             if _initialize:
@@ -911,7 +913,7 @@ def cached(client, ttl,
             aclient[0].expire(callkey)
         if decorate is not None:
             async_expire_f = decorate(async_expire_f)
-        
+
         @wraps(of)
         def future_expire_f(*p, **kw):
             try:
@@ -923,7 +925,7 @@ def cached(client, ttl,
             return fclient[0].expire(callkey)
         if decorate is not None:
             future_expire_f = decorate(future_expire_f)
-        
+
         @wraps(of)
         def put_f(*p, **kw):
             value = kw.pop('_cache_put')

@@ -4,6 +4,7 @@ All notable changes to this project will be documented here.
 
 ## [0.7.1] - Unreleased
 ### Bugfixes
+- Fix future().peek reporting of late (async) misses
 - Fix MemcachedStoreClient.set_multi when sockets become broken.
   It would error out trying to unregister them from the poller.
 
