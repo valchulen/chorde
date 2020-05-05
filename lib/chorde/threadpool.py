@@ -438,7 +438,8 @@ class ThreadPool:
             else:
                 # Timeout
                 if timeout is not None or not self.__workset:
-                    return False
+                    return (self.__dequeue is self.__exhausted and not self.__workset
+                        and (not self.queues or not any(self.queues.values())))
             if timeout is not None:
                 now = time.time()
         return not self.is_started() or (self.__dequeue is self.__exhausted and not self.__workset
