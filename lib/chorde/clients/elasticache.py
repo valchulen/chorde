@@ -13,8 +13,6 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
     Tested to work with python-memcache 1.31+
     """
 
-    FORCE_IS_DYNAMIC = True
-
     @classmethod
     def get_cluster_from_config_entrypoint(cls, entrypoint, fallback = None):
         c = cls([entrypoint])
@@ -86,6 +84,9 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
             return (None, None, None)
 
 class ElastiCacheClientMixin:
+
+    FORCE_IS_DYNAMIC = True
+
     def expand_entry(self, entry):
         last_expansions = getattr(self, '_last_entry_expansions', None)
         if last_expansions is None:

@@ -146,6 +146,7 @@ class DynamicResolvingClient(object):
                         sentries = [ x for e in entry() for x in self.expand_entry(e) ]
                         dynamic = True
                         expiration = min(expiration, dyn_expiration)
+                        allstatic = False
                     else:
                         sentries = self.expand_entry(entry)
                         dynamic = self.FORCE_IS_DYNAMIC
