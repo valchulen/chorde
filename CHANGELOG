@@ -7,6 +7,9 @@ All notable changes to this project will be documented here.
 - Fix future().peek reporting of late (async) misses
 - Fix MemcachedStoreClient.set_multi when sockets become broken.
   It would error out trying to unregister them from the poller.
+- Make tempfile cleanup in FilesCacheClient more robust
+- Fix ThreadPool.join's return value in some cases with multiple
+  joiners
 - Fix ElastiCacheClient to force-refresh its DNS endpoint even
   when it points to a single server. EC should always be dynamic.
 

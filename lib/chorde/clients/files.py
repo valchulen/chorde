@@ -89,22 +89,22 @@ def _swap(source, dest, sizeback = None):
         # Do an indirect swap, in case it was on a different filesystem
         tmpname = dest+_tmpsuffix()
         try:
-            # This might work still, on systems with os.link where rename doesn't overwrite
-            os.link(source, tmpname)
-        except:
-            shutil.copy2(source, tmpname)
-        try:
-            # Try again the rename, if the above did the copy, it might work now
-            os.rename(tmpname, dest)
-        except:
             try:
+                # This might work still, on systems with os.link where rename doesn't overwrite
+                os.link(source, tmpname)
+            except:
+                shutil.copy2(source, tmpname)
+            try:
+                # Try again the rename, if the above did the copy, it might work now
+                os.rename(tmpname, dest)
+            except:
                 # Non-atomic replace, needed in windows
                 os.unlink(dest)
                 os.rename(tmpname, dest)
-            except:
-                _clean(tmpname)
-                raise
-        os.unlink(source)
+            os.unlink(source)
+        except:
+            _clean(tmpname)
+            raise
 
     if sizeback is not None:
         # Call with size delta
@@ -123,20 +123,20 @@ def _link(source, dest, sizeback = None, filemode = None):
     except OSError:
         # Do an indirect swap, in case it was on a different filesystem
         tmpname = dest+_tmpsuffix()
-        shutil.copy2(source, tmpname)
-        if filemode is not None:
-            os.chmod(tmpname, filemode)
         try:
-            # Try again the rename, it might work now
-            os.rename(tmpname, dest)
-        except:
+            shutil.copy2(source, tmpname)
+            if filemode is not None:
+                os.chmod(tmpname, filemode)
             try:
+                # Try again the rename, it might work now
+                os.rename(tmpname, dest)
+            except:
                 # Non-atomic replace, needed in windows
                 os.unlink(dest)
                 os.rename(tmpname, dest)
-            except:
-                _clean(tmpname)
-                raise
+        except:
+            _clean(tmpname)
+            raise
 
     if sizeback is not None:
         # Call with size delta
