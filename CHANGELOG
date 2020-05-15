@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.7.1] - Unreleased
+## [0.7.1] - 2020-05-15
 ### Bugfixes
 - Fix future().peek reporting of late (async) misses
 - Fix MemcachedStoreClient.set_multi when sockets become broken.
