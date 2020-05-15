@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented here.
 
+## [0.7.2] - 2020-05-15
+### Bugfixes
+- Fix setup.py to include requirements.txt in the source build
+
 ## [0.7.1] - 2020-05-15
 ### Bugfixes
 - Fix future().peek reporting of late (async) misses

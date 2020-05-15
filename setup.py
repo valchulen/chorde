@@ -17,7 +17,7 @@ else:
     except:
         no_pyrex = True
 
-VERSION = "0.7.1"
+VERSION = "0.7.2"
 
 version_path = os.path.join(os.path.dirname(__file__), 'lib', 'chorde', '_version.py')
 if not os.path.exists(version_path):
@@ -110,6 +110,10 @@ setup(
 
     tests_require = 'nose',
     test_suite = 'tests',
+
+    data_files = [
+        ("", ["CHANGELOG", "README.rst", "requirements.txt"])
+    ],
 
     install_requires = requirements,
     extras_require = extras_requirements,
