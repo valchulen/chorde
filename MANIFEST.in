@@ -1,0 +1,5 @@
+include requirements.txt
+include README.rst
+include CHANGELOG
+recursive-include lib *.pyx
+recursive-include lib *.pxd
