@@ -1,5 +1,6 @@
 include requirements.txt
 include README.rst
 include CHANGELOG
+recursive-include lib lrucache/lrucache_cy028_compat.h
 recursive-include lib *.pyx
 recursive-include lib *.pxd
