@@ -16,7 +16,7 @@ class InprocTest(CacheClientTestMixIn, unittest.TestCase):
 class PyInprocTest(CacheClientTestMixIn, unittest.TestCase):
     def setUpClient(self):
         from chorde.clients.inproc import InprocCacheClient
-        from chorde import pylrucache
+        from clru.lrucache import pylrucache
         return InprocCacheClient(100, store_class = pylrucache.LRUCache)
 
 class PyCuckooInprocTest(CacheClientTestMixIn, unittest.TestCase):
@@ -24,14 +24,14 @@ class PyCuckooInprocTest(CacheClientTestMixIn, unittest.TestCase):
 
     def setUpClient(self):
         from chorde.clients.inproc import InprocCacheClient
-        from chorde.pycuckoocache import LazyCuckooCache
+        from clru.cuckoocache.pycuckoocache import LazyCuckooCache
         return InprocCacheClient(100, store_class = LazyCuckooCache)
 
 try:
-    from chorde import cuckoocache
+    from clru.cuckoocache import cycuckoocache as cuckoocache
     skipIfNotCythonized = lambda c : c
 except ImportError:
-    from chorde import pycuckoocache as cuckoocache # lint:ok
+    from clru.cuckoocache import pycuckoocache as cuckoocache # lint:ok
     skipIfNotCythonized = unittest.skip("Optimized LazyCuckooCache not built in")
 
 @skipIfNotCythonized
@@ -40,7 +40,7 @@ class CuckooInprocTest(CacheClientTestMixIn, unittest.TestCase):
 
     def setUpClient(self):
         from chorde.clients.inproc import InprocCacheClient
-        from chorde.cuckoocache import LazyCuckooCache
+        from clru.cuckoocache.pycuckoocache  import LazyCuckooCache
         return InprocCacheClient(100, store_class = LazyCuckooCache)
 
 class SyncInprocTest(SyncWrapperTestMixIn, InprocTest):

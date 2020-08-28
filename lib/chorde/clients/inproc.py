@@ -6,9 +6,9 @@ import weakref
 from . import base
 
 try:
-    from chorde import lrucache
+    from clru.lrucache import cylrucache as lrucache
 except ImportError:
-    from chorde import pylrucache as lrucache
+    from clru.lrucache import pylrucache as lrucache
 Cache = lrucache.LRUCache
 CacheMissError = base.CacheMissError
 CacheIsThreadsafe = lrucache.IsThreadsafe
@@ -22,9 +22,9 @@ if not CacheIsThreadsafe:
     del warnings
 
 try:
-    from chorde import cuckoocache
+    from clru.cuckoocache import cycuckoocache as cuckoocache
 except ImportError:
-    from chorde import pycuckoocache as cuckoocache
+    from clru.cuckoocache import pycuckoocache as cuckoocache
 CuckooCache = cuckoocache.LazyCuckooCache
 assert issubclass(cuckoocache.CacheMissError, CacheMissError)
 

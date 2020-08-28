@@ -71,14 +71,6 @@ if not no_pyrex:
     libdir = os.path.join(basedir, 'lib')
     extra.update(dict(
         ext_modules=cythonize([
-            Extension("chorde.lrucache", ["lib/lrucache/lrucache.pyx"],
-                depends = ["lib/lrucache/lrucache.pxd", "lib/lrucache/lrucache_cy028_compat.h"],
-                cython_include_dirs = [libdir, os.path.join(libdir, "lrucache")],
-                extra_compile_args = [ "-O3" ] ),
-            Extension("chorde.cuckoocache", ["lib/cuckoocache/cuckoocache.pyx"],
-                depends = ["lib/cuckoocache/cuckoocache.pxd"],
-                cython_include_dirs = [libdir, os.path.join(libdir, "cuckoocache")],
-                extra_compile_args = [ "-O3" ] ),
             Extension("chorde.clients._async", ["lib/chorde/clients/_async.pyx"],
                 depends = ["lib/chorde/clients/_async.pxd"],
                 cython_include_dirs = [libdir, os.path.join(libdir, "chorde", "clients")],
@@ -91,7 +83,6 @@ if not no_pyrex:
         ], include_path = [ libdir ]),
         cmdclass = {'build_ext': build_ext},
         package_data = {
-            'chorde' : ['lrucache.pxd', 'cuckoocache.pxd'],
             'chorde.clients' : ['_async.pxd'],
         },
     ))
