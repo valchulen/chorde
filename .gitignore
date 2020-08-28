@@ -1,5 +1,3 @@
-syntax: glob
-
 build
 coverage
 coverage.xml
@@ -10,3 +8,4 @@ dist
 *.c
 *.swp
 *.egg-info
+.eggs
