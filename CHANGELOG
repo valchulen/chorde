@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented here.
 
+## [0.8.0] - Unreleased
+### Changes
+- Use cLRU cuckoocache and lrucache
+
+
 ## [0.7.3] - 2020-05-15
 ### Bugfixes
 - Add MANIFEST.in to also include pxd files and others
