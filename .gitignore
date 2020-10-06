@@ -10,3 +10,4 @@ dist
 *.c
 *.swp
 *.egg-info
+.eggs

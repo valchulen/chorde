@@ -93,7 +93,7 @@ setup(
     description = "Clustered Caching Library",
     author = "Claudio Freire",
     author_email = "klaussfreire@gmail.com",
-    url = "https://bitbucket.org/claudiofreire/chorde/",
+    url = "https://github.com/klaussfreire/chorde",
     license = "LGPLv3",
     long_description = readme,
     packages = packages,
