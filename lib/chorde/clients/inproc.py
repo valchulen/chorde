@@ -5,13 +5,9 @@ import weakref
 
 from . import base
 
-try:
-    from clru.lrucache import cylrucache as lrucache
-except ImportError:
-    from clru.lrucache import pylrucache as lrucache
-Cache = lrucache.LRUCache
+from clru.lrucache import LRUCache as Cache, IsThreadsafe as CacheIsThreadsafe
+
 CacheMissError = base.CacheMissError
-CacheIsThreadsafe = lrucache.IsThreadsafe
 
 if not CacheIsThreadsafe:
 
@@ -21,14 +17,12 @@ if not CacheIsThreadsafe:
         "explicit synchronization. Decreased performance will be noticeable")
     del warnings
 
-try:
-    from clru.cuckoocache import cycuckoocache as cuckoocache
-except ImportError:
-    from clru.cuckoocache import pycuckoocache as cuckoocache
-CuckooCache = cuckoocache.LazyCuckooCache
-assert issubclass(cuckoocache.CacheMissError, CacheMissError)
+from clru.cuckoocache import (
+    LazyCuckooCache as CuckooCache, CacheMissError as CuckooCacheMissError, IsThreadsafe as CuckooIsThreadsafe
+)
+assert issubclass(CuckooCacheMissError, CacheMissError)
 
-if CacheIsThreadsafe and not cuckoocache.IsThreadsafe:
+if CacheIsThreadsafe and not CuckooIsThreadsafe:
     import warnings
     warnings.warn("CuckooCache extension module not built in, "
         "but LRUCache module was built. InprocCacheClient will be assumed "

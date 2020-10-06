@@ -5,6 +5,7 @@ from .clientbase import (CacheClientTestMixIn,
     SyncWrapperTestMixIn, RWSyncWrapperTestMixIn,
     NamespaceWrapperTestMixIn
 )
+from clru.lrucache import pylrucache
 
 from chorde.clients.base import NamespaceMirrorWrapper
 
@@ -16,7 +17,6 @@ class InprocTest(CacheClientTestMixIn, unittest.TestCase):
 class PyInprocTest(CacheClientTestMixIn, unittest.TestCase):
     def setUpClient(self):
         from chorde.clients.inproc import InprocCacheClient
-        from clru.lrucache import pylrucache
         return InprocCacheClient(100, store_class = pylrucache.LRUCache)
 
 class PyCuckooInprocTest(CacheClientTestMixIn, unittest.TestCase):
@@ -40,7 +40,7 @@ class CuckooInprocTest(CacheClientTestMixIn, unittest.TestCase):
 
     def setUpClient(self):
         from chorde.clients.inproc import InprocCacheClient
-        from clru.cuckoocache.pycuckoocache  import LazyCuckooCache
+        from clru.cuckoocache.cycuckoocache  import LazyCuckooCache
         return InprocCacheClient(100, store_class = LazyCuckooCache)
 
 class SyncInprocTest(SyncWrapperTestMixIn, InprocTest):
