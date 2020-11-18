@@ -2,4 +2,4 @@ numpy
 python-memcached>=1.56
 pyzmq
 dnspython
-Cython>=0.22
+Cython>=0.22,<0.29.3
