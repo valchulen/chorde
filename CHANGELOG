@@ -3,6 +3,9 @@
 All notable changes to this project will be documented here.
 
 ## [0.8.0] - Unreleased
+### Changes
+- Use cLRU cuckoocache and lrucache
+
 ### Improvements
 - Overrideable minimum and dynamic TTLs in dnsutils dynamic
   resolving client.

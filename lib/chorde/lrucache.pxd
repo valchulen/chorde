@@ -1,1 +1,0 @@
-../lrucache/lrucache.pxd
