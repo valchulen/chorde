@@ -3,6 +3,7 @@ import os
 import os.path
 import time
 import socket
+import random
 import threading
 
 def is_ip4(x):
@@ -95,6 +96,8 @@ def dnsquery_if_hostname(host, typ):
 
 class DynamicResolvingClient(object):
     FORCE_IS_DYNAMIC = False
+    MIN_TTL = 5.0
+    DYN_TTL = 60.0
 
     def __init__(self, client_class, client_addresses, client_args={}):
         self._client_class = client_class
@@ -134,7 +137,7 @@ class DynamicResolvingClient(object):
             # Generate dynamic list
             servers = []
             static_addresses = self._static_client_addresses or set()
-            dyn_expiration = time.time() + 60
+            dyn_expiration = time.time() + self.DYN_TTL
             expiration = dyn_expiration + 86400
             allstatic = True if self._static_client_addresses is None else False
             for entry in self._client_addresses:
@@ -198,8 +201,9 @@ class DynamicResolvingClient(object):
             else:
                 self._static_client_addresses = static_addresses
 
-                # Schedule a recheck when TTL expires (or 5 seconds, whichever is higher)
-                self._dynamic_client_checktime = max(expiration, time.time() + 5)
+                # Schedule a recheck when TTL expires (or min TTL, whichever is higher, plus a random variation)
+                min_ttl = self.MIN_TTL
+                self._dynamic_client_checktime = max(expiration, time.time() + min_ttl) + random.random() * min_ttl
                 self._dynamic_client_addresses = servers
                 rv = servers
         return set([addr for addr in rv if addr not in self._removed_addresses])
