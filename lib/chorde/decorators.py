@@ -7,7 +7,6 @@ import time
 import logging
 import random
 import pydoc
-
 from .clients import base, async, tiered
 
 try:
@@ -18,6 +17,15 @@ except ImportError:
     no_coherence = True
 
 from .clients.base import CacheMissError
+
+try:
+    import cython
+except ImportError:
+    # Make cython annotations work without cython
+    _cy_noop = lambda f: f
+    class _cython:
+        locals = lambda **kw: _cy_noop
+    globals()['cython'] = _cython
 
 class NO_NAMESPACE:
     pass
@@ -99,17 +107,18 @@ class CacheStats(object):
     def clear(self):
         self.hits = self.misses = self.errors = self.sync_misses = self.sync_errors = 0
         self.max_miss_time = self.sum_miss_time = self.sum_miss_time_sq = self.wait_time = 0
-        self.min_miss_time = None
+        self.min_miss_time = -1
 
     def set_histogram_bins(self, bins, maxtime):
         if bins <= 0:
-            self.miss_time_histogram = self.miss_time_histogram_bins = self.miss_time_histogram_max = None
+            self.miss_time_histogram_bins = self.miss_time_histogram_max = 0
+            self.miss_time_histogram = None
         else:
             self.miss_time_histogram = [0] * bins
             self.miss_time_histogram_bins = bins
             self.miss_time_histogram_max = maxtime
 
-    def add_histo(self, time, min=min):
+    def add_histo(self, time):
         if self.miss_time_histogram:
             hmax = self.miss_time_histogram_max
             hbins = self.miss_time_histogram_bins
@@ -448,6 +457,7 @@ def cached(client, ttl,
         if timings:
             of = f
             @wraps(of)
+            @cython.locals(t0=cython.double, t1=cython.double, t=cython.double)
             def af(*p, **kw):
                 stats.misses += 1
                 try:
@@ -458,7 +468,7 @@ def cached(client, ttl,
                     try:
                         if t > stats.max_miss_time:
                             stats.max_miss_time = t
-                        if stats.min_miss_time is None or stats.min_miss_time > t:
+                        if stats.min_miss_time < 0 or stats.min_miss_time > t:
                             stats.min_miss_time = t
                         stats.sum_miss_time += t
                         stats.sum_miss_time_sq += t*t
@@ -557,6 +567,7 @@ def cached(client, ttl,
             get_ttl_f = decorate(get_ttl_f)
 
         @wraps(of)
+        @cython.locals(t0=cython.double, t1=cython.double, t=cython.double)
         def async_cached_f(*p, **kw):
             if _initialize:
                 _initialize[0]()
