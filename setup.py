@@ -67,10 +67,19 @@ packages = [
 ]
 
 if not no_pyrex:
+
+    if sys.platform.startswith('linux'):
+        DEFAULT_COMPILE_ARGS = '-mtune=native'
+    else:
+        DEFAULT_COMPILE_ARGS = ''
+
+    EXTRA_COMPILE_ARGS = os.environ.get('CXXFLAGS', os.environ.get('CFLAGS', DEFAULT_COMPILE_ARGS)).split()
+
     basedir = os.path.dirname(__file__)
     libdir = os.path.join(basedir, 'lib')
-    extra.update(dict(
-        ext_modules=cythonize([
+
+    ext_modules = cythonize(
+        [
             Extension("chorde.clients._async", ["lib/chorde/clients/_async.pyx"],
                 depends = ["lib/chorde/clients/_async.pxd"],
                 cython_include_dirs = [libdir, os.path.join(libdir, "chorde", "clients")],
@@ -80,7 +89,15 @@ if not no_pyrex:
             Extension("chorde.clients.inproc", ["lib/chorde/clients/inproc.py"]),
             Extension("chorde.clients.tiered", ["lib/chorde/clients/tiered.py"]),
             Extension("chorde.clients.async", ["lib/chorde/clients/async.py"]),
-        ], include_path = [ libdir ]),
+        ],
+        include_path = [ libdir ]
+    )
+
+    for ext_module in ext_modules:
+        ext_module.extra_compile_args.extend(EXTRA_COMPILE_ARGS)
+
+    extra.update(dict(
+        ext_modules = ext_modules,
         cmdclass = {'build_ext': build_ext},
         package_data = {
             'chorde.clients' : ['_async.pxd'],
