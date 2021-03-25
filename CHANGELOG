@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.8.1] - Unreleased
+## [0.8.1] - 2021-03-25
 ### Improvements
 - Reduced stats tracking overhead when using Cython
 - Optimize code generation for the native platform by default
