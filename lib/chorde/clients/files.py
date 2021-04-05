@@ -624,7 +624,15 @@ class FilesCacheClient(base.BaseCacheClient):
                                     return rawfile.read(), rttl
                         elif self.checksum_key and os.access(targetpath+'.ser', os.R_OK):
                             with open(targetpath+'.ser', 'rb') as rawfile:
-                                return self.value_unpickler(rawfile), rttl
+                                try:
+                                    return self.value_unpickler(rawfile), rttl
+                                except Exception:
+                                    # Remove the broken entry from the cache
+                                    logging.getLogger('chorde.files').warning(
+                                        "Purging badly serialized entry from cache")
+                                    for suffix in ('.file','.raw','.ser','.key'):
+                                        _clean(targetpath+suffix, self.size.__isub__)
+                                    raise
                         else:
                             # Broken?
                             return default, -1

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented here.
 
+## [0.8.2] - Unreleased
+### Bugfixes
+- Automatically clean broken entries from files caches,
+  otherwise they can be left there indefinitely and prevent
+  correct cache operation
+
 ## [0.8.1] - 2021-03-25
 ### Improvements
 - Reduced stats tracking overhead when using Cython
