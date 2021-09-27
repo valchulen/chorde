@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented here.
 
+## [0.8.3] - Unreleased
+### Changes
+- Consider TTL when computing automatic namespaces to avoid
+  mixing differently-configured entries, which can cause
+  TTL failures
+
 ## [0.8.2] - 2021-04-08
 ### Bugfixes
 - Automatically clean broken entries from files caches,

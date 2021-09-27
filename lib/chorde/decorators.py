@@ -51,7 +51,7 @@ def wraps(wrapped):
         return wrapper
     return decor
 
-def _make_namespace(f, salt = None):
+def _make_namespace(f, salt = None, salt2 = None):
     f = getattr(f, 'im_func', f)
     fname = getattr(f, '__name__', None)
     if fname is None:
@@ -74,6 +74,8 @@ def _make_namespace(f, salt = None):
         body_digest = md5.md5(fpath)
         if salt:
             body_digest.update(salt)
+        if salt2:
+            body_digest.update(salt2)
         if fcode:
             body_digest.update(getattr(fcode, 'co_code', ''))
         return "%s.%s#%s" % (mname,fname,body_digest.digest().encode("base64").strip("=\n"))
@@ -424,7 +426,9 @@ def cached(client, ttl,
 
     def decor(f):
         if namespace is None:
-            nclient = base.NamespaceWrapper(_make_namespace(f, salt = autonamespace_version_salt), client)
+            salt2 = repr((ttl,))
+            nclient = base.NamespaceWrapper(_make_namespace(
+                f, salt = autonamespace_version_salt, salt2 = salt2), client)
             if async_client:
                 nasync_client = base.NamespaceMirrorWrapper(nclient, async_client)
             else:
