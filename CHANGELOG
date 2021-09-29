@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented here.
 
+## [0.8.4] - 2021-09-29
+### Bugfixes
+- Apply TTL namespace variation on all code paths.
+  Some were neglected.
+
 ## [0.8.3] - 2021-09-29
 ### Changes
 - Consider TTL when computing automatic namespaces to avoid

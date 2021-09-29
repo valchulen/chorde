@@ -1344,13 +1344,14 @@ if not no_coherence:
             else:
                 eff_async_ttl = None
 
+            salt2 = repr((ttl,))
             if coherence_namespace is None:
-                _coherence_namespace = _make_namespace(f, salt = autonamespace_version_salt)
+                _coherence_namespace = _make_namespace(f, salt = autonamespace_version_salt, salt2 = salt2)
             else:
                 _coherence_namespace = coherence_namespace
 
             if namespace is None:
-                _namespace = _make_namespace(f, salt = autonamespace_version_salt)
+                _namespace = _make_namespace(f, salt = autonamespace_version_salt, salt2 = salt2)
             else:
                 _namespace = namespace
 
