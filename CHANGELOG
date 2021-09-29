@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.8.3] - Unreleased
+## [0.8.3] - 2021-09-29
 ### Changes
 - Consider TTL when computing automatic namespaces to avoid
   mixing differently-configured entries, which can cause
