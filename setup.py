@@ -6,18 +6,14 @@ try:
 except ImportError:
     from distutils.core import setup, Extension
 
-if sys.subversion[0] == 'PyPy':
-    # Even though pypy may have Pyrex or Cython, cython LRU isn't compatible with cpyext
+no_pyrex = False
+try:
+    from Cython.Distutils import build_ext, Extension
+    from Cython.Build import cythonize
+except:
     no_pyrex = True
-else:
-    no_pyrex = False
-    try:
-        from Cython.Distutils import build_ext, Extension
-        from Cython.Build import cythonize
-    except:
-        no_pyrex = True
 
-VERSION = "0.8.4"
+VERSION = "0.9.0"
 
 version_path = os.path.join(os.path.dirname(__file__), 'lib', 'chorde', '_version.py')
 if not os.path.exists(version_path):
@@ -31,7 +27,7 @@ with open(version_path, "r+") as version_file:
         version_file.flush()
         version_file.truncate()
 
-with open(os.path.join(os.path.dirname(__file__), 'README.rst')) as readme_file:
+with open(os.path.join(os.path.dirname(__file__), 'README.rst'), encoding="utf8") as readme_file:
     readme = readme_file.read()
 
 import re
@@ -42,7 +38,7 @@ _extras_requirements = [
     ( re.compile(r'memcache'), ['memcache','elasticache'] ),
     ( re.compile(r'dnspython'), ['memcache','elasticache'] ),
 ]
-with open(os.path.join(os.path.dirname(__file__), 'requirements.txt')) as requirements_file:
+with open(os.path.join(os.path.dirname(__file__), 'requirements.txt'), encoding="utf8") as requirements_file:
     all_requirements = list(filter(bool, [ r.strip() for r in requirements_file ]))
 # Compute extras_requires and main requirements
 requirements = []
