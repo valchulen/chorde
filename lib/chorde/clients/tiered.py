@@ -24,11 +24,11 @@ class TieredInclusiveClient(BaseCacheClient):
 
     @property
     def capacity(self):
-        return map(operator.attrgetter('capacity'), self.clients)
+        return list(map(operator.attrgetter('capacity'), self.clients))
 
     @property
     def usage(self):
-        return map(operator.attrgetter('usage'), self.clients)
+        return list(map(operator.attrgetter('usage'), self.clients))
 
     def wait(self, key, timeout = None):
         for client in self.clients:
