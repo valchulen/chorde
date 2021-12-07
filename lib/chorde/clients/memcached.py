@@ -276,8 +276,7 @@ class MemcachedStoreClient(memcache.Client):
     def check_key(self, key, key_extra_len=0,
             isinstance = isinstance, tuple = tuple, bytes = bytes,
             unicode = unicode, basestring = basestring, len = len,
-            tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in range(256)),
-            imap = itertools.imap):
+            tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in range(256))):
         """Checks sanity of key.  Fails if:
             Key length is > SERVER_MAX_KEY_LENGTH (Raises MemcachedKeyLength).
             Contains control characters  (Raises MemcachedKeyCharacterError).
@@ -1014,7 +1013,6 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
     def shorten_key(self, key,
             tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in range(256)),
-            imap = itertools.imap,
             isinstance = isinstance, basestring = basestring, unicode = unicode, ord = ord, any = any, len = len ):
         # keys cannot be anything other than strings
         exact = True
