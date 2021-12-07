@@ -201,7 +201,7 @@ class FilesCacheClient(base.BaseCacheClient):
     def __init__(self, size, basepath,
             failfast_size = 500, failfast_time = 0.25, counter_slots = 256,
             key_pickler = json.dumps, value_pickler = None, value_unpickler = None, value_opener=None, checksum_key = None,
-            dirmode = 0700, filemode = 0400, mmap_raw = False,
+            dirmode = 0o700, filemode = 0o400, mmap_raw = False,
             sync_purge = None):
         """
         Params:
