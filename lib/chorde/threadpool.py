@@ -11,7 +11,7 @@ import threading
 import time
 import weakref
 
-import worker
+from . import worker
 
 class TimeoutError(Exception):
     pass
@@ -54,7 +54,7 @@ class WorkerThread(threading.Thread):
             self.join()
 
 try:
-    from clients._async import ExceptionWrapper
+    from .clients._async import ExceptionWrapper
 except ImportError:
     class ExceptionWrapper(object):  # lint:ok
         __slots__ = ('exc',)
