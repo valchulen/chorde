@@ -277,12 +277,12 @@ class FilesCacheClient(base.BaseCacheClient):
 
         if value_pickler is None or value_unpickler is None:
             if checksum_key is None:
-                raise ValueError, "Must be given a checksum_key when using the default pickler"
+                raise ValueError("Must be given a checksum_key when using the default pickler")
             else:
                 self.value_pickler = functools.partial(sPickle.dump, checksum_key)
                 self.value_unpickler = functools.partial(sPickle.load, checksum_key)
         elif value_pickler is not None or value_unpickler is not None:
-            raise ValueError, "Must be given both pickler and unpickler when using custom picklers"
+            raise ValueError("Must be given both pickler and unpickler when using custom picklers")
         else:
             self.value_pickler = value_pickler
             self.value_unpickler = value_unpickler
@@ -476,7 +476,7 @@ class FilesCacheClient(base.BaseCacheClient):
                 return True
             else:
                 if not self.checksum_key:
-                    raise RuntimeError, "Cannot encode arbitrary objects without a checksum key"
+                    raise RuntimeError("Cannot encode arbitrary objects without a checksum key")
 
                 with self._mktmp() as rawfile:
                     self.value_pickler(value, rawfile, 2)
@@ -655,7 +655,7 @@ class FilesCacheClient(base.BaseCacheClient):
     def get(self, key, default=NONE, **kw):
         rv, ttl = self._getTtl(key, default, ttl_skip = 0, **kw)
         if ttl < 0 and default is NONE:
-            raise CacheMissError, key
+            raise CacheMissError(key)
         else:
             return rv
 

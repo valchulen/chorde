@@ -137,7 +137,7 @@ class SecureUnpickler(object):
     def load(self, headlen = len(struct.pack('<L',0).encode("hex"))):
         datalen = self.file.read(headlen)
         if not datalen:
-            raise EOFError, "Cannot read secure packet header"
+            raise EOFError("Cannot read secure packet header")
         datalen, = struct.unpack('<L', datalen.decode("hex") )
 
         ref_md = hmac.HMAC(self.checksum_key, None, checksum_algo)
@@ -148,7 +148,7 @@ class SecureUnpickler(object):
 
         ref_md = ref_md.hexdigest()
         if ref_md != md:
-            raise ValueError, "MAC mismatch unpickling"
+            raise ValueError("MAC mismatch unpickling")
 
         buf = self.buf
         buf.reset()

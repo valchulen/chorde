@@ -153,7 +153,7 @@ class SharedCounterGenericBase(object):
         slot = os.getpid() % slots
         if bitmap[slot]:
             if not locked:
-                raise AssertionError, "Slot occupied"
+                raise AssertionError("Slot occupied")
             else:
                 # With a locked bitmap, we can search other slots
                 for offs in xrange(slots):
@@ -161,7 +161,7 @@ class SharedCounterGenericBase(object):
                     if not bitmap[nslot]:
                         slot = nslot
                 else:
-                    raise AssertionError, "All slots occupied"
+                    raise AssertionError("All slots occupied")
 
         self.bitmap = bitmap
         self.bitmap_slot = bitmap_slot(slot)

@@ -52,7 +52,7 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
                     value = self._recv_value(server, flags, rlen)
                 finally:
                     server.expect("END", raise_exception=True)
-            except (memcache._Error, socket.error), msg:
+            except (memcache._Error, socket.error) as msg:
                 if isinstance(msg, tuple): msg = msg[1]
                 server.mark_dead(msg)
                 return None
@@ -67,7 +67,7 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
                 if server.connect():
                     return _unsafe_get()
                 return None
-            except (memcache._ConnectionDeadError, socket.error), msg:
+            except (memcache._ConnectionDeadError, socket.error) as msg:
                 server.mark_dead(msg)
             return None
 

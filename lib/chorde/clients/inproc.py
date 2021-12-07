@@ -196,7 +196,7 @@ class InprocCacheClient(base.BaseCacheClient):
             ttl = ttl - time()
             return rv, ttl
         elif default is baseNONE:
-            raise CacheMissError, key
+            raise CacheMissError(key)
         else:
             return default, -1
 

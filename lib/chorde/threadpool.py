@@ -65,7 +65,7 @@ except ImportError:
         def reraise(self):
             exc = self.exc
             del self.exc
-            raise exc[0], exc[1], exc[2]
+            raise exc[0](exc[1]).with_traceback(exc[2])
 
 class WaitIter:
     def __init__(self, event, timeout = None):

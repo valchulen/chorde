@@ -84,7 +84,7 @@ class TieredInclusiveClient(BaseCacheClient):
             else:
                 # Cannot undefer here, it might create deadlocks.
                 # Raise error.
-                raise ValueError, "Sync first tier, cannot undefer"
+                raise ValueError("Sync first tier, cannot undefer")
         else:
             # Simple case
             tiers = izip(fractions, clients)
@@ -118,7 +118,7 @@ class TieredInclusiveClient(BaseCacheClient):
             else:
                 # Cannot undefer here, it might create deadlocks.
                 # Raise error.
-                raise ValueError, "Sync first tier, cannot undefer"
+                raise ValueError("Sync first tier, cannot undefer")
         else:
             # Simple case
             tiers = izip(fractions, clients)
@@ -185,7 +185,7 @@ class TieredInclusiveClient(BaseCacheClient):
                 return rv, ttl
             else:
                 if default is NONE:
-                    raise CacheMissError, key
+                    raise CacheMissError(key)
                 else:
                     return default, -1
 
