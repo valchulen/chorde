@@ -2,6 +2,7 @@
 import unittest
 import time
 import os
+from base64 import b64enode
 from .clientbase import CacheClientTestMixIn, NamespaceWrapperTestMixIn, CacheMissError
 from .base import TestCase
 from chorde.clients.base import NoServersError
@@ -98,7 +99,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     meaningful_capacity = False # controlled externally so it may not be consistent for testing purposes
 
     # Big uncompressible (but ascii-compatible) value
-    BIG_VALUE = os.urandom(4 << 20).encode("base64")
+    BIG_VALUE = b64encode(os.urandom(4 << 20))
 
     def setUpClient(self, **kwargs):
         from chorde.clients.memcached import MemcachedClient
