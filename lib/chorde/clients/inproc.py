@@ -41,7 +41,7 @@ def cacheStats():
 
     with _caches_mutex:
         rv = {}
-        for cache in _caches.iterkeys():
+        for cache in _caches.keys():
             fname = cache.__name__
 
             # Sometimes, functions are different but named the same. Usually
@@ -53,7 +53,7 @@ def cacheStats():
 
 def cachePurge(timeout = 0, sleeptime = None):
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = list(_caches.keys())
 
     for cache in caches:
         if sleeptime is not None:
@@ -96,7 +96,7 @@ def cacheClear():
     """
 
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = list(_caches.keys())
 
     for cache in caches:
         cache.clear()

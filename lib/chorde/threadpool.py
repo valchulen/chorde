@@ -169,7 +169,7 @@ class ThreadPool:
         pget = queue_slices.get
         ppop = queue_slices.pop
         qprio = self.queue_weights.get
-        qnames = queues.keys()
+        qnames = list(queues.keys())
         wqueues = []
         wprios = []
         iquantities = {}
@@ -248,7 +248,7 @@ class ThreadPool:
             self.__dequeue = iter(iqueue).__next__
             if itotal:
                 ftotal = float(itotal)
-                self.__busyfactors = dict([(qname, quant/ftotal) for qname,quant in iquantities.iteritems()])
+                self.__busyfactors = dict([(qname, quant/ftotal) for qname,quant in iquantities.items()])
             else:
                 self.__busyfactors = {}
         elif self.__dequeue is not self.__exhausted:

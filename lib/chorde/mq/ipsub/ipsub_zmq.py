@@ -185,7 +185,7 @@ class ZMQIPSub(BaseIPSub):
                             if what & POLLIN:
                                 recv_update_reply(listener_req)
                         # Then put incoming stuff on the queue
-                        for socket, what in activity.iteritems():
+                        for socket, what in activity.items():
                             if socket is pull:
                                 pack = pull_recv_multipart()
                                 if len_(pack) > 1:
@@ -275,7 +275,7 @@ class ZMQIPSub(BaseIPSub):
                                 else:
                                     poller_unregister(broker_pub)
                         # Then put incoming stuff on the queue
-                        for socket, what in activity.iteritems():
+                        for socket, what in activity.items():
                             if socket is pull:
                                 pack = pull_recv_multipart()
                                 if len_(pack) > 1:

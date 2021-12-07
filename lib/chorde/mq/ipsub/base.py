@@ -245,7 +245,7 @@ class BaseIPSub(object):
                 prefix = update[0][:MAX_PREFIX]
             called = set()
             rrv = rv = None
-            for cb_prefix, callbacks in listeners.items():
+            for cb_prefix, callbacks in list(listeners.items()):
                 if prefix is None or prefix.startswith(cb_prefix):
                     byebye = set()
                     for callback in set(callbacks):

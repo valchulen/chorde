@@ -27,14 +27,14 @@ def _register_files(cache):
 
 def cachePurge(timeout = 0):
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = list(_caches.keys())
 
     for cache in caches:
         cache.purge(timeout)
 
 def cacheClear():
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = list(_caches.keys())
 
     for cache in caches:
         cache.clear()
