@@ -2,7 +2,7 @@
 import unittest
 import time
 import os
-from base64 import b64enode
+from base64 import b64encode
 from .clientbase import CacheClientTestMixIn, NamespaceWrapperTestMixIn, CacheMissError
 from .base import TestCase
 from chorde.clients.base import NoServersError

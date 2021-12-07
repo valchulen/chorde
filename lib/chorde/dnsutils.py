@@ -54,7 +54,7 @@ def hosts_dnsquery(host, typ, hostsfile = "/etc/hosts"):
                         l = l.split('#',1)[0]
                     l = l.strip()
                     if l:
-                        parts = filter(bool, [ x.strip() for x in l.split() ])
+                        parts = list(filter(bool, [ x.strip() for x in l.split() ]))
                         if host in parts:
                             if typ == 'A':
                                 if is_ip4(parts[0]):

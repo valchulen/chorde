@@ -945,7 +945,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         self.version_prefix = '2,'
 
-        self.pickler = pickler or cPickle
+        self.pickler = pickler or pickle
         self.key_pickler = key_pickler or self.pickler
 
         # make room for the hash prefix
