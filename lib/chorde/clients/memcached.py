@@ -300,7 +300,7 @@ class MemcachedStoreClient(memcache.Client):
             len(key) + key_extra_len > self.server_max_key_length:
             raise self.MemcachedKeyLengthError("Key length is > %s"
                      % self.server_max_key_length)
-        if any(imap(ord, key.translate(tmap))):
+        if any(map(ord, key.translate(tmap))):
             raise self.MemcachedKeyCharacterError(
                     "Control characters not allowed")
 
@@ -1033,7 +1033,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             zpfx = self.compress_prefix + '#'
 
         # keys cannot contain control characters or spaces
-        if any(imap(ord, key.translate(tmap))):
+        if any(map(ord, key.translate(tmap))):
             key = "B#" + key.encode("base64").replace("\n","")
             zpfx = self.compress_prefix
 

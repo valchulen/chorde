@@ -580,7 +580,7 @@ class CoherenceManager(object):
     def _on_pending(self, prefix, event, payload):
         if self.ipsub.is_broker:
             txid, keys, contact = payload
-            self.group_pending.update(itertools.izip(
+            self.group_pending.update(zip(
                 keys, itertools.repeat((txid,time.time(),contact),len(keys))))
             return True
 

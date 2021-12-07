@@ -232,7 +232,7 @@ class ThreadPool:
             partial = functools.partial
 
             queues = []
-            for q,qprio in izip(wqueues, wprios):
+            for q,qprio in zip(wqueues, wprios):
                 queues.append(partial(repeat, iter(q).next, qprio))
 
             ioffs = 0

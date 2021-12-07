@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from itertools import izip, islice
+from itertools import islice
 import operator
 import logging
 
@@ -56,7 +56,7 @@ class TieredInclusiveClient(BaseCacheClient):
                 # In any case, don't do the reget in the caller, we did the equivalent
                 value = async._NONE
             elif value is not NONE and value is not async._NONE:
-                for fraction, client in islice(izip(fractions,clients), 1, _max_tiers):
+                for fraction, client in islice(zip(fractions,clients), 1, _max_tiers):
                     try:
                         client.put(key, value, ttl * fraction, **kw)
                     except:
@@ -87,7 +87,7 @@ class TieredInclusiveClient(BaseCacheClient):
                 raise ValueError("Sync first tier, cannot undefer")
         else:
             # Simple case
-            tiers = izip(fractions, clients)
+            tiers = zip(fractions, clients)
             if _max_tiers is not None:
                 tiers = islice(tiers, _max_tiers)
             for ttl_fraction, client in tiers:
@@ -96,7 +96,7 @@ class TieredInclusiveClient(BaseCacheClient):
     def renew(self, key, ttl, _max_tiers=None, **kw):
         clients = self.clients
         fractions = self.ttl_fractions
-        tiers = izip(fractions, clients)
+        tiers = zip(fractions, clients)
         if _max_tiers is not None:
             tiers = islice(tiers, _max_tiers)
         for ttl_fraction, client in tiers:
@@ -121,7 +121,7 @@ class TieredInclusiveClient(BaseCacheClient):
                 raise ValueError("Sync first tier, cannot undefer")
         else:
             # Simple case
-            tiers = izip(fractions, clients)
+            tiers = zip(fractions, clients)
             if _max_tiers is not None:
                 tiers = islice(tiers, _max_tiers)
             for ttl_fraction, client in tiers:
