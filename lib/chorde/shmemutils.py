@@ -326,7 +326,7 @@ class SharedCounterGenericBase(object):
         return int(self.value)
 
     def __long__(self):
-        return long(self.value)
+        return int(self.value)
 
     def __float__(self):
         return float(self.value)

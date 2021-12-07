@@ -56,7 +56,6 @@ def _psufix(x):
 
 HASHES = {
     int : lambda x : hash(x) & 0xFFFFFFFF, # hash(x:int) = x, but must be 64/32-bit compatible
-    long : lambda x : hash(x) & 0xFFFFFFFF, # must be 64/32-bit compatible
     str : _psufix, # prefix+suffix is ok for most
     unicode : lambda x : _psufix(x.encode("utf8")),
     list : len,
