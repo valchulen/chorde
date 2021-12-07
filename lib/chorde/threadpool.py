@@ -77,7 +77,7 @@ class WaitIter:
         self.event.set()
     def __iter__(self):
         return self
-    def next(self, TerminateWorker=TerminateWorker):
+    def __next__(self, TerminateWorker=TerminateWorker):
         if self._terminate:
             raise TerminateWorker()
         self.event.wait(self.timeout)
@@ -227,7 +227,6 @@ class ThreadPool:
             iappend = iqueue.append
             islice = itertools.islice
             cycle = itertools.cycle
-            izip = itertools.izip
             repeat = itertools.repeat
             partial = functools.partial
 
