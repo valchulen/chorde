@@ -248,7 +248,7 @@ class ZMQIPSub(BaseIPSub):
                 dict_ = dict
                 random_ = random.random
                 tic_count = 100
-                hb_period_base = owner.heartbeat_avg_period / 2
+                hb_period_base = owner.heartbeat_avg_period // 2
                 hb_period_spread = hb_period_base * 2
 
                 # Poll sockets

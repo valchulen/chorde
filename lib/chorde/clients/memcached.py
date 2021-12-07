@@ -1112,7 +1112,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             if self.encoding_cache is not None:
                 self.encoding_cache.cache = (value, encoded)
 
-        npages = (len(encoded) + self.max_backing_value_length - 1) / self.max_backing_value_length
+        npages = (len(encoded) + self.max_backing_value_length - 1) // self.max_backing_value_length
         pagelen = self.max_backing_value_length
         if npages > 1:
             version = self.get_version_stamp(short_key)

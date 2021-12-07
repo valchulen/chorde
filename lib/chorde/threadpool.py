@@ -186,10 +186,10 @@ class ThreadPool:
             min_batch = self.min_batch
             max_batch = self.max_batch
             max_slice = self.max_slice
-            qslots = min(max_batch, max(min_batch, min([
+            qslots = int(min(max_batch, max(min_batch, min([
                 (len(qget(q)) or max_batch) / qprio(q,1)
                 for q in qnames
-            ])))
+            ]))))
             for qname in qnames:
                 q = qget(qname)
                 if not q:
@@ -209,7 +209,7 @@ class ThreadPool:
                     wprios.append(prio)
                 del qslice
 
-                if qlen < batch or qpos > (max_slice or (len(q)/2)):
+                if qlen < batch or qpos > (max_slice or (len(q)//2)):
                     del q[:qpos+qlen]
                     if qpos:
                         ppop(qname,None)
