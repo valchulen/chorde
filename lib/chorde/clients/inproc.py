@@ -42,7 +42,7 @@ def cacheStats():
     with _caches_mutex:
         rv = {}
         for cache in _caches.iterkeys():
-            fname = cache.func_name
+            fname = cache.__name__
 
             # Sometimes, functions are different but named the same. Usually
             # they're related, so we aggregate those stats.
