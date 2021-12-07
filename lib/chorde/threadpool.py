@@ -6,7 +6,7 @@ import logging
 import multiprocessing
 import os
 import sys
-import thread
+import _thread as thread
 import threading
 import time
 import weakref

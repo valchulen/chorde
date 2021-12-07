@@ -348,13 +348,10 @@ class CustomPicklerMemcacheTest(MemcacheTest):
 @skipIfNoMemcached
 class CustomClientPicklerMemcacheTest(MemcacheTest):
     def setUpClient(self):
-        try:
-            import cPickle
-        except ImportError:
-            import pickle as cPickle  # lint:ok
+        import pickle
         return super(CustomClientPicklerMemcacheTest, self).setUpClient(
-            client_pickler = cPickle.Pickler,
-            client_unpickler = cPickle.Unpickler,
+            client_pickler = pickle.Pickler,
+            client_unpickler = pickle.Unpickler,
             compress = False)
 
 @skipIfNoMemcached

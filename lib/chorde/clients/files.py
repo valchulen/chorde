@@ -12,7 +12,7 @@ import mmap
 import os.path
 import shutil
 import tempfile
-import thread
+import _thread as thread
 import threading
 import time
 import weakref

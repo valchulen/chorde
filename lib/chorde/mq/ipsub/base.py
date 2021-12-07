@@ -6,15 +6,8 @@ import json
 import os
 from collections import defaultdict
 
-try:
-    import cPickle
-except ImportError:
-    import pickle as cPickle  # lint:ok
-
-try:
-    import cStringIO
-except ImportError:
-    import StringIO as cStringIO  # lint:ok
+import pickle
+import io
 
 __ALL__ = (
     'EVENT_INCOMING_UPDATE',
@@ -353,12 +346,12 @@ class BaseIPSub(object):
                 sPickles, they both work out-of-the-box.
         """
         def dumps(x):
-            io = cStringIO.StringIO()
+            io = io.StringIO()
             p = pickler(io,2)
             p.dump(x)
             return io.getvalue()
         def loads(x):
-            io = cStringIO.StringIO(x)
+            io = io.StringIO(x)
             p = unpickler(io)
             return p.load()
         def load(x):
@@ -367,7 +360,7 @@ class BaseIPSub(object):
 
     @staticmethod
     def register_default_pyobj():
-        BaseIPSub.register_pyobj(cPickle.Pickler, cPickle.Unpickler)
+        BaseIPSub.register_pyobj(pickle.Pickler, pickle.Unpickler)
 
     @staticmethod
     def encode_payload(encoding, payload):

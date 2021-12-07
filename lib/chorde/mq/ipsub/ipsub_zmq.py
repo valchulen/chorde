@@ -3,9 +3,9 @@ import weakref
 import time
 import zmq
 import logging
-import Queue
+import queue
 import threading
-import thread
+import _thread as thread
 import random
 from abc import ABCMeta, abstractmethod
 
@@ -197,7 +197,7 @@ class ZMQIPSub(BaseIPSub):
                                 del pack
                             elif socket is listener_sub and what & POLLIN:
                                 recv_update(listener_sub)
-                except Queue.Full:
+                except queue.Full:
                     self.logger.error("While handling IPSub FSM pipe: Queue full, update lost")
                 except BootstrapNow:
                     self.transition(ZMQIPSub.FSM.Bootstrap)
@@ -287,7 +287,7 @@ class ZMQIPSub(BaseIPSub):
                                 del pack
                             elif socket is broker_rep and what & POLLIN:
                                 owner._handle_update_request(broker_rep)
-                except Queue.Full:
+                except queue.Full:
                     self.logger.error("While handling IPSub FSM pipe: Queue full, update lost")
                 except BootstrapNow:
                     self.transition(ZMQIPSub.FSM.Bootstrap)
@@ -306,7 +306,7 @@ class ZMQIPSub(BaseIPSub):
         super(ZMQIPSub, self).__init__()
 
         self.broker_addresses = broker_addresses
-        self.updates = Queue.Queue(INPROC_HWM)
+        self.updates = queue.Queue(INPROC_HWM)
         self.current_update = None
 
         self.listener_req = self.listener_sub = None
@@ -495,13 +495,13 @@ class ZMQIPSub(BaseIPSub):
             self.logger.error("IPSub FSM error: cannot send update when waiting for a reply, rebootstrapping")
             try:
                 self.updates.put_nowait(self.current_update)
-            except Queue.Full:
+            except queue.Full:
                 self.logger.error("While handling IPSub FSM error: Queue full, update lost")
             raise BootstrapNow
 
         try:
             update = self.updates.get_nowait()
-        except Queue.Empty:
+        except queue.Empty:
             # So what...
             return
 
@@ -561,7 +561,7 @@ class ZMQIPSub(BaseIPSub):
             try:
                 self.updates.put_nowait(update)
                 dropped = False
-            except Queue.Full:
+            except queue.Full:
                 dropped = True
 
             # Notify listeners
@@ -578,7 +578,7 @@ class ZMQIPSub(BaseIPSub):
         if _ident() == self.fsm_thread_id:
             try:
                 self.updates.put_nowait(parts)
-            except Queue.Full:
+            except queue.Full:
                 self.logger.error("While handling re-entrant IPSub publication: Queue full, update lost")
         else:
             push = self._pushsocket()

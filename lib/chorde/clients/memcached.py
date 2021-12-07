@@ -22,15 +22,8 @@ STATS_CACHE_TIME = 1
 # memcache doesn't allow TTL bigger than 2038
 MAX_MEMCACHE_TTL = 0x7FFFFFFF - 1
 
-try:
-    import cPickle
-except ImportError:
-    import pickle as cPickle  # lint:ok
-
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from StringIO import StringIO  # lint:ok
+import pickle
+from io import StringIO
 
 try:
     from select import poll

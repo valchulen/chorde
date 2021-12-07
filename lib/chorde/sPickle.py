@@ -27,15 +27,8 @@ import hmac
 import struct
 import threading
 
-try:
-    import cPickle
-except ImportError:
-    import pickle as cPickle  # lint:ok
-
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from StringIO import StringIO  # lint:ok
+import pickle as cPickle  # lint:ok
+from io import StringIO  # lint:ok
 
 class SecurePickler(object):
     def __init__(self, checksum_key, file, *p, **kw):

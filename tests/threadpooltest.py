@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import collections
-import thread
+import _thread as thread
 from threading import Event, Thread
 import multiprocessing.pool
 import time

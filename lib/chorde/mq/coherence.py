@@ -12,11 +12,6 @@ import logging
 
 from . import ipsub
 
-try:
-    import cStringIO
-except ImportError:
-    import StringIO as cStringIO
-
 from chorde.clients import CacheMissError
 from chorde.clients import inproc
 
