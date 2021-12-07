@@ -76,7 +76,7 @@ class ZMQIPSub(BaseIPSub):
                 owner._pullsocket()
 
                 # Try a few times
-                for i in xrange(5):
+                for i in range(5):
                     try:
                         owner._bind()
                         break

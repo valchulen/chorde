@@ -454,7 +454,7 @@ class ThreadPool:
                 self.__workers = [ self.Process(
                         functools.partial(self.worker, weakref.ref(self)),
                         name = name_pattern % (i+index_base,) if name_pattern is not None else None
-                    ) for i in xrange(self.workers) ]
+                    ) for i in range(self.workers) ]
                 for w in self.__workers:
                     w.logger = self.logger
                     w.daemon = True
@@ -470,7 +470,7 @@ class ThreadPool:
                 nworkers = [ self.Process(
                         functools.partial(self.worker, weakref.ref(self)),
                         name = name_pattern % (i+index_base,) if name_pattern is not None else None
-                    ) for i in xrange(new_workers) ]
+                    ) for i in range(new_workers) ]
                 for w in nworkers:
                     w.daemon = True
                     w.start()

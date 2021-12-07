@@ -162,7 +162,7 @@ class TieredInclusiveClient(BaseCacheClient):
                 if i > 0 and ttl > ttl_skip:
                     # Um... not first-tier
                     # Move the entry up the ladder
-                    for i in xrange(i-1, -1, -1):
+                    for i in range(i-1, -1, -1):
                         try:
                             self.clients[i].put(key, rv, ttl)
                         except:
@@ -211,7 +211,7 @@ class TieredInclusiveClient(BaseCacheClient):
                     if i > 0 and ttl > ttl_skip:
                         # Um... not first-tier
                         # Move the entry up the ladder
-                        for i in xrange(i-1, -1, -1):
+                        for i in range(i-1, -1, -1):
                             try:
                                 self.clients[i].put(key, rv, ttl)
                             except:
@@ -255,7 +255,7 @@ class TieredInclusiveClient(BaseCacheClient):
             if client.contains(key, ttl_skip):
                 rv, ttl = client.getTtl(key, NONE__)
                 if rv is not NONE__ and ttl > ttl_skip and i > 0:
-                    for i in xrange(i-1, -1, -1):
+                    for i in range(i-1, -1, -1):
                         try:
                             self.clients[i].put(key, rv, ttl)
                         except:

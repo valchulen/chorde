@@ -90,7 +90,7 @@ class ThreadpoolTest(TestCase):
         # Warm up the pool
         self.pool.apply(lambda:None)
 
-        for i in xrange(100):
+        for i in range(100):
             t0 = time.time()
             ev = Event()
             self.pool.apply_async(ev.set)
@@ -102,7 +102,7 @@ class ThreadpoolTest(TestCase):
         # Warm up the pool
         self.pool.apply(lambda:None)
 
-        for i in xrange(100):
+        for i in range(100):
             t0 = time.time()
             ev = Event()
             self.pool.apply_async(ev.set)
@@ -114,7 +114,7 @@ class ThreadpoolTest(TestCase):
         # Warm up the pool
         self.pool.apply(lambda:None)
 
-        for i in xrange(100):
+        for i in range(100):
             t0 = time.time()
             t1 = self.pool.apply(time.time)
             self.assertLess(t1-t0, 0.05)
@@ -131,9 +131,9 @@ class ThreadpoolTest(TestCase):
         def accounting(i):
             counts[thread.get_ident()] += 1
         def killit(i):
-            for j in xrange(N):
+            for j in range(N):
                 self.pool.apply_async(accounting, (i,))
-        threads = [ Thread(target=killit, args=(i,)) for i in xrange(M) ]
+        threads = [ Thread(target=killit, args=(i,)) for i in range(M) ]
         for t in threads:
             t.start()
         for t in threads:
@@ -149,10 +149,10 @@ class ThreadpoolTest(TestCase):
         def accounting():
             counts[thread.get_ident()] += 1
 
-        for i in xrange(N):
+        for i in range(N):
             counts.clear()
             pool = ThreadPool(2)
-            for j in xrange(M):
+            for j in range(M):
                 pool.apply_async(accounting)
             pool.close()
             pool.join()
@@ -165,11 +165,11 @@ class ThreadpoolTest(TestCase):
         def accounting(counts):
             counts[thread.get_ident()] += 1
 
-        for i in xrange(N):
+        for i in range(N):
             counts = collections.defaultdict(int)
             args = (counts,)
             pool = ThreadPool(2)
-            for j in xrange(M):
+            for j in range(M):
                 pool.apply_async(accounting, args)
             pool.terminate()
             pool.join()
@@ -228,7 +228,7 @@ class MultiQueueTest(TestCase):
             while not terminate:
                 self.pool.apply_async(accounting, (i,))
                 time.sleep(0) # needed to avoid GIL issues that skew test results
-        threads = [ Thread(target=killit, args=(i,)) for i in xrange(M) ]
+        threads = [ Thread(target=killit, args=(i,)) for i in range(M) ]
         for t in threads:
             t.start()
         time.sleep(0.1) # let it fill up
@@ -252,7 +252,7 @@ class MultiQueueTest(TestCase):
         self.pool.set_queueprio(3,"mean")
         self.pool.set_queueprio(1,"simple")
         qsequence = ["mean", "simple"]
-        for i in xrange(10000):
+        for i in range(10000):
             for q in qsequence:
                 self.pool.apply_async(accounting, (q,), queue=q)
                 refcounts[q] += 1
@@ -271,7 +271,7 @@ class MultiQueueTest(TestCase):
         def accounting(i):
             counts[i] += 1
         qsequence = [(mean,"mean"), (simple,"simple")]
-        for i in xrange(10000):
+        for i in range(10000):
             for q,qname in qsequence:
                 q.apply_async(accounting, (qname,))
         countsnap = mean.apply(counts.copy)

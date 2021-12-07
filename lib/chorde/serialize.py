@@ -288,7 +288,7 @@ def serialize(*p,**kw):
             # Will raise an exception if all else fails
             sleepstep = min(0.1, deadlock_timeout)
             spins = max(1,int(deadlock_timeout / sleepstep))
-            for i in xrange(spins):
+            for i in range(spins):
                 rv = acquire(0)
                 if rv:
                     return rv

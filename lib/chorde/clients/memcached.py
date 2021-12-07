@@ -250,7 +250,7 @@ class MemcachedStoreClient(memcache.Client):
             self._server_ix = None
             return None, None
 
-        for i in xrange(self._SERVER_RETRIES):
+        for i in range(self._SERVER_RETRIES):
             server = self.buckets[server_ix]
             if server.connect():
                 return server, key
@@ -275,7 +275,7 @@ class MemcachedStoreClient(memcache.Client):
     def check_key(self, key, key_extra_len=0,
             isinstance = isinstance, tuple = tuple, str = str,
             unicode = unicode, basestring = basestring, len = len,
-            tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in xrange(256)),
+            tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in range(256)),
             imap = itertools.imap):
         """Checks sanity of key.  Fails if:
             Key length is > SERVER_MAX_KEY_LENGTH (Raises MemcachedKeyLength).
@@ -1012,7 +1012,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         return self.stats.get('bytes', 0)
 
     def shorten_key(self, key,
-            tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in xrange(256)),
+            tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in range(256)),
             imap = itertools.imap,
             isinstance = isinstance, basestring = basestring, unicode = unicode, ord = ord, any = any, len = len ):
         # keys cannot be anything other than strings
@@ -1120,7 +1120,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             # No need to do versioning for single-page values
             version = 1
         page = 0
-        for page,start in enumerate(xrange(0,len(encoded),self.max_backing_value_length)):
+        for page,start in enumerate(range(0,len(encoded),self.max_backing_value_length)):
             yield (npages, page, ttl, version, encoded[start:start+pagelen])
 
         assert page == npages-1
@@ -1228,9 +1228,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if not decode:
             if force_all_pages and npages > 1:
                 if npages > 2 and multi_method is not None:
-                    pages.update( multi_method(xrange(1,npages), key_prefix=page_prefix) )
+                    pages.update( multi_method(range(1,npages), key_prefix=page_prefix) )
                 else:
-                    pages.update([ (i,method("%s%d" % (page_prefix,i))) for i in xrange(1,npages) ])
+                    pages.update([ (i,method("%s%d" % (page_prefix,i))) for i in range(1,npages) ])
             return pages, ttl - now
         elif not return_stale and (ttl_skip is not None and (ttl - now) < ttl_skip):
             return default, -1
@@ -1241,9 +1241,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         if npages > 1:
             if npages > 2 and multi_method:
-                pages.update( multi_method(xrange(1,npages), key_prefix=page_prefix) )
+                pages.update( multi_method(range(1,npages), key_prefix=page_prefix) )
             else:
-                pages.update([ (i,method("%s%d" % (page_prefix,i))) for i in xrange(1,npages) ])
+                pages.update([ (i,method("%s%d" % (page_prefix,i))) for i in range(1,npages) ])
 
         try:
             try:
@@ -1255,7 +1255,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                     pages[0] = first_page = method(short_key+"|0")
                     npages = first_page[0]
                     page_prefix = self._page_prefix(first_page, short_key)
-                    pages.update( multi_method(xrange(1,npages), key_prefix=page_prefix) )
+                    pages.update( multi_method(range(1,npages), key_prefix=page_prefix) )
                     cached_key, cached_value = self.decode_pages(pages, key)
                 else:
                     # unrecoverable
@@ -1365,7 +1365,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
             if npages > 1:
                 page_prefix = self._page_prefix(first_page, short_key)
-                page_keys = [ page_prefix + str(i) for i in xrange(1,npages) ]
+                page_keys = [ page_prefix + str(i) for i in range(1,npages) ]
                 remaining_keys.extend(page_keys)
                 for page_key in page_keys:
                     page_map[page_key] = short_key
@@ -1497,7 +1497,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         # Delete old versions' content pages, if any are left over (no longer reachable)
         if success and old_page:
             old_page_prefix = self._page_prefix(old_page, short_key)
-            self.client.delete_multi(xrange(1,old_page[0]), key_prefix=old_page_prefix)
+            self.client.delete_multi(range(1,old_page[0]), key_prefix=old_page_prefix)
         elif not success and len(pages) > 1:
             # Roll back content pages
             first_page = pages.pop(0)
@@ -1589,7 +1589,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                     first_page = raw_pages[0]
                     npages = first_page[0]
                     page_prefix = self._page_prefix(first_page, short_key)
-                    for page in xrange(1, npages):
+                    for page in range(1, npages):
                         if not self.client.append("%s%d" % (page_prefix,page),""):
                             return False
                     return True
@@ -1780,7 +1780,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
             quicknow = time.time()
             encode = self.encode
             encode_key = self.encode_key
-            for i in xrange(2):
+            for i in range(2):
                 # It can explode if a thread lingers, so restart if that happens
                 try:
                     for key, (value, ttl) in workset.iteritems():

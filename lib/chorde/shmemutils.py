@@ -156,7 +156,7 @@ class SharedCounterGenericBase(object):
                 raise AssertionError("Slot occupied")
             else:
                 # With a locked bitmap, we can search other slots
-                for offs in xrange(slots):
+                for offs in range(slots):
                     nslot = (slot+offs) % slots
                     if not bitmap[nslot]:
                         slot = nslot

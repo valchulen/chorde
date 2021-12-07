@@ -329,7 +329,7 @@ class AsyncCacheWriterPool:
                     if len(self.queueset) >= self.size:
                         # just two, tit-for-tat, one in, two out. Avoids large latencies,
                         # and guarantees stable sizes, around, while not strictly below "size"
-                        for _ in xrange(2):
+                        for _ in range(2):
                             self.drop_one()
                             if len(self.queueset) < self.size:
                                 break

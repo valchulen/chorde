@@ -526,7 +526,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         def get_random():
             time.sleep(0.1)
             return random.random()
-        futures = [ get_random.future()() for _ in xrange(10) ]
+        futures = [ get_random.future()() for _ in range(10) ]
         refval = futures[0].result(0.25)
         for f in futures[1:]:
             self.assertEqual(f.result(0.1), refval)
@@ -700,7 +700,7 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         cls.ipsub_thread.start()
         cls.ipsub2_thread.start()
 
-        for i in xrange(11):
+        for i in range(11):
             time.sleep(0.1)
             if cls.ipsub2.is_running and cls.ipsub.is_running:
                 break
@@ -769,7 +769,7 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         def get_random():
             time.sleep(0.1)
             return random.random()
-        futures = [ get_random.future()() for _ in xrange(10) ]
+        futures = [ get_random.future()() for _ in range(10) ]
         refval = futures[0].result(0.25)
         for f in futures[1:]:
             self.assertEqual(f.result(0.1), refval)
@@ -784,8 +784,8 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         def get_random2():
             time.sleep(0.1)
             return random.random()
-        futures = [ get_random.future()() for _ in xrange(10) ]
-        futures2 = [ get_random2.future()() for _ in xrange(10) ]
+        futures = [ get_random.future()() for _ in range(10) ]
+        futures2 = [ get_random2.future()() for _ in range(10) ]
         retval = futures[0].result(0.5)
         retval2 = futures2[0].result(0.5)
         for f in futures[1:]:
@@ -800,8 +800,8 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
             time.sleep(0.1)
             return random.random()
         get_random2 = self.decorator2(5)(get_random.uncached)
-        futures = [ get_random.future()() for _ in xrange(10) ]
-        futures2 = [ get_random2.future()() for _ in xrange(10) ]
+        futures = [ get_random.future()() for _ in range(10) ]
+        futures2 = [ get_random2.future()() for _ in range(10) ]
         retval = futures[0].result(0.25)
         futures2[0].result(5)
         for f in futures[1:] + futures2[1:]:

@@ -83,7 +83,7 @@ def _bound_weak_callback(self, f):
 
 def _mkwaiter(ctx, socktype, prefix):
     waiter = ctx.socket(zmq.PAIR)
-    for _ in xrange(5):
+    for _ in range(5):
         waiter_id = "inproc://%s%x.%x" % (prefix, id(waiter),random.randint(0,1<<30))
         try:
             waiter.bind(waiter_id)
@@ -186,7 +186,7 @@ class CoherenceManager(object):
         self.quick_refresh = quick_refresh
         self.stable_hash = stable_hash
         self.encoding = encoding
-        self._txid = itertools.cycle(xrange(0x7FFFFFFF))
+        self._txid = itertools.cycle(range(0x7FFFFFFF))
 
         # Key -> hash
         self.pending = dict()
@@ -495,7 +495,7 @@ class CoherenceManager(object):
                     return True
             ipsub_.listen(self.namespace, ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
             ipsub_.publish(self.pendqprefix, req)
-            for i in xrange(3):
+            for i in range(3):
                 if waiter.poll(timeout/4):
                     break
                 elif expired():

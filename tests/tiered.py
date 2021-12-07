@@ -78,7 +78,7 @@ class TieredTest(CacheClientTestMixIn, unittest.TestCase):
         client = self.client
         cap = client.capacity[0]
 
-        for i in xrange(cap):
+        for i in range(cap):
             client.put(i,i,86400)
             self.assertEqual(client.usage[0], i+1)
 
@@ -103,11 +103,11 @@ class TieredTest(CacheClientTestMixIn, unittest.TestCase):
 
         self.assertEqual(client.usage[0], 0)
 
-        for i in xrange(cap):
+        for i in range(cap):
             client.put(i,i,86400)
             self.assertEqual(client.usage[0], i+1)
 
-        for i in xrange(cap):
+        for i in range(cap):
             i += cap
             client.put(i,i,86400)
             self.assertEqual(client.usage[0], cap)

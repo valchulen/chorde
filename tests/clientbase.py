@@ -225,11 +225,11 @@ class CacheClientTestMixIn:
 
         self.assertEqual(client.usage, 0)
 
-        for i in xrange(cap):
+        for i in range(cap):
             client.put(i,i,86400)
             self.assertEqual(client.usage, i+1)
 
-        for i in xrange(cap):
+        for i in range(cap):
             i += cap
             client.put(i,i,86400)
             self.assertEqual(client.usage, cap)
@@ -243,7 +243,7 @@ class CacheClientTestMixIn:
         client = self.client
         cap = client.capacity
 
-        for i in xrange(cap):
+        for i in range(cap):
             client.put(i,i,86400)
             self.assertEqual(client.usage, i+1)
 
