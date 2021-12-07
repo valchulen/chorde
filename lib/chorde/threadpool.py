@@ -125,7 +125,7 @@ class ThreadPool:
         self.__busyqueues = set()
         self.__busyfactors = {}
         self.__exhausted_iter = WaitIter(self.__not_empty)
-        self.__dequeue = self.__exhausted = self.__exhausted_iter.next
+        self.__dequeue = self.__exhausted = self.__exhausted_iter.__next__
 
         self.min_batch = min_batch
         self.max_batch = max_batch
@@ -233,7 +233,7 @@ class ThreadPool:
 
             queues = []
             for q,qprio in zip(wqueues, wprios):
-                queues.append(partial(repeat, iter(q).next, qprio))
+                queues.append(partial(repeat, iter(q).__next__, qprio))
 
             ioffs = 0
             while queues:
@@ -245,7 +245,7 @@ class ThreadPool:
                     del queues[ioffs]
 
             self.__worklen = len(iqueue)
-            self.__dequeue = iter(iqueue).next
+            self.__dequeue = iter(iqueue).__next__
             if itotal:
                 ftotal = float(itotal)
                 self.__busyfactors = dict([(qname, quant/ftotal) for qname,quant in iquantities.iteritems()])

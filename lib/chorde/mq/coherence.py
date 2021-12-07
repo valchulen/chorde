@@ -259,7 +259,7 @@ class CoherenceManager(object):
         Generate a new transaction id. No two reads will be the same... often.
         """
         # Iterator is atomic, no need for locks
-        return self._txid.next()
+        return next(self._txid)
 
     @_swallow_connrefused(_noop)
     def fire_deletion(self, key, timeout = None):
@@ -668,7 +668,7 @@ class CoherenceManager(object):
         if keys:
             if txid is None:
                 txid = self.txid
-            first_key = iter(keys).next()
+            first_key = next(iter(keys))
             self.ipsub.publish_encode(self.doneprefix+str(self.stable_hash(first_key)), self.encoding,
                 (txid, keys, self.p2p_pub_binds),
                 timeout = timeout)
@@ -679,7 +679,7 @@ class CoherenceManager(object):
         if keys:
             if txid is None:
                 txid = self.txid
-            first_key = iter(keys).next()
+            first_key = next(iter(keys))
             self.ipsub.publish_encode(self.abortprefix+str(self.stable_hash(first_key)), self.encoding,
                 (txid, keys, self.p2p_pub_binds),
                 timeout = timeout)
