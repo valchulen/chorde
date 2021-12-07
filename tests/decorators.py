@@ -174,7 +174,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         get_random(0)
         _, ttl1 = get_random.client.getTtl(key())
         time.sleep(0.2)
-        get_random.async()(2)
+        get_random.bg()(2)
         _, ttl2 = get_random.client.getTtl(key())
         diff = ttl2 - ttl1
         self.assertLess(abs(renew - diff), 0.2) # Almost equal
@@ -500,15 +500,15 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         def nain_minus_one():
             ev2.set()
             return 8
-        rv = get_nain.async()()
+        rv = get_nain.bg()()
         self.assertEquals(rv, 8) # this first call will have to return a placeholder
         ev2.wait(1)
         time.sleep(0.1) # the even is the function call, let the write happen
-        rv2 = get_nain.async()()
+        rv2 = get_nain.bg()()
         self.assertEquals(rv2, 8) # this second call too, the computation hasn't finished
         ev.set()
         time.sleep(0.1) # the even is the function call, let the write happen
-        rv3 = get_nain.async()()
+        rv3 = get_nain.bg()()
         self.assertEquals(rv3, 9) # this one should return the actual value
 
     def test_future_refresh(self):
@@ -545,7 +545,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         @cached(self.client, ttl=10, key=key)
         def get_number():
             return 4
-        get_number_async = get_number.async()
+        get_number_async = get_number.bg()
         self.assertRaises(CacheMissError, get_number_async.lazy)
         time.sleep(0.1)
         self.assertEquals(get_number_async.lazy(), 4)
@@ -556,8 +556,8 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         @cached(self.client, ttl=5, async_ttl=8, key=key)
         def get_random():
             return random.random()
-        val = get_random.async()()
-        self.assertNotEquals(val, get_random.async()())
+        val = get_random.bg()()
+        self.assertNotEquals(val, get_random.bg()())
 
     def test_cached_async(self):
         # Puts a random number in cache and checks the value in the client
@@ -565,7 +565,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         @cached(self.client, ttl=5, key=key)
         def get_random():
             return random.random()
-        self.assertEquals(get_random, get_random.async())
+        self.assertEquals(get_random, get_random.bg())
         val = get_random()
         self.assertEquals(val, get_random())
 
@@ -579,7 +579,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         @get_random.on_value
         def record_value(value):
             values.append(value)
-        self.assertEquals(get_random, get_random.async())
+        self.assertEquals(get_random, get_random.bg())
         val = get_random()
         self.assertEquals(val, get_random())
         self.assertEquals([val], values)
@@ -595,7 +595,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         def record_value(value):
             values.append(value)
             raise RuntimeError
-        self.assertEquals(get_random, get_random.async())
+        self.assertEquals(get_random, get_random.bg())
         val = get_random()
         self.assertEquals(val, get_random())
         self.assertEquals([val], values)
@@ -619,9 +619,9 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
             time.sleep(0.1)
             val[:] = [random.random()]
             return val[0]
-        self.assertRaises(CacheMissError, get_random.async().lazy)
+        self.assertRaises(CacheMissError, get_random.bg().lazy)
         time.sleep(0.2)
-        self.assertEquals(val[0], get_random.async().lazy())
+        self.assertEquals(val[0], get_random.bg().lazy())
 
     def test_lazy_recheck_async(self):
         # Should touch the key with async_lazy_recheck
@@ -630,7 +630,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         def get_random():
             time.sleep(0.1)
             return random.random()
-        self.assertRaises(CacheMissError, get_random.async().lazy)
+        self.assertRaises(CacheMissError, get_random.bg().lazy)
         self.assertTrue(get_random.client.contains(key()))
         time.sleep(0.2)
 
@@ -639,8 +639,8 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         @cached(self.client, ttl=10)
         def get_random():
             return random.random()
-        val1 = get_random.async()
-        val2 = get_random.async().refresh()
+        val1 = get_random.bg()
+        val2 = get_random.bg().refresh()
         self.assertNotEquals(val1, val2)
 
     def test_serialization_function(self):

@@ -31,8 +31,8 @@ class CoherentDeferTest(unittest.TestCase):
             expired = lambda : not self.shared.contains(key, 60),
             expire_private = self.private.expire,
             timeout = 1)
-        defer.future = async.Future()
+        defer.future = asyncache.Future()
         value = defer.undefer()
 
-        self.assertIs(value, async.REGET)
+        self.assertIs(value, asyncache.REGET)
         self.assertEqual(self.tiered.get(key), 15)
