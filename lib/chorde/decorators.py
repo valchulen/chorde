@@ -2,7 +2,8 @@
 from functools import wraps as _wraps
 from functools import partial
 import weakref
-import md5
+from hashlib import md5
+from base64 import b64encode
 import time
 import logging
 import random
@@ -78,7 +79,7 @@ def _make_namespace(f, salt = None, salt2 = None):
             body_digest.update(salt2)
         if fcode:
             body_digest.update(getattr(fcode, 'co_code', ''))
-        return "%s.%s#%s" % (mname,fname,body_digest.digest().encode("base64").strip("=\n"))
+        return "%s.%s#%s" % (mname,fname,b64encode(body_digest.digest()).strip("=\n"))
     except:
         return repr(f)
 

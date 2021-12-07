@@ -6,6 +6,7 @@ import json
 import os
 from collections import defaultdict
 from past.builtins import unicode
+from base64 import b64encode
 
 import pickle
 import io
@@ -111,10 +112,10 @@ class BaseIPSub(object):
         self.last_idle = time.time()
         self.last_tic = time.time()
 
-        self.identity = "%x-%x-%s" % (
+        self.identity = b"%x-%x-%s" % (
             os.getpid(),
             id(self),
-            os.urandom(8).encode("base64").strip('\t =\n'),
+            b64encode(os.urandom(8)).strip(b'\t =\n'),
         )
 
     def _idle(self):
