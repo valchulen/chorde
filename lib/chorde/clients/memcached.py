@@ -12,6 +12,7 @@ import zlib
 import socket
 import select
 from threading import Event, Thread, Lock
+from past.builtins import basestring, unicode
 
 from .base import BaseCacheClient, CacheMissError, NoServersError, NONE
 from .inproc import Cache
@@ -273,7 +274,7 @@ class MemcachedStoreClient(memcache.Client):
 
     # A faster check_key
     def check_key(self, key, key_extra_len=0,
-            isinstance = isinstance, tuple = tuple, str = str,
+            isinstance = isinstance, tuple = tuple, bytes = bytes,
             unicode = unicode, basestring = basestring, len = len,
             tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in range(256)),
             imap = itertools.imap):
@@ -288,7 +289,7 @@ class MemcachedStoreClient(memcache.Client):
         if isinstance(key, tuple): key = key[1]
         if not key:
             raise self.MemcachedKeyNoneError("Key is None")
-        if not isinstance(key, str):
+        if not isinstance(key, bytes):
             if isinstance(key, unicode):
                 raise self.MemcachedStringEncodingError(
                         "Keys must be str()'s, not unicode.  Convert your unicode "

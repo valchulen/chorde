@@ -5,6 +5,7 @@ import logging
 import json
 import os
 from collections import defaultdict
+from past.builtins import unicode
 
 import pickle
 import io
