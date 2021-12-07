@@ -9,6 +9,7 @@ import zmq
 import time
 import operator
 import logging
+from past.builtins import unicode
 
 from . import ipsub
 
@@ -56,7 +57,7 @@ def _psufix(x):
 
 HASHES = {
     int : lambda x : hash(x) & 0xFFFFFFFF, # hash(x:int) = x, but must be 64/32-bit compatible
-    str : _psufix, # prefix+suffix is ok for most
+    bytes : _psufix, # prefix+suffix is ok for most
     unicode : lambda x : _psufix(x.encode("utf8")),
     list : len,
     set : len,
@@ -669,7 +670,7 @@ class CoherenceManager(object):
             if txid is None:
                 txid = self.txid
             first_key = next(iter(keys))
-            self.ipsub.publish_encode(self.doneprefix+str(self.stable_hash(first_key)), self.encoding,
+            self.ipsub.publish_encode(self.doneprefix+bytes(self.stable_hash(first_key)), self.encoding,
                 (txid, keys, self.p2p_pub_binds),
                 timeout = timeout)
         return NoopWaiter()
@@ -680,7 +681,7 @@ class CoherenceManager(object):
             if txid is None:
                 txid = self.txid
             first_key = next(iter(keys))
-            self.ipsub.publish_encode(self.abortprefix+str(self.stable_hash(first_key)), self.encoding,
+            self.ipsub.publish_encode(self.abortprefix+bytes(self.stable_hash(first_key)), self.encoding,
                 (txid, keys, self.p2p_pub_binds),
                 timeout = timeout)
         return NoopWaiter()
@@ -713,7 +714,7 @@ class CoherenceManager(object):
             return True
 
         ipsub_ = self.ipsub
-        keysuffix = str(self.stable_hash(key))
+        keysuffix = bytes(self.stable_hash(key))
         doneprefix = self.doneprefix+keysuffix
         abortprefix = self.abortprefix+keysuffix
 
