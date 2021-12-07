@@ -13,6 +13,7 @@ import socket
 import select
 from threading import Event, Thread, Lock
 from past.builtins import basestring, unicode
+from base64 import b64encode
 
 from .base import BaseCacheClient, CacheMissError, NoServersError, NONE
 from .inproc import Cache
@@ -1023,7 +1024,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 zpfx = self.compress_prefix
             except:
                 # Try pickling
-                key = "P#"+self.key_pickler.dumps(key,2).encode("base64").replace("\n","")
+                key = "P#"+b64encode(self.key_pickler.dumps(key,2))
                 zpfx = self.compress_prefix
         elif isinstance(key, unicode):
             key = "U#" + key.encode("utf-8")
@@ -1033,7 +1034,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         # keys cannot contain control characters or spaces
         if any(map(ord, key.translate(tmap))):
-            key = "B#" + key.encode("base64").replace("\n","")
+            key = "B#" + b64encode(key)
             zpfx = self.compress_prefix
 
         if self.compress:
