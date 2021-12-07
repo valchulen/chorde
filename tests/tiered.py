@@ -44,7 +44,7 @@ class TieredTest(CacheClientTestMixIn, unittest.TestCase):
     def testReadThroughMulti(self):
         self.l2.put(15, 3, 10)
         self.l2.put(16, 4, 10)
-        self.assertItemsEqual(
+        self.assertEqual(
             [(14, None), (15, 3), (16, 4)],
             list(self.client.getMulti([14,15,16], None)))
 
@@ -57,7 +57,7 @@ class TieredTest(CacheClientTestMixIn, unittest.TestCase):
         self.l1.put(7, 6, 2)
         self.l2.put(8, 7, 7)
         self.l1.put(8, 8, 10)
-        self.assertItemsEqual(
+        self.assertEqual(
             [(4, None), (5, 1), (6, 3), (7, None), (8, 8) ],
             list(self.client.getMulti([4,5,6,7,8], None, ttl_skip = 5)))
 
