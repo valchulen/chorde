@@ -45,8 +45,8 @@ class TieredTest(CacheClientTestMixIn, unittest.TestCase):
         self.l2.put(15, 3, 10)
         self.l2.put(16, 4, 10)
         self.assertEqual(
-            [(14, None), (15, 3), (16, 4)],
-            list(self.client.getMulti([14,15,16], None)))
+            sorted([(14, None), (15, 3), (16, 4)]),
+            sorted(list(self.client.getMulti([14,15,16], None))))
 
     def testTTLSkipMulti(self):
         self.l2.put(5, 1, 10)
@@ -58,8 +58,8 @@ class TieredTest(CacheClientTestMixIn, unittest.TestCase):
         self.l2.put(8, 7, 7)
         self.l1.put(8, 8, 10)
         self.assertEqual(
-            [(4, None), (5, 1), (6, 3), (7, None), (8, 8) ],
-            list(self.client.getMulti([4,5,6,7,8], None, ttl_skip = 5)))
+            sorted([(4, None), (5, 1), (6, 3), (7, None), (8, 8) ]),
+            sorted(list(self.client.getMulti([4,5,6,7,8], None, ttl_skip = 5))))
 
     def testPromoteMulti(self):
         self.l2.put(13, 5, 10)
