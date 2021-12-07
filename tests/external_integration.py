@@ -3,7 +3,7 @@
 from unittest import TestCase, skipIf
 
 from chorde.external_integration import monkey_patch_tornado
-from chorde.clients.async import Future
+from chorde.clients.asyncache import Future
 
 try:
     import tornado

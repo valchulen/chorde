@@ -2,7 +2,7 @@
 import unittest
 
 from chorde.clients import coherent
-from chorde.clients import async
+from chorde.clients import asyncache
 from chorde.clients.inproc import InprocCacheClient
 from chorde.clients.tiered import TieredInclusiveClient
 

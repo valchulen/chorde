@@ -368,7 +368,7 @@ class FilesCacheClient(base.BaseCacheClient):
         return tempfile.NamedTemporaryFile(dir=tmpdir)
 
     @property
-    def async(self):
+    def is_async(self):
         return False
 
     @property

@@ -84,7 +84,7 @@ if not no_pyrex:
             Extension("chorde.clients.base", ["lib/chorde/clients/base.py"]),
             Extension("chorde.clients.inproc", ["lib/chorde/clients/inproc.py"]),
             Extension("chorde.clients.tiered", ["lib/chorde/clients/tiered.py"]),
-            Extension("chorde.clients.async", ["lib/chorde/clients/async.py"]),
+            Extension("chorde.clients.asyncache", ["lib/chorde/clients/asyncache.py"]),
         ],
         include_path = [ libdir ]
     )

@@ -137,7 +137,7 @@ class InprocCacheClient(base.BaseCacheClient):
         _register_inproc(self)
 
     @property
-    def async(self):
+    def is_async(self):
         return False
 
     @property

@@ -175,11 +175,11 @@ Assuming *c* is the client we want to use for caching,
 
     print expensive_func(1)
     print expensive_func(1) # Should return the same
-    print expensive_func.async()(1) # will refresh asynchronously every minute
+    print expensive_func.bg()(1) # will refresh asynchronously every minute
     print expensive_func.future()(1).result() # same as before, but using the futures interface
     print expensive_func.peek(1) # just check the cache
     print expensive_func.put(1, _cache_put=5) # write an explicit value
-    print expensive_func.async().lazy(1) # don't wait, raise CacheMissError if not available, compute in background
+    print expensive_func.bg().lazy(1) # don't wait, raise CacheMissError if not available, compute in background
     print expensive_func.future().lazy(1).result() # same as before, but using the futures interface
 
 There, the async_ttl means the minimum TTL that triggers
@@ -194,9 +194,9 @@ invoking cached functions.
 In general, the terms are:
 
   * lazy: don't wait for computation, return a cached result or raise CacheMissError.
-    When combined with async, it will compute in the background.
+    When combined with bg, it will compute in the background.
   * peek: don't compute. Similar to lazy, but it will never trigger a computation
-  * async: expensive things (computation) happen on a background threadpool.
+  * bg: expensive things (computation) happen on a background threadpool.
   * future: return futures rather than results, use the future to get notified of
     results when they're available. Actual cache access happens on a threadpool.
     A non-blocking way of calling.
@@ -214,7 +214,7 @@ wrapped like so:
 
     import tornado.web
     import tornado.gen
-    from chorde.clients.async import makeFutureWrapper
+    from chorde.clients.asyncache import makeFutureWrapper
 
     WF = makeFutureWrapper(tornado.web.Future)
 

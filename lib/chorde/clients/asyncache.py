@@ -613,7 +613,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
             self.writer.terminate()
 
     @property
-    def async(self):
+    def is_async(self):
         return True
 
     @property

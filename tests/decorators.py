@@ -7,7 +7,7 @@ import functools
 from chorde.decorators import cached, coherent_cached, CacheMissError, NO_NAMESPACE
 from chorde.clients.inproc import InprocCacheClient
 from chorde.clients.tiered import TieredInclusiveClient
-from chorde.clients.async import AsyncWriteCacheClient
+from chorde.clients.asyncache import AsyncWriteCacheClient
 from tests.coherence import skipIfUnsupported, ipsub, zmq
 
 

@@ -28,7 +28,7 @@ class BaseCacheClient(object):
     __metaclass__ = ABCMeta
 
     @abstractproperty
-    def async(self):
+    def is_async(self):
         return False
 
     @abstractproperty
@@ -206,8 +206,8 @@ class ReadWriteSyncAdapter(BaseCacheClient):
         self.client = client
 
     @property
-    def async(self):
-        return self.client.async
+    def is_async(self):
+        return self.client.is_async
 
     @property
     def capacity(self):
@@ -281,8 +281,8 @@ class SyncAdapter(BaseCacheClient):
         self.client = client
 
     @property
-    def async(self):
-        return self.client.async
+    def is_async(self):
+        return self.client.is_async
 
     @property
     def capacity(self):
@@ -366,8 +366,8 @@ class DecoratedWrapper(BaseCacheClient):
         self.value_undecorator = value_undecorator
 
     @property
-    def async(self):
-        return self.client.async
+    def is_async(self):
+        return self.client.is_async
 
     @property
     def capacity(self):

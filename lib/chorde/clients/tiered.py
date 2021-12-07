@@ -3,7 +3,7 @@ from itertools import islice
 import operator
 import logging
 
-from . import async
+from . import asyncache
 from .base import NONE, CacheMissError, BaseCacheClient
 
 class NONE_: pass
@@ -15,9 +15,9 @@ class TieredInclusiveClient(BaseCacheClient):
         self.ttl_fractions = opts.get('ttl_fractions', (1,)*len(clients))
 
     @property
-    def async(self):
+    def is_async(self):
         for client in self.clients:
-            if client.async:
+            if client.is_async:
                 return True
         else:
             return False
@@ -38,10 +38,10 @@ class TieredInclusiveClient(BaseCacheClient):
         deferred = value
         try:
             value = value.undefer()
-            if value is async.REGET:
+            if value is asyncache.REGET:
                 # This will cause a CancelledError on any waiter
                 # if we don't get a better value, which is what we want
-                value = async._NONE
+                value = asyncache._NONE
 
                 # NONE_ is a special local value that does not raise CacheMissErrors
                 reget_value, vttl = self.getTtl(key, NONE_, return_stale = False)
@@ -54,8 +54,8 @@ class TieredInclusiveClient(BaseCacheClient):
                 deferred.set(value)
 
                 # In any case, don't do the reget in the caller, we did the equivalent
-                value = async._NONE
-            elif value is not NONE and value is not async._NONE:
+                value = asyncache._NONE
+            elif value is not NONE and value is not asyncache._NONE:
                 for fraction, client in islice(zip(fractions,clients), 1, _max_tiers):
                     try:
                         client.put(key, value, ttl * fraction, **kw)
@@ -68,12 +68,12 @@ class TieredInclusiveClient(BaseCacheClient):
     def put(self, key, value, ttl, _max_tiers=None, **kw):
         clients = self.clients
         fractions = self.ttl_fractions
-        if isinstance(value, async.Defer):
+        if isinstance(value, asyncache.Defer):
             # Cannot just pass it, it would execute the result many times
-            if clients and clients[0].async:
+            if clients and clients[0].is_async:
                 # First call is async, meaning it will get queued up somwhere
                 # We can do the rest at that point
-                deferred = async.Defer(
+                deferred = asyncache.Defer(
                     self.__putnext,
                     clients, fractions,
                     key, value, ttl, _max_tiers, **kw)
@@ -105,12 +105,12 @@ class TieredInclusiveClient(BaseCacheClient):
     def add(self, key, value, ttl, _max_tiers=None, **kw):
         clients = self.clients
         fractions = self.ttl_fractions
-        if isinstance(value, async.Defer):
+        if isinstance(value, asyncache.Defer):
             # Cannot just pass it, it would execute the result many times
-            if clients and clients[0].async:
+            if clients and clients[0].is_async:
                 # First call is async, meaning it will get queued up somwhere
                 # We can do the rest at that point
-                deferred = async.Defer(
+                deferred = asyncache.Defer(
                     self.__putnext,
                     clients, fractions,
                     key, value, ttl, _max_tiers, **kw)

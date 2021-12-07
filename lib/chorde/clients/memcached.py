@@ -978,7 +978,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         super(MemcachedClient, self).__init__(client_class, client_addresses, client_args)
 
     @property
-    def async(self):
+    def is_async(self):
         return False
 
     @property
@@ -1696,7 +1696,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
         self._spawning_lock = Lock()
 
     @property
-    def async(self):
+    def is_async(self):
         return False
 
     @property
