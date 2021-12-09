@@ -124,7 +124,7 @@ setup(
         "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
         "Programming Language :: Python",
         "Programming Language :: Cython",
-        "Programming Language :: Python :: 2",
+        "Programming Language :: Python :: 3",
         "Topic :: Software Development :: Libraries",
         "Operating System :: OS Independent",
     ],
