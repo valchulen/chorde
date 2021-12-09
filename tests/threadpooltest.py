@@ -139,7 +139,7 @@ class ThreadpoolTest(TestCase):
         for t in threads:
             t.join()
         self.join_continue(self.pool, 60)
-        total_counts = self.pool.apply(sum, (iter(counts.values()),))
+        total_counts = self.pool.apply(sum, (counts.values(),))
         self.assertEqual(total_counts, N*M)
 
     def testClose(self):
@@ -236,7 +236,7 @@ class MultiQueueTest(TestCase):
         for t in threads:
             t.join()
         t0 = time.time()
-        self.pool.apply(sum, (iter(counts.values()),), queue = "Johnny")
+        self.pool.apply(sum, (counts.values(),), queue = "Johnny")
         t1 = time.time()
         self.assertLess(t1-t0, 0.025)
 
