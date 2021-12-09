@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented here.
 
+## [0.9.0] - Unreleased
+- Dropped Python 2.x support
+- Added Python 3.6+ support
+- Renamed fn.async() decorator call into fn.bg() to make it
+  Python 3 compatible
+- Renamed clients.async module to clients.asyncache
+  (to make it Python 3 compatible)
+
 ## [0.8.4] - 2021-09-29
 ### Bugfixes
 - Apply TTL namespace variation on all code paths.
