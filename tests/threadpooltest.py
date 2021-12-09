@@ -252,10 +252,20 @@ class MultiQueueTest(TestCase):
         self.pool.set_queueprio(3,"mean")
         self.pool.set_queueprio(1,"simple")
         qsequence = ["mean", "simple"]
+
+        # Ensure full buffering before test start, to make sure
+        # proper batch priorization is taking place, as it won't
+        # under light load
+        barrier = Event()
+        for i in range(32):
+            self.pool.apply_async(barrier.wait, (10,))
+
         for i in range(10000):
             for q in qsequence:
                 self.pool.apply_async(accounting, (q,), queue=q)
                 refcounts[q] += 1
+        barrier.set()
+
         countsnap = self.pool.apply(counts.copy, queue = "mean")
         self.assertLess(countsnap["simple"]*2, countsnap["mean"])
         self.pool.join(60)
@@ -271,9 +281,19 @@ class MultiQueueTest(TestCase):
         def accounting(i):
             counts[i] += 1
         qsequence = [(mean,"mean"), (simple,"simple")]
+
+        # Ensure full buffering before test start, to make sure
+        # proper batch priorization is taking place, as it won't
+        # under light load
+        barrier = Event()
+        for i in range(32):
+            self.pool.apply_async(barrier.wait, (10,))
+
         for i in range(10000):
             for q,qname in qsequence:
                 q.apply_async(accounting, (qname,))
+        barrier.set()
+
         countsnap = mean.apply(counts.copy)
         self.pool.join(60)
         self.assertLess(countsnap["simple"]*2, countsnap["mean"])

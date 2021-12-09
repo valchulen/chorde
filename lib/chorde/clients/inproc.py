@@ -67,7 +67,7 @@ def cacheClear():
     >>> from chorde.decorators import cached
     >>> from chorde.clients.inproc import cacheClear, InprocCacheClient
     >>> import itertools
-    >>> random = itertools.cycle(iter((0.9560342718892494, 0.9478274870593494, 2, 3, 4, 5, 6, 7, 8))).next
+    >>> random = itertools.cycle(iter((0.9560342718892494, 0.9478274870593494, 2, 3, 4, 5, 6, 7, 8))).__next__
     >>> @cached(InprocCacheClient(1000), ttl = 6000)
     ... def f():
     ...     return random()

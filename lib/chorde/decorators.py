@@ -48,7 +48,7 @@ def wraps(wrapped):
         wrapper = w(wrapper)
         wrapper.__doc__ = "\n".join(
             pydoc.render_doc(wrapped, 'cached %s:').split('\n', 4)[:3]
-            + filter(bool, [wrapper.__doc__]))
+            + list(filter(bool, [wrapper.__doc__])))
         return wrapper
     return decor
 
@@ -72,15 +72,15 @@ def _make_namespace(f, salt = None, salt2 = None):
         fpath = ''
 
     try:
-        body_digest = md5.md5(fpath)
+        body_digest = md5(fpath.encode("utf8"))
         if salt:
-            body_digest.update(salt)
+            body_digest.update(salt.encode("utf8"))
         if salt2:
-            body_digest.update(salt2)
+            body_digest.update(salt2.encode("utf8"))
         if fcode:
-            body_digest.update(getattr(fcode, 'co_code', ''))
-        return "%s.%s#%s" % (mname,fname,b64encode(body_digest.digest()).strip("=\n"))
-    except:
+            body_digest.update(getattr(fcode, 'co_code', b''))
+        return "%s.%s#%s" % (mname,fname,b64encode(body_digest.digest()).strip(b"=\n"))
+    except Exception as e:
         return repr(f)
 
 def _simple_put_deferred(future, client, f, key, ttl, *p, **kw):
@@ -442,10 +442,10 @@ def cached(client, ttl,
 
         if initialize is not None:
             def _initialize():
+                nonlocal _initialize
                 stop_initializing = initialize()
                 if stop_initializing:
-                    del _initialize[:]
-            _initialize = [_initialize]
+                    _initialize = None
         else:
             _initialize = None
 
@@ -531,8 +531,8 @@ def cached(client, ttl,
 
         @wraps(of)
         def cached_f(*p, **kw):
-            if _initialize:
-                _initialize[0]()
+            if _initialize is not None:
+                _initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -553,8 +553,8 @@ def cached(client, ttl,
 
         @wraps(of)
         def get_ttl_f(*p, **kw):
-            if _initialize:
-                _initialize[0]()
+            if _initialize is not None:
+                _initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -574,8 +574,8 @@ def cached(client, ttl,
         @wraps(of)
         @cython.locals(t0=cython.double, t1=cython.double, t=cython.double)
         def async_cached_f(*p, **kw):
-            if _initialize:
-                _initialize[0]()
+            if _initialize is not None:
+                _initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -584,7 +584,7 @@ def cached(client, ttl,
                 stats.errors += 1
                 return f(*p, **kw)
 
-            client = aclient[0]
+            client = aclient
             __NONE = _NONE_
             rv, rvttl = client.getTtl(callkey, __NONE, **get_kwargs)
 
@@ -631,10 +631,10 @@ def cached(client, ttl,
                 # Bummer
                 logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
-                return fclient[0].do_async(f, *p, **kw)
+                return fclient.do_async(f, *p, **kw)
 
-            client = aclient[0]
-            clientf = fclient[0]
+            client = aclient
+            clientf = fclient
             frv = Future()
             __NONE = _NONE_
 
@@ -698,8 +698,8 @@ def cached(client, ttl,
 
         @wraps(of)
         def lazy_cached_f(*p, **kw):
-            if _initialize:
-                _initialize[0]()
+            if _initialize is not None:
+                _initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -729,7 +729,7 @@ def cached(client, ttl,
                 stats.errors += 1
                 raise CacheMissError
 
-            client = aclient[0]
+            client = aclient
             frv = Future()
             __NONE = _NONE_
 
@@ -742,7 +742,7 @@ def cached(client, ttl,
 
             if (rv is __NONE or rvttl < eff_async_ttl):
                 # The hard way
-                clientf = fclient[0]
+                clientf = fclient
                 if rv is __NONE and (not future_sync_check or async_lazy_recheck):
                     # It was a preliminar miss, so wait for a recheck to set the value
                     def on_value(value):
@@ -812,8 +812,8 @@ def cached(client, ttl,
                 stats.errors += 1
                 raise CacheMissError
 
-            client = aclient[0]
-            clientf = fclient[0]
+            client = aclient
+            clientf = fclient
             frv = Future()
             __NONE = _NONE_
 
@@ -872,14 +872,14 @@ def cached(client, ttl,
 
             # To-Do: intercept hits/misses and update stats?
             #   (involves considerable overhead...)
-            return fclient[0].getTtl(callkey, **get_kwargs)
+            return fclient.getTtl(callkey, **get_kwargs)
         if decorate is not None:
             future_get_ttl_f = decorate(future_get_ttl_f)
 
         @wraps(of)
         def invalidate_f(*p, **kw):
-            if _initialize:
-                _initialize[0]()
+            if _initialize is not None:
+                _initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -898,14 +898,14 @@ def cached(client, ttl,
                 logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
-            return fclient[0].delete(callkey)
+            return fclient.delete(callkey)
         if decorate is not None:
             future_invalidate_f = decorate(future_invalidate_f)
 
         @wraps(of)
         def expire_f(*p, **kw):
-            if _initialize:
-                _initialize[0]()
+            if _initialize is not None:
+                _initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -918,15 +918,15 @@ def cached(client, ttl,
 
         @wraps(of)
         def async_expire_f(*p, **kw):
-            if _initialize:
-                _initialize[0]()
+            if _initialize is not None:
+                _initialize()
             try:
                 callkey = key(*p, **kw)
             except:
                 logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
-            aclient[0].expire(callkey)
+            aclient.expire(callkey)
         if decorate is not None:
             async_expire_f = decorate(async_expire_f)
 
@@ -938,7 +938,7 @@ def cached(client, ttl,
                 logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
-            return fclient[0].expire(callkey)
+            return fclient.expire(callkey)
         if decorate is not None:
             future_expire_f = decorate(future_expire_f)
 
@@ -946,8 +946,8 @@ def cached(client, ttl,
         def put_f(*p, **kw):
             value = kw.pop('_cache_put')
             put_kwargs = kw.pop('_cache_put_kwargs', None)
-            if _initialize:
-                _initialize[0]()
+            if _initialize is not None:
+                _initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -960,8 +960,8 @@ def cached(client, ttl,
 
         @wraps(of)
         def async_put_f(*p, **kw):
-            if _initialize:
-                _initialize[0]()
+            if _initialize is not None:
+                _initialize()
             value = kw.pop('_cache_put')
             put_kwargs = kw.pop('_cache_put_kwargs', None)
             try:
@@ -970,7 +970,7 @@ def cached(client, ttl,
                 logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
-            aclient[0].put(callkey, value, eff_ttl(), **(put_kwargs or EMPTY_KWARGS))
+            aclient.put(callkey, value, eff_ttl(), **(put_kwargs or EMPTY_KWARGS))
         if decorate is not None:
             async_put_f = decorate(async_put_f)
 
@@ -984,14 +984,14 @@ def cached(client, ttl,
                 logging.getLogger('chorde').error("Error evaluating callkey", exc_info = True)
                 stats.errors += 1
                 return
-            return fclient[0].put(callkey, value, eff_ttl(), **(put_kwargs or EMPTY_KWARGS))
+            return fclient.put(callkey, value, eff_ttl(), **(put_kwargs or EMPTY_KWARGS))
         if decorate is not None:
             future_put_f = decorate(future_put_f)
 
         @wraps(of)
         def async_lazy_cached_f(*p, **kw):
-            if _initialize:
-                _initialize[0]()
+            if _initialize is not None:
+                _initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -1001,7 +1001,7 @@ def cached(client, ttl,
                 raise CacheMissError
 
             __NONE = _NONE_
-            client = aclient[0]
+            client = aclient
 
             rv, rvttl = client.getTtl(callkey, __NONE, **elazy_kwargs)
 
@@ -1047,8 +1047,8 @@ def cached(client, ttl,
 
         @wraps(of)
         def refresh_f(*p, **kw):
-            if _initialize:
-                _initialize[0]()
+            if _initialize is not None:
+                _initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -1065,8 +1065,8 @@ def cached(client, ttl,
 
         @wraps(of)
         def async_refresh_f(*p, **kw):
-            if _initialize:
-                _initialize[0]()
+            if _initialize is not None:
+                _initialize()
             try:
                 callkey = key(*p, **kw)
             except:
@@ -1075,7 +1075,7 @@ def cached(client, ttl,
                 stats.errors += 1
                 return
 
-            client = aclient[0]
+            client = aclient
             if not client.contains(callkey, 0):
                 _put_deferred(client, af, callkey, eff_ttl(), *p, **kw)
         if decorate is not None:
@@ -1092,7 +1092,7 @@ def cached(client, ttl,
                 return
 
             frv = Future()
-            _fput_deferred(frv, aclient[0], af, callkey, eff_ttl(), *p, **kw)
+            _fput_deferred(frv, aclient, af, callkey, eff_ttl(), *p, **kw)
             return frv
         if decorate is not None:
             future_refresh_f = decorate(future_refresh_f)
@@ -1101,9 +1101,9 @@ def cached(client, ttl,
             cached_f = async_cached_f
             lazy_cached_f = async_lazy_cached_f
         elif nasync_client:
-            aclient = [nasync_client]
+            aclient = nasync_client
         else:
-            aclient = []
+            aclient = None
 
         promote_callbacks = []
         value_callbacks = []
@@ -1128,16 +1128,17 @@ def cached(client, ttl,
         def placeholder_value_f(fn):
             placeholder_value_fn_cell[:] = [fn]
 
-        fclient = []
+        fclient = None
         def future_f(initialize = True):
-            if _initialize and initialize:
-                _initialize[0]()
-            if not fclient and initialize:
+            nonlocal fclient
+            if _initialize is not None:
+                _initialize()
+            if fclient is None and initialize:
                 if aclient:
-                    _client = aclient[0]
+                    _client = aclient
                 else:
                     async_f() # initializes aclient
-                    _client = aclient[0]
+                    _client = aclient
 
                 if async_processor:
                     _client = async_processor.bound(_client)
@@ -1145,24 +1146,25 @@ def cached(client, ttl,
                     _client = asyncache.AsyncCacheProcessor(async_processor_workers, _client,
                         **async_processor_kwargs)
                 # atomic
-                fclient[:] = [_client]
-                future_cached_f.client = fclient[0]
+                fclient = _client
+                future_cached_f.client = fclient
             return future_cached_f
 
         if not client.is_async:
             def async_f(initialize = True):
-                if _initialize and initialize:
-                    _initialize[0]()
-                if not aclient and initialize:
+                nonlocal aclient
+                if _initialize is not None:
+                    _initialize()
+                if aclient is None and initialize:
                     # atomic
-                    aclient[:] = [asyncache.AsyncWriteCacheClient(nclient,
+                    aclient = asyncache.AsyncWriteCacheClient(nclient,
                         async_writer_queue_size,
                         async_writer_workers,
-                        **async_writer_kwargs)]
-                    async_cached_f.client = aclient[0]
+                        **async_writer_kwargs)
+                    async_cached_f.client = aclient
                 return async_cached_f
             async_cached_f.clear = nclient.clear
-            async_cached_f.client = aclient[0] if aclient else None
+            async_cached_f.client = aclient if aclient is not None else None
             async_cached_f.bg = weakref.ref(async_cached_f)
             async_cached_f.lazy = async_lazy_cached_f
             async_cached_f.refresh = async_refresh_f
@@ -1189,7 +1191,7 @@ def cached(client, ttl,
             cached_f.expire = expire_f
             cached_f.put = put_f
         else:
-            aclient = [nclient]
+            aclient = nclient
             cached_f.bg = async_f = weakref.ref(cached_f)
             cached_f.lazy = async_lazy_cached_f
             cached_f.refresh = async_refresh_f
@@ -1213,7 +1215,7 @@ def cached(client, ttl,
         cached_f.on_value = on_value_f
         cached_f.placeholder_value = placeholder_value_f
 
-        future_cached_f.clear = lambda : fclient[0].clear()
+        future_cached_f.clear = lambda : fclient.clear()
         future_cached_f.client = None
         future_cached_f.bg = cached_f.bg
         future_cached_f.lazy = future_lazy_cached_f

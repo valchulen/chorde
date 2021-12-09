@@ -38,7 +38,7 @@ class CachedDecoratorTest(DecoratorTestCase):
             return random.random()
         val = get_random()
         self.assertTrue(get_random.client.contains(key()))
-        self.assertEquals(val, get_random())
+        self.assertEqual(val, get_random())
 
     def test_value_callback(self):
         # Puts a random number in cache and checks the value in the client
@@ -52,8 +52,8 @@ class CachedDecoratorTest(DecoratorTestCase):
             values.append(value)
         val = get_random()
         self.assertTrue(get_random.client.contains(key()))
-        self.assertEquals(val, get_random())
-        self.assertEquals([val], values)
+        self.assertEqual(val, get_random())
+        self.assertEqual([val], values)
 
     def test_broken_value_callback(self):
         # Puts a random number in cache and checks the value in the client
@@ -68,8 +68,8 @@ class CachedDecoratorTest(DecoratorTestCase):
             raise RuntimeError
         val = get_random()
         self.assertTrue(get_random.client.contains(key()))
-        self.assertEquals(val, get_random())
-        self.assertEquals([val], values)
+        self.assertEqual(val, get_random())
+        self.assertEqual([val], values)
 
     def test_get_ttl(self):
         # Puts a random number in cache and checks the value in the client
@@ -79,7 +79,7 @@ class CachedDecoratorTest(DecoratorTestCase):
             return random.random()
         val = get_random()
         self.assertTrue(get_random.client.contains(key()))
-        self.assertEquals(val, get_random.get_ttl()[0])
+        self.assertEqual(val, get_random.get_ttl()[0])
         self.assertLess(0, get_random.get_ttl()[1])
 
     def test_ttl(self):
@@ -98,7 +98,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         @self.decorator(5, namespace=namespace)
         def get_random():
             return random.random()
-        self.assertEquals(get_random.client.namespace, namespace)
+        self.assertEqual(get_random.client.namespace, namespace)
 
     def test_no_namespace(self):
         # Without namespace, should create one with the function name
@@ -106,7 +106,9 @@ class CachedDecoratorTest(DecoratorTestCase):
         def get_random():
             return random.random()
         namespace = get_random.client.namespace
-        self.assertTrue(namespace.startswith(get_random.__module__))
+        self.assertTrue(
+            namespace.startswith(get_random.__module__),
+            "%r does not start with %r" % (namespace, get_random.__module__))
 
     def test_force_no_namespace(self):
         # Without namespace, for real
@@ -124,7 +126,7 @@ class CachedDecoratorTest(DecoratorTestCase):
             return random.random()
         tiered_get_random = self.tiered_decorator(5, namespace=namespace)(get_random.uncached)
         val = get_random()
-        self.assertEquals(val, tiered_get_random())
+        self.assertEqual(val, tiered_get_random())
 
     def test_promote_callback(self):
         # If a namespace is provided, should create the key with that
@@ -138,8 +140,8 @@ class CachedDecoratorTest(DecoratorTestCase):
         def record_promote(key, val, ttl):
             promotions.append((key, val, ttl))
         val = get_random()
-        self.assertEquals(val, tiered_get_random())
-        self.assertEquals(1, len(promotions))
+        self.assertEqual(val, tiered_get_random())
+        self.assertEqual(1, len(promotions))
 
     def test_serialization_function(self):
         # Should apply the a function the returned value
@@ -150,7 +152,7 @@ class CachedDecoratorTest(DecoratorTestCase):
             val[:] = [random.random()]
             return val[0]
         get_random()
-        self.assertEquals(get_random(), f(val[0]))
+        self.assertEqual(get_random(), f(val[0]))
 
     def test_deserialization_function(self):
         # Should apply the a function the returned value
@@ -161,7 +163,7 @@ class CachedDecoratorTest(DecoratorTestCase):
             val[:] = [random.random()]
             return val[0]
         get_random()
-        self.assertEquals(get_random(), f(val[0]))
+        self.assertEqual(get_random(), f(val[0]))
 
     def test_renew(self):
         # Should add the renew time to the ttl
@@ -188,11 +190,11 @@ class CachedDecoratorTest(DecoratorTestCase):
         @self.decorator(ttl=5, initialize=init)
         def test():
             return False
-        self.assertEquals(count[0], 0)
+        self.assertEqual(count[0], 0)
         test()
-        self.assertEquals(count[0], 1)
+        self.assertEqual(count[0], 1)
         test()
-        self.assertEquals(count[0], 1)
+        self.assertEqual(count[0], 1)
 
     def test_decorate(self):
         # Should apply a decorator to the decorated function
@@ -250,7 +252,7 @@ class CachedDecoratorTest(DecoratorTestCase):
             return 1
         val = get_number()
         get_number.put(_cache_put=val+2)
-        self.assertEquals(get_number(), val+2)
+        self.assertEqual(get_number(), val+2)
 
     def test_put_l1(self):
         # Should change the cached value
@@ -259,13 +261,13 @@ class CachedDecoratorTest(DecoratorTestCase):
         def get_number():
             return 1
         val = get_number()
-        self.assertEquals(get_number(), val)
-        self.assertEquals(get_number.client.get(get_number.callkey()), val)
-        self.assertEquals(self.client.get(get_number.callkey()), val)
+        self.assertEqual(get_number(), val)
+        self.assertEqual(get_number.client.get(get_number.callkey()), val)
+        self.assertEqual(self.client.get(get_number.callkey()), val)
         get_number.put(_cache_put=val+2, _cache_put_kwargs=dict(_max_tiers=1))
-        self.assertEquals(get_number(), val+2)
-        self.assertEquals(get_number.client.get(get_number.callkey()), val+2)
-        self.assertEquals(self.client.get(get_number.callkey()), val)
+        self.assertEqual(get_number(), val+2)
+        self.assertEqual(get_number.client.get(get_number.callkey()), val+2)
+        self.assertEqual(self.client.get(get_number.callkey()), val)
 
     def test_peek_not_cached(self):
         # Should raise a CacheMissError
@@ -280,7 +282,7 @@ class CachedDecoratorTest(DecoratorTestCase):
         def get_random():
             return random.random()
         val = get_random()
-        self.assertEquals(get_random.peek(), val)
+        self.assertEqual(get_random.peek(), val)
 
 
 class CachedDecoratorFutureTest(DecoratorTestCase):
@@ -306,7 +308,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
             val[:] = [random.random()]
             return val[0]
         r = get_random.future()().result()
-        self.assertEquals(r, val[0])
+        self.assertEqual(r, val[0])
 
     def test_future_no_sync_check(self):
         # Shouldn't wait for the value
@@ -326,7 +328,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
             return val[0]
         get_random()
         r = get_random.future()().result()
-        self.assertEquals(r, val[0])
+        self.assertEqual(r, val[0])
 
     def test_future_sync_check_value_loaded(self):
         # Future should return the value instantly
@@ -336,7 +338,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         get_random()
         hits = get_random.stats.hits
         get_random.future()().result()
-        self.assertEquals(get_random.stats.hits, hits+1)
+        self.assertEqual(get_random.stats.hits, hits+1)
 
     def test_future_on_value(self):
         # Should return the value using on_value function
@@ -347,7 +349,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
             return val[0]
         get_random()
         r = get_random.future()().result()
-        self.assertEquals(r, val[0])
+        self.assertEqual(r, val[0])
 
     def test_value_callback(self):
         # Should return the value using on_value function
@@ -362,8 +364,8 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
             cval.append(value)
         get_random()
         r = get_random.future()().result()
-        self.assertEquals(r, val[0])
-        self.assertEquals(val, cval)
+        self.assertEqual(r, val[0])
+        self.assertEqual(val, cval)
 
     def test_broken_value_callback(self):
         # Should return the value using on_value function
@@ -379,8 +381,8 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
             raise RuntimeError
         get_random()
         r = get_random.future()().result()
-        self.assertEquals(r, val[0])
-        self.assertEquals(val, cval)
+        self.assertEqual(r, val[0])
+        self.assertEqual(val, cval)
 
     def test_future_on_value_bad_key(self):
         # Should return the value using on_value function, even when given a bad callkey callable
@@ -392,7 +394,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
             return val[0]
         get_random(set())
         r = get_random.future()(set()).result()
-        self.assertEquals(r, val[0])
+        self.assertEqual(r, val[0])
 
     def test_future_lazy(self):
         # Should start calculating the value in background
@@ -403,7 +405,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         self.assertRaises(CacheMissError, rv.result)
         time.sleep(0.1)
         rv = get_number.future().lazy()
-        self.assertEquals(rv.result(), 8)
+        self.assertEqual(rv.result(), 8)
 
     def test_future_lazy_sync_check_value_loaded(self):
         # Future should return the value instantly
@@ -413,7 +415,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         get_random()
         hits = get_random.stats.hits
         get_random.future().lazy().result()
-        self.assertEquals(get_random.stats.hits, hits+1)
+        self.assertEqual(get_random.stats.hits, hits+1)
 
     def test_future_peek_uncached(self):
         # Should raise a CacheMissError
@@ -428,7 +430,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         def get_random():
             return random.random()
         val = get_random()
-        self.assertEquals(get_random.future().peek().result(), val)
+        self.assertEqual(get_random.future().peek().result(), val)
 
     def test_future_peek_sync_check(self):
         # Should return the value directly from the client
@@ -436,7 +438,7 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         def get_random():
             return random.random()
         val = get_random()
-        self.assertEquals(get_random.future().peek().result(), val)
+        self.assertEqual(get_random.future().peek().result(), val)
 
     def test_future_lazy_placeholder(self):
         # Should start calculating the value in background
@@ -457,11 +459,11 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         ev2.wait(1)
         time.sleep(0.1) # the even is the function call, let the write happen
         rv2 = get_nain.future().lazy()
-        self.assertEquals(rv2.result(5), 8)
+        self.assertEqual(rv2.result(5), 8)
         ev.set()
         time.sleep(0.1) # the even is the function call, let the write happen
         rv = get_nain.future().lazy()
-        self.assertEquals(rv.result(5), 9)
+        self.assertEqual(rv.result(5), 9)
 
     def test_future_placeholder(self):
         # Should start calculating the value in background
@@ -482,9 +484,9 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
         ev2.wait(1)
         time.sleep(0.1) # the even is the function call, let the write happen
         rv2 = get_nain.future()()
-        self.assertEquals(rv2.result(5), 8)
+        self.assertEqual(rv2.result(5), 8)
         ev.set()
-        self.assertEquals(rv.result(5), 9)
+        self.assertEqual(rv.result(5), 9)
 
     def test_async_placeholder(self):
         # Should start calculating the value in background
@@ -501,15 +503,15 @@ class CachedDecoratorFutureTest(DecoratorTestCase):
             ev2.set()
             return 8
         rv = get_nain.bg()()
-        self.assertEquals(rv, 8) # this first call will have to return a placeholder
+        self.assertEqual(rv, 8) # this first call will have to return a placeholder
         ev2.wait(1)
         time.sleep(0.1) # the even is the function call, let the write happen
         rv2 = get_nain.bg()()
-        self.assertEquals(rv2, 8) # this second call too, the computation hasn't finished
+        self.assertEqual(rv2, 8) # this second call too, the computation hasn't finished
         ev.set()
         time.sleep(0.1) # the even is the function call, let the write happen
         rv3 = get_nain.bg()()
-        self.assertEquals(rv3, 9) # this one should return the actual value
+        self.assertEqual(rv3, 9) # this one should return the actual value
 
     def test_future_refresh(self):
         # Should refresh the cache value
@@ -548,7 +550,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         get_number_async = get_number.bg()
         self.assertRaises(CacheMissError, get_number_async.lazy)
         time.sleep(0.1)
-        self.assertEquals(get_number_async.lazy(), 4)
+        self.assertEqual(get_number_async.lazy(), 4)
 
     def test_recalculate_async_on_lower_ttl(self):
         # When the value is expired it's recalculated
@@ -565,9 +567,9 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         @cached(self.client, ttl=5, key=key)
         def get_random():
             return random.random()
-        self.assertEquals(get_random, get_random.bg())
+        self.assertEqual(get_random, get_random.bg())
         val = get_random()
-        self.assertEquals(val, get_random())
+        self.assertEqual(val, get_random())
 
     def test_value_callback(self):
         # Puts a random number in cache and checks the value in the client
@@ -579,10 +581,10 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         @get_random.on_value
         def record_value(value):
             values.append(value)
-        self.assertEquals(get_random, get_random.bg())
+        self.assertEqual(get_random, get_random.bg())
         val = get_random()
-        self.assertEquals(val, get_random())
-        self.assertEquals([val], values)
+        self.assertEqual(val, get_random())
+        self.assertEqual([val], values)
 
     def test_broken_value_callback(self):
         # Puts a random number in cache and checks the value in the client
@@ -595,10 +597,10 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
         def record_value(value):
             values.append(value)
             raise RuntimeError
-        self.assertEquals(get_random, get_random.bg())
+        self.assertEqual(get_random, get_random.bg())
         val = get_random()
-        self.assertEquals(val, get_random())
-        self.assertEquals([val], values)
+        self.assertEqual(val, get_random())
+        self.assertEqual([val], values)
 
     def test_put_async(self):
         # Should change the cached value
@@ -608,7 +610,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
             return 1
         val = get_number()
         get_number.put(_cache_put=val+2)
-        self.assertEquals(get_number(), val+2)
+        self.assertEqual(get_number(), val+2)
 
     def test_lazy_cached_async(self):
         # Should raise a CacheMissError and call the function in background
@@ -621,7 +623,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
             return val[0]
         self.assertRaises(CacheMissError, get_random.bg().lazy)
         time.sleep(0.2)
-        self.assertEquals(val[0], get_random.bg().lazy())
+        self.assertEqual(val[0], get_random.bg().lazy())
 
     def test_lazy_recheck_async(self):
         # Should touch the key with async_lazy_recheck
@@ -652,7 +654,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
             val[:] = [random.random()]
             return val[0]
         get_random()
-        self.assertEquals(get_random(), f(val[0]))
+        self.assertEqual(get_random(), f(val[0]))
 
     def test_deserialization_function(self):
         # Should apply the a function the returned value
@@ -663,7 +665,7 @@ class CachedDecoratorAsyncTest(DecoratorTestCase):
             val[:] = [random.random()]
             return val[0]
         get_random()
-        self.assertEquals(get_random(), f(val[0]))
+        self.assertEqual(get_random(), f(val[0]))
 
 
 @skipIfUnsupported
@@ -734,7 +736,7 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
             val[:] = [random.random()]
             return val[0]
         get_random()
-        self.assertEquals(get_random(), f(val[0]))
+        self.assertEqual(get_random(), f(val[0]))
 
     def test_deserialization_function(self):
         # Should apply the a function the returned value
@@ -745,7 +747,7 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
             val[:] = [random.random()]
             return val[0]
         get_random()
-        self.assertEquals(get_random(), f(val[0]))
+        self.assertEqual(get_random(), f(val[0]))
 
     def test_namespace(self):
         # If a namespace is provided, should create the key with that
@@ -753,7 +755,7 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         @self.decorator(5, namespace=namespace)
         def get_random():
             return random.random()
-        self.assertEquals(get_random.client.client.namespace, namespace)
+        self.assertEqual(get_random.client.client.namespace, namespace)
 
     def test_no_namespace(self):
         # Without namespace, should create one with the function name
@@ -833,13 +835,13 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         def get_number():
             return 1
         val = get_number()
-        self.assertEquals(get_number(), val)
-        self.assertEquals(get_number.client.get(get_number.callkey()), val)
-        self.assertEquals(self.shared.get(get_number.callkey()), val)
+        self.assertEqual(get_number(), val)
+        self.assertEqual(get_number.client.get(get_number.callkey()), val)
+        self.assertEqual(self.shared.get(get_number.callkey()), val)
         get_number.put(_cache_put=val+2, _cache_put_kwargs=dict(_max_tiers=1))
-        self.assertEquals(get_number(), val+2)
-        self.assertEquals(get_number.client.get(get_number.callkey()), val+2)
-        self.assertEquals(self.shared.get(get_number.callkey()), val)
+        self.assertEqual(get_number(), val+2)
+        self.assertEqual(get_number.client.get(get_number.callkey()), val+2)
+        self.assertEqual(self.shared.get(get_number.callkey()), val)
 
     def test_renew(self, *p, **kw):
         return super(CoherentCachedDecoratorTest, self).test_renew(*p, **kw)
