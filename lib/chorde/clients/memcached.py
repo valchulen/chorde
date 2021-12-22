@@ -817,7 +817,7 @@ class MemcachedStoreClient(memcache.Client):
 
             self._statlog('set_multi')
 
-            server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(iter(mapping.keys()), key_prefix)
+            server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping.keys(), key_prefix)
 
             # send out all requests on each server before reading anything
             notstored = [] # original keys.
