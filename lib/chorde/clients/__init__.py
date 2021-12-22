@@ -3,7 +3,7 @@ import sys
 
 from .inproc import InprocCacheClient # before base, really, it injects CacheMissError
 from .base import BaseCacheClient, ReadWriteSyncAdapter, NONE, CacheMissError, TimeoutError, CancelledError
-from .async import AsyncWriteCacheClient, Defer, AsyncCacheProcessor
+from .asyncache import AsyncWriteCacheClient, Defer, AsyncCacheProcessor
 from .tiered import TieredInclusiveClient
 
 __all__ = [

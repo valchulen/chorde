@@ -12,7 +12,7 @@ def monkey_patch_tornado():
     chorde Futures is going to raise an exception
     """
     from tornado import concurrent
-    from .clients.async import Future
+    from .clients.asyncache import Future
     original_futures = concurrent.FUTURES
     if isinstance(original_futures, tuple):
         if Future in original_futures:

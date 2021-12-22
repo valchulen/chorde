@@ -2,12 +2,13 @@
 from functools import wraps as _wraps
 from functools import partial
 import weakref
-import md5
+from hashlib import md5
+from base64 import b64encode
 import time
 import logging
 import random
 import pydoc
-from .clients import base, async, tiered
+from .clients import base, asyncache, tiered
 
 try:
     from .mq import coherence
@@ -78,12 +79,12 @@ def _make_namespace(f, salt = None, salt2 = None):
             body_digest.update(salt2)
         if fcode:
             body_digest.update(getattr(fcode, 'co_code', ''))
-        return "%s.%s#%s" % (mname,fname,body_digest.digest().encode("base64").strip("=\n"))
+        return "%s.%s#%s" % (mname,fname,b64encode(body_digest.digest()).rstrip("=\n"))
     except:
         return repr(f)
 
 def _simple_put_deferred(future, client, f, key, ttl, *p, **kw):
-    defer = async.Defer(f, *p, **kw)
+    defer = asyncache.Defer(f, *p, **kw)
     if future is not None:
         defer.future = future
     return client.put(key, defer, ttl)
@@ -378,7 +379,7 @@ def cached(client, ttl,
         if async_client:
             async_client = base.NamespaceMirrorWrapper(client, async_client)
 
-    if not client.async:
+    if not client.is_async:
         if async_writer_queue_size is None:
             async_writer_queue_size = 100
         if async_writer_workers is None:
@@ -422,7 +423,7 @@ def cached(client, ttl,
 
     EMPTY_KWARGS = {}
     _NONE_ = _NONE
-    Future = async.Future
+    Future = asyncache.Future
 
     def decor(f):
         if namespace is None:
@@ -1038,7 +1039,7 @@ def cached(client, ttl,
                 stats.misses += 1
 
             if rv is __NONE:
-                raise CacheMissError, callkey
+                raise CacheMissError(callkey)
             else:
                 return rv
         if decorate is not None:
@@ -1096,7 +1097,7 @@ def cached(client, ttl,
         if decorate is not None:
             future_refresh_f = decorate(future_refresh_f)
 
-        if client.async:
+        if client.is_async:
             cached_f = async_cached_f
             lazy_cached_f = async_lazy_cached_f
         elif nasync_client:
@@ -1141,20 +1142,20 @@ def cached(client, ttl,
                 if async_processor:
                     _client = async_processor.bound(_client)
                 else:
-                    _client = async.AsyncCacheProcessor(async_processor_workers, _client,
+                    _client = asyncache.AsyncCacheProcessor(async_processor_workers, _client,
                         **async_processor_kwargs)
                 # atomic
                 fclient[:] = [_client]
                 future_cached_f.client = fclient[0]
             return future_cached_f
 
-        if not client.async:
+        if not client.is_async:
             def async_f(initialize = True):
                 if _initialize and initialize:
                     _initialize[0]()
                 if not aclient and initialize:
                     # atomic
-                    aclient[:] = [async.AsyncWriteCacheClient(nclient,
+                    aclient[:] = [asyncache.AsyncWriteCacheClient(nclient,
                         async_writer_queue_size,
                         async_writer_workers,
                         **async_writer_kwargs)]
@@ -1162,7 +1163,7 @@ def cached(client, ttl,
                 return async_cached_f
             async_cached_f.clear = nclient.clear
             async_cached_f.client = aclient[0] if aclient else None
-            async_cached_f.async = weakref.ref(async_cached_f)
+            async_cached_f.bg = weakref.ref(async_cached_f)
             async_cached_f.lazy = async_lazy_cached_f
             async_cached_f.refresh = async_refresh_f
             async_cached_f.peek = peek_cached_f
@@ -1180,7 +1181,7 @@ def cached(client, ttl,
             async_cached_f.on_promote = on_promote_f
             async_cached_f.on_value = on_value_f
             async_cached_f.placeholder_value = placeholder_value_f
-            cached_f.async = async_f
+            cached_f.bg = async_f
             cached_f.lazy = lazy_cached_f
             cached_f.refresh = refresh_f
             cached_f.peek = peek_cached_f
@@ -1189,7 +1190,7 @@ def cached(client, ttl,
             cached_f.put = put_f
         else:
             aclient = [nclient]
-            cached_f.async = async_f = weakref.ref(cached_f)
+            cached_f.bg = async_f = weakref.ref(cached_f)
             cached_f.lazy = async_lazy_cached_f
             cached_f.refresh = async_refresh_f
             cached_f.peek = peek_cached_f
@@ -1214,7 +1215,7 @@ def cached(client, ttl,
 
         future_cached_f.clear = lambda : fclient[0].clear()
         future_cached_f.client = None
-        future_cached_f.async = cached_f.async
+        future_cached_f.bg = cached_f.bg
         future_cached_f.lazy = future_lazy_cached_f
         future_cached_f.refresh = future_refresh_f
         future_cached_f.peek = future_peek_cached_f
@@ -1327,7 +1328,7 @@ if not no_coherence:
         if ttl_spread is True:
             ttl_spread = min(ttl, async_ttl, abs(ttl-async_ttl)) / 2
 
-        if not private.async:
+        if not private.is_async:
             if async_writer_queue_size is None:
                 async_writer_queue_size = 100
             if async_writer_workers is None:
@@ -1355,8 +1356,8 @@ if not no_coherence:
             else:
                 _namespace = namespace
 
-            if not private.async:
-                nprivate = async.AsyncWriteCacheClient(private,
+            if not private.is_async:
+                nprivate = asyncache.AsyncWriteCacheClient(private,
                     async_writer_queue_size,
                     async_writer_workers,
                     **async_writer_kwargs)

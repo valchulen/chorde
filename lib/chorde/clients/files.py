@@ -12,7 +12,7 @@ import mmap
 import os.path
 import shutil
 import tempfile
-import thread
+import _thread as thread
 import threading
 import time
 import weakref
@@ -27,14 +27,14 @@ def _register_files(cache):
 
 def cachePurge(timeout = 0):
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = list(_caches.keys())
 
     for cache in caches:
         cache.purge(timeout)
 
 def cacheClear():
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = list(_caches.keys())
 
     for cache in caches:
         cache.clear()
@@ -201,7 +201,7 @@ class FilesCacheClient(base.BaseCacheClient):
     def __init__(self, size, basepath,
             failfast_size = 500, failfast_time = 0.25, counter_slots = 256,
             key_pickler = json.dumps, value_pickler = None, value_unpickler = None, value_opener=None, checksum_key = None,
-            dirmode = 0700, filemode = 0400, mmap_raw = False,
+            dirmode = 0o700, filemode = 0o400, mmap_raw = False,
             sync_purge = None):
         """
         Params:
@@ -277,12 +277,12 @@ class FilesCacheClient(base.BaseCacheClient):
 
         if value_pickler is None or value_unpickler is None:
             if checksum_key is None:
-                raise ValueError, "Must be given a checksum_key when using the default pickler"
+                raise ValueError("Must be given a checksum_key when using the default pickler")
             else:
                 self.value_pickler = functools.partial(sPickle.dump, checksum_key)
                 self.value_unpickler = functools.partial(sPickle.load, checksum_key)
         elif value_pickler is not None or value_unpickler is not None:
-            raise ValueError, "Must be given both pickler and unpickler when using custom picklers"
+            raise ValueError("Must be given both pickler and unpickler when using custom picklers")
         else:
             self.value_pickler = value_pickler
             self.value_unpickler = value_unpickler
@@ -368,7 +368,7 @@ class FilesCacheClient(base.BaseCacheClient):
         return tempfile.NamedTemporaryFile(dir=tmpdir)
 
     @property
-    def async(self):
+    def is_async(self):
         return False
 
     @property
@@ -476,7 +476,7 @@ class FilesCacheClient(base.BaseCacheClient):
                 return True
             else:
                 if not self.checksum_key:
-                    raise RuntimeError, "Cannot encode arbitrary objects without a checksum key"
+                    raise RuntimeError("Cannot encode arbitrary objects without a checksum key")
 
                 with self._mktmp() as rawfile:
                     self.value_pickler(value, rawfile, 2)
@@ -655,7 +655,7 @@ class FilesCacheClient(base.BaseCacheClient):
     def get(self, key, default=NONE, **kw):
         rv, ttl = self._getTtl(key, default, ttl_skip = 0, **kw)
         if ttl < 0 and default is NONE:
-            raise CacheMissError, key
+            raise CacheMissError(key)
         else:
             return rv
 

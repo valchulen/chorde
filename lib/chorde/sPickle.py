@@ -26,16 +26,10 @@ checksum_algo_name = checksum_algo.__name__.replace('openssl_','')
 import hmac
 import struct
 import threading
+from binascii import hexlify, unhexlify
 
-try:
-    import cPickle
-except ImportError:
-    import pickle as cPickle  # lint:ok
-
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from StringIO import StringIO  # lint:ok
+import pickle as cPickle  # lint:ok
+from io import StringIO  # lint:ok
 
 class SecurePickler(object):
     def __init__(self, checksum_key, file, *p, **kw):
@@ -88,7 +82,7 @@ class SecurePickler(object):
 
         # compute HMAC, and prepend to output
         md = hmac.HMAC(self.checksum_key, rv, checksum_algo).hexdigest()
-        self.file.write(struct.pack('<L',len(rv)).encode("hex"))
+        self.file.write(hexlify(struct.pack('<L',len(rv))))
         self.file.write(md)
         self.file.write(rv)
 
@@ -134,11 +128,11 @@ class SecureUnpickler(object):
     def persistent_load(self, value):  # lint:ok
         self.unpickler.persistent_load = value
 
-    def load(self, headlen = len(struct.pack('<L',0).encode("hex"))):
+    def load(self, headlen = len(struct.pack('<L',0)) * 2):
         datalen = self.file.read(headlen)
         if not datalen:
-            raise EOFError, "Cannot read secure packet header"
-        datalen, = struct.unpack('<L', datalen.decode("hex") )
+            raise EOFError("Cannot read secure packet header")
+        datalen, = struct.unpack('<L', unhexlify(datalen) )
 
         ref_md = hmac.HMAC(self.checksum_key, None, checksum_algo)
         md = self.file.read(ref_md.digest_size*2)
@@ -148,7 +142,7 @@ class SecureUnpickler(object):
 
         ref_md = ref_md.hexdigest()
         if ref_md != md:
-            raise ValueError, "MAC mismatch unpickling"
+            raise ValueError("MAC mismatch unpickling")
 
         buf = self.buf
         buf.reset()

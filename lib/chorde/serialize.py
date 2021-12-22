@@ -288,16 +288,16 @@ def serialize(*p,**kw):
             # Will raise an exception if all else fails
             sleepstep = min(0.1, deadlock_timeout)
             spins = max(1,int(deadlock_timeout / sleepstep))
-            for i in xrange(spins):
+            for i in range(spins):
                 rv = acquire(0)
                 if rv:
                     return rv
                 if (i+1) < spins:
                     time.sleep(sleepstep)
             else:
-                raise DeadlockError, "Timeout expired after %s seconds waiting for %s" % (deadlock_timeout,f.__name__)
+                raise DeadlockError("Timeout expired after %s seconds waiting for %s" % (deadlock_timeout,f.__name__))
     else:
-        raise ValueError, "Invalid deadlock_timeout - must be a nonnegative number"
+        raise ValueError("Invalid deadlock_timeout - must be a nonnegative number")
 
     if 'lockobj' in kw:
         if not keyfn:

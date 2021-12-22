@@ -2,7 +2,7 @@
 import time
 import logging
 
-from .async import Defer, REGET, CancelledError
+from .asyncache import Defer, REGET, CancelledError
 from .base import BaseCacheClient, NONE
 
 from chorde.mq import coherence
@@ -152,8 +152,8 @@ class CoherentWrapperClient(BaseCacheClient):
         self.timeout = timeout
 
     @property
-    def async(self):
-        return self.client.async
+    def is_async(self):
+        return self.client.is_async
 
     @property
     def capacity(self):
@@ -183,7 +183,7 @@ class CoherentWrapperClient(BaseCacheClient):
         manager = self.manager
         if manager.quick_refresh:
             # In quick refresh mode, we publish all puts
-            if self.async and isinstance(value, Defer) and not isinstance(value, CoherentDefer):
+            if self.is_async and isinstance(value, Defer) and not isinstance(value, CoherentDefer):
                 callable_ = value.callable_
                 def done_after(*p, **kw):
                     rv = callable_(*p, **kw)
@@ -234,7 +234,7 @@ class CoherentWrapperClient(BaseCacheClient):
             value.future = future
         deferred = None
         try:
-            if not self.async:
+            if not self.is_async:
                 # cannot put Defer s, so undefer right now
                 deferred = value
                 value = value.undefer()

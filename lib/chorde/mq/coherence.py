@@ -9,13 +9,9 @@ import zmq
 import time
 import operator
 import logging
+from past.builtins import unicode
 
 from . import ipsub
-
-try:
-    import cStringIO
-except ImportError:
-    import StringIO as cStringIO
 
 from chorde.clients import CacheMissError
 from chorde.clients import inproc
@@ -61,8 +57,7 @@ def _psufix(x):
 
 HASHES = {
     int : lambda x : hash(x) & 0xFFFFFFFF, # hash(x:int) = x, but must be 64/32-bit compatible
-    long : lambda x : hash(x) & 0xFFFFFFFF, # must be 64/32-bit compatible
-    str : _psufix, # prefix+suffix is ok for most
+    bytes : _psufix, # prefix+suffix is ok for most
     unicode : lambda x : _psufix(x.encode("utf8")),
     list : len,
     set : len,
@@ -89,7 +84,7 @@ def _bound_weak_callback(self, f):
 
 def _mkwaiter(ctx, socktype, prefix):
     waiter = ctx.socket(zmq.PAIR)
-    for _ in xrange(5):
+    for _ in range(5):
         waiter_id = "inproc://%s%x.%x" % (prefix, id(waiter),random.randint(0,1<<30))
         try:
             waiter.bind(waiter_id)
@@ -192,7 +187,7 @@ class CoherenceManager(object):
         self.quick_refresh = quick_refresh
         self.stable_hash = stable_hash
         self.encoding = encoding
-        self._txid = itertools.cycle(xrange(0x7FFFFFFF))
+        self._txid = itertools.cycle(range(0x7FFFFFFF))
 
         # Key -> hash
         self.pending = dict()
@@ -265,7 +260,7 @@ class CoherenceManager(object):
         Generate a new transaction id. No two reads will be the same... often.
         """
         # Iterator is atomic, no need for locks
-        return self._txid.next()
+        return next(self._txid)
 
     @_swallow_connrefused(_noop)
     def fire_deletion(self, key, timeout = None):
@@ -501,7 +496,7 @@ class CoherenceManager(object):
                     return True
             ipsub_.listen(self.namespace, ipsub.EVENT_UPDATE_ACKNOWLEDGED, signaler)
             ipsub_.publish(self.pendqprefix, req)
-            for i in xrange(3):
+            for i in range(3):
                 if waiter.poll(timeout/4):
                     break
                 elif expired():
@@ -586,7 +581,7 @@ class CoherenceManager(object):
     def _on_pending(self, prefix, event, payload):
         if self.ipsub.is_broker:
             txid, keys, contact = payload
-            self.group_pending.update(itertools.izip(
+            self.group_pending.update(zip(
                 keys, itertools.repeat((txid,time.time(),contact),len(keys))))
             return True
 
@@ -674,8 +669,8 @@ class CoherenceManager(object):
         if keys:
             if txid is None:
                 txid = self.txid
-            first_key = iter(keys).next()
-            self.ipsub.publish_encode(self.doneprefix+str(self.stable_hash(first_key)), self.encoding,
+            first_key = next(iter(keys))
+            self.ipsub.publish_encode(self.doneprefix+bytes(self.stable_hash(first_key)), self.encoding,
                 (txid, keys, self.p2p_pub_binds),
                 timeout = timeout)
         return NoopWaiter()
@@ -685,8 +680,8 @@ class CoherenceManager(object):
         if keys:
             if txid is None:
                 txid = self.txid
-            first_key = iter(keys).next()
-            self.ipsub.publish_encode(self.abortprefix+str(self.stable_hash(first_key)), self.encoding,
+            first_key = next(iter(keys))
+            self.ipsub.publish_encode(self.abortprefix+bytes(self.stable_hash(first_key)), self.encoding,
                 (txid, keys, self.p2p_pub_binds),
                 timeout = timeout)
         return NoopWaiter()
@@ -719,7 +714,7 @@ class CoherenceManager(object):
             return True
 
         ipsub_ = self.ipsub
-        keysuffix = str(self.stable_hash(key))
+        keysuffix = bytes(self.stable_hash(key))
         doneprefix = self.doneprefix+keysuffix
         abortprefix = self.abortprefix+keysuffix
 

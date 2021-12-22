@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-from itertools import izip, islice
+from itertools import islice
 import operator
 import logging
 
-from . import async
+from . import asyncache
 from .base import NONE, CacheMissError, BaseCacheClient
 
 class NONE_: pass
@@ -15,20 +15,20 @@ class TieredInclusiveClient(BaseCacheClient):
         self.ttl_fractions = opts.get('ttl_fractions', (1,)*len(clients))
 
     @property
-    def async(self):
+    def is_async(self):
         for client in self.clients:
-            if client.async:
+            if client.is_async:
                 return True
         else:
             return False
 
     @property
     def capacity(self):
-        return map(operator.attrgetter('capacity'), self.clients)
+        return list(map(operator.attrgetter('capacity'), self.clients))
 
     @property
     def usage(self):
-        return map(operator.attrgetter('usage'), self.clients)
+        return list(map(operator.attrgetter('usage'), self.clients))
 
     def wait(self, key, timeout = None):
         for client in self.clients:
@@ -38,10 +38,10 @@ class TieredInclusiveClient(BaseCacheClient):
         deferred = value
         try:
             value = value.undefer()
-            if value is async.REGET:
+            if value is asyncache.REGET:
                 # This will cause a CancelledError on any waiter
                 # if we don't get a better value, which is what we want
-                value = async._NONE
+                value = asyncache._NONE
 
                 # NONE_ is a special local value that does not raise CacheMissErrors
                 reget_value, vttl = self.getTtl(key, NONE_, return_stale = False)
@@ -54,9 +54,9 @@ class TieredInclusiveClient(BaseCacheClient):
                 deferred.set(value)
 
                 # In any case, don't do the reget in the caller, we did the equivalent
-                value = async._NONE
-            elif value is not NONE and value is not async._NONE:
-                for fraction, client in islice(izip(fractions,clients), 1, _max_tiers):
+                value = asyncache._NONE
+            elif value is not NONE and value is not asyncache._NONE:
+                for fraction, client in islice(zip(fractions,clients), 1, _max_tiers):
                     try:
                         client.put(key, value, ttl * fraction, **kw)
                     except:
@@ -68,12 +68,12 @@ class TieredInclusiveClient(BaseCacheClient):
     def put(self, key, value, ttl, _max_tiers=None, **kw):
         clients = self.clients
         fractions = self.ttl_fractions
-        if isinstance(value, async.Defer):
+        if isinstance(value, asyncache.Defer):
             # Cannot just pass it, it would execute the result many times
-            if clients and clients[0].async:
+            if clients and clients[0].is_async:
                 # First call is async, meaning it will get queued up somwhere
                 # We can do the rest at that point
-                deferred = async.Defer(
+                deferred = asyncache.Defer(
                     self.__putnext,
                     clients, fractions,
                     key, value, ttl, _max_tiers, **kw)
@@ -84,10 +84,10 @@ class TieredInclusiveClient(BaseCacheClient):
             else:
                 # Cannot undefer here, it might create deadlocks.
                 # Raise error.
-                raise ValueError, "Sync first tier, cannot undefer"
+                raise ValueError("Sync first tier, cannot undefer")
         else:
             # Simple case
-            tiers = izip(fractions, clients)
+            tiers = zip(fractions, clients)
             if _max_tiers is not None:
                 tiers = islice(tiers, _max_tiers)
             for ttl_fraction, client in tiers:
@@ -96,7 +96,7 @@ class TieredInclusiveClient(BaseCacheClient):
     def renew(self, key, ttl, _max_tiers=None, **kw):
         clients = self.clients
         fractions = self.ttl_fractions
-        tiers = izip(fractions, clients)
+        tiers = zip(fractions, clients)
         if _max_tiers is not None:
             tiers = islice(tiers, _max_tiers)
         for ttl_fraction, client in tiers:
@@ -105,12 +105,12 @@ class TieredInclusiveClient(BaseCacheClient):
     def add(self, key, value, ttl, _max_tiers=None, **kw):
         clients = self.clients
         fractions = self.ttl_fractions
-        if isinstance(value, async.Defer):
+        if isinstance(value, asyncache.Defer):
             # Cannot just pass it, it would execute the result many times
-            if clients and clients[0].async:
+            if clients and clients[0].is_async:
                 # First call is async, meaning it will get queued up somwhere
                 # We can do the rest at that point
-                deferred = async.Defer(
+                deferred = asyncache.Defer(
                     self.__putnext,
                     clients, fractions,
                     key, value, ttl, _max_tiers, **kw)
@@ -118,10 +118,10 @@ class TieredInclusiveClient(BaseCacheClient):
             else:
                 # Cannot undefer here, it might create deadlocks.
                 # Raise error.
-                raise ValueError, "Sync first tier, cannot undefer"
+                raise ValueError("Sync first tier, cannot undefer")
         else:
             # Simple case
-            tiers = izip(fractions, clients)
+            tiers = zip(fractions, clients)
             if _max_tiers is not None:
                 tiers = islice(tiers, _max_tiers)
             for ttl_fraction, client in tiers:
@@ -162,7 +162,7 @@ class TieredInclusiveClient(BaseCacheClient):
                 if i > 0 and ttl > ttl_skip:
                     # Um... not first-tier
                     # Move the entry up the ladder
-                    for i in xrange(i-1, -1, -1):
+                    for i in range(i-1, -1, -1):
                         try:
                             self.clients[i].put(key, rv, ttl)
                         except:
@@ -185,7 +185,7 @@ class TieredInclusiveClient(BaseCacheClient):
                 return rv, ttl
             else:
                 if default is NONE:
-                    raise CacheMissError, key
+                    raise CacheMissError(key)
                 else:
                     return default, -1
 
@@ -211,7 +211,7 @@ class TieredInclusiveClient(BaseCacheClient):
                     if i > 0 and ttl > ttl_skip:
                         # Um... not first-tier
                         # Move the entry up the ladder
-                        for i in xrange(i-1, -1, -1):
+                        for i in range(i-1, -1, -1):
                             try:
                                 self.clients[i].put(key, rv, ttl)
                             except:
@@ -255,7 +255,7 @@ class TieredInclusiveClient(BaseCacheClient):
             if client.contains(key, ttl_skip):
                 rv, ttl = client.getTtl(key, NONE__)
                 if rv is not NONE__ and ttl > ttl_skip and i > 0:
-                    for i in xrange(i-1, -1, -1):
+                    for i in range(i-1, -1, -1):
                         try:
                             self.clients[i].put(key, rv, ttl)
                         except:

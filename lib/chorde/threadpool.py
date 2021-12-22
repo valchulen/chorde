@@ -6,12 +6,12 @@ import logging
 import multiprocessing
 import os
 import sys
-import thread
+import _thread as thread
 import threading
 import time
 import weakref
 
-import worker
+from . import worker
 
 class TimeoutError(Exception):
     pass
@@ -54,7 +54,7 @@ class WorkerThread(threading.Thread):
             self.join()
 
 try:
-    from clients._async import ExceptionWrapper
+    from .clients._async import ExceptionWrapper
 except ImportError:
     class ExceptionWrapper(object):  # lint:ok
         __slots__ = ('exc',)
@@ -65,7 +65,7 @@ except ImportError:
         def reraise(self):
             exc = self.exc
             del self.exc
-            raise exc[0], exc[1], exc[2]
+            raise exc[0](exc[1]).with_traceback(exc[2])
 
 class WaitIter:
     def __init__(self, event, timeout = None):
@@ -77,7 +77,7 @@ class WaitIter:
         self.event.set()
     def __iter__(self):
         return self
-    def next(self, TerminateWorker=TerminateWorker):
+    def __next__(self, TerminateWorker=TerminateWorker):
         if self._terminate:
             raise TerminateWorker()
         self.event.wait(self.timeout)
@@ -125,7 +125,7 @@ class ThreadPool:
         self.__busyqueues = set()
         self.__busyfactors = {}
         self.__exhausted_iter = WaitIter(self.__not_empty)
-        self.__dequeue = self.__exhausted = self.__exhausted_iter.next
+        self.__dequeue = self.__exhausted = self.__exhausted_iter.__next__
 
         self.min_batch = min_batch
         self.max_batch = max_batch
@@ -169,7 +169,7 @@ class ThreadPool:
         pget = queue_slices.get
         ppop = queue_slices.pop
         qprio = self.queue_weights.get
-        qnames = queues.keys()
+        qnames = list(queues.keys())
         wqueues = []
         wprios = []
         iquantities = {}
@@ -186,10 +186,10 @@ class ThreadPool:
             min_batch = self.min_batch
             max_batch = self.max_batch
             max_slice = self.max_slice
-            qslots = min(max_batch, max(min_batch, min([
+            qslots = int(min(max_batch, max(min_batch, min([
                 (len(qget(q)) or max_batch) / qprio(q,1)
                 for q in qnames
-            ])))
+            ]))))
             for qname in qnames:
                 q = qget(qname)
                 if not q:
@@ -209,7 +209,7 @@ class ThreadPool:
                     wprios.append(prio)
                 del qslice
 
-                if qlen < batch or qpos > (max_slice or (len(q)/2)):
+                if qlen < batch or qpos > (max_slice or (len(q)//2)):
                     del q[:qpos+qlen]
                     if qpos:
                         ppop(qname,None)
@@ -227,13 +227,12 @@ class ThreadPool:
             iappend = iqueue.append
             islice = itertools.islice
             cycle = itertools.cycle
-            izip = itertools.izip
             repeat = itertools.repeat
             partial = functools.partial
 
             queues = []
-            for q,qprio in izip(wqueues, wprios):
-                queues.append(partial(repeat, iter(q).next, qprio))
+            for q,qprio in zip(wqueues, wprios):
+                queues.append(partial(repeat, iter(q).__next__, qprio))
 
             ioffs = 0
             while queues:
@@ -245,10 +244,10 @@ class ThreadPool:
                     del queues[ioffs]
 
             self.__worklen = len(iqueue)
-            self.__dequeue = iter(iqueue).next
+            self.__dequeue = iter(iqueue).__next__
             if itotal:
                 ftotal = float(itotal)
-                self.__busyfactors = dict([(qname, quant/ftotal) for qname,quant in iquantities.iteritems()])
+                self.__busyfactors = dict([(qname, quant/ftotal) for qname,quant in iquantities.items()])
             else:
                 self.__busyfactors = {}
         elif self.__dequeue is not self.__exhausted:
@@ -454,7 +453,7 @@ class ThreadPool:
                 self.__workers = [ self.Process(
                         functools.partial(self.worker, weakref.ref(self)),
                         name = name_pattern % (i+index_base,) if name_pattern is not None else None
-                    ) for i in xrange(self.workers) ]
+                    ) for i in range(self.workers) ]
                 for w in self.__workers:
                     w.logger = self.logger
                     w.daemon = True
@@ -470,7 +469,7 @@ class ThreadPool:
                 nworkers = [ self.Process(
                         functools.partial(self.worker, weakref.ref(self)),
                         name = name_pattern % (i+index_base,) if name_pattern is not None else None
-                    ) for i in xrange(new_workers) ]
+                    ) for i in range(new_workers) ]
                 for w in nworkers:
                     w.daemon = True
                     w.start()

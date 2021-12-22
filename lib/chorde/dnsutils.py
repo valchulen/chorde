@@ -54,7 +54,7 @@ def hosts_dnsquery(host, typ, hostsfile = "/etc/hosts"):
                         l = l.split('#',1)[0]
                     l = l.strip()
                     if l:
-                        parts = filter(bool, [ x.strip() for x in l.split() ])
+                        parts = list(filter(bool, [ x.strip() for x in l.split() ]))
                         if host in parts:
                             if typ == 'A':
                                 if is_ip4(parts[0]):
@@ -153,7 +153,7 @@ class DynamicResolvingClient(object):
                     else:
                         sentries = self.expand_entry(entry)
                         dynamic = self.FORCE_IS_DYNAMIC
-                        if dynamic or set(sentries) != set([entry]):
+                        if dynamic or set(sentries) != {entry}:
                             # expand_entry made it nonstatic
                             allstatic = False
                             expiration = min(expiration, dyn_expiration)
@@ -206,7 +206,7 @@ class DynamicResolvingClient(object):
                 self._dynamic_client_checktime = max(expiration, time.time() + min_ttl) + random.random() * min_ttl
                 self._dynamic_client_addresses = servers
                 rv = servers
-        return set([addr for addr in rv if addr not in self._removed_addresses])
+        return {addr for addr in rv if addr not in self._removed_addresses}
 
     def remove_address(self, address):
         self._removed_addresses.add(address)

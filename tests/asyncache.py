@@ -8,35 +8,35 @@ from .clientbase import CacheClientTestMixIn, CacheMissError, TimeoutError
 
 class FutureTest(unittest.TestCase):
     def testTimeout(self):
-        from chorde.clients.async import Future
+        from chorde.clients.asyncache import Future
         f = Future()
         self.assertRaises(TimeoutError, f.result, 0.1)
 
     def testFastTimeout(self):
-        from chorde.clients.async import Future
+        from chorde.clients.asyncache import Future
         f = Future()
         self.assertRaises(TimeoutError, f.result, 0)
 
     def testPreSet(self):
-        from chorde.clients.async import Future
+        from chorde.clients.asyncache import Future
         f = Future()
         f.set(1)
         self.assertEqual(f.result(0), 1)
 
     def testMiss(self):
-        from chorde.clients.async import Future
+        from chorde.clients.asyncache import Future
         f = Future()
         f.miss()
         self.assertRaises(CacheMissError, f.result, 0)
 
     def testExc(self):
-        from chorde.clients.async import Future
+        from chorde.clients.asyncache import Future
         f = Future()
         f.exc((RuntimeError,RuntimeError(1),None))
         self.assertRaises(RuntimeError, f.result, 0)
 
     def testAny(self):
-        from chorde.clients.async import Future
+        from chorde.clients.asyncache import Future
         rv = []
         def exc(exc):
             rv.append("exc")
@@ -50,7 +50,7 @@ class FutureTest(unittest.TestCase):
         self.assertEquals(["exc"], rv)
 
     def testAnyOnce(self):
-        from chorde.clients.async import Future
+        from chorde.clients.asyncache import Future
         rv = []
         def exc(exc):
             rv.append("exc")
@@ -75,17 +75,17 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
 
     def setUpClient(self):
         from chorde.clients.inproc import InprocCacheClient
-        from chorde.clients.async import AsyncWriteCacheClient
+        from chorde.clients.asyncache import AsyncWriteCacheClient
         return AsyncWriteCacheClient(InprocCacheClient(100), 100, 1)
 
     def _sync(self, client):
-        from chorde.clients.async import Defer
+        from chorde.clients.asyncache import Defer
         ev = threading.Event()
         client.put('__sync_key', Defer(ev.set), 120)
         ev.wait(1)
 
     def testDeferreds(self):
-        from chorde.clients.async import Defer
+        from chorde.clients.asyncache import Defer
         done = []
         ev = threading.Event()
         def sleepit():
@@ -100,7 +100,7 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
         self.assertEquals(done, [None])
 
     def testFutures(self):
-        from chorde.clients.async import Defer, Future
+        from chorde.clients.asyncache import Defer, Future
         frv = Future()
         def sleepit():
             return 1
@@ -114,7 +114,7 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
         self.assertTrue(frv.done())
 
     def testChainFutures(self):
-        from chorde.clients.async import Defer, Future
+        from chorde.clients.asyncache import Defer, Future
         ev = threading.Event()
         ev2 = threading.Event()
         def sleepit():
@@ -140,7 +140,7 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
         self.assertEquals(self.client.get(3), 2)
 
     def testReentrantChainFutures(self):
-        from chorde.clients.async import Defer, Future
+        from chorde.clients.asyncache import Defer, Future
         ev = threading.Event()
         ev2 = threading.Event()
         ev3 = threading.Event()
@@ -178,7 +178,7 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
         self.assertEquals(self.client.get(4), 2)
 
     def testStepFutures(self):
-        from chorde.clients.async import Defer, Future
+        from chorde.clients.asyncache import Defer, Future
         ev = threading.Event()
         ev2 = threading.Event()
         def sleepit():
@@ -210,7 +210,7 @@ class AsyncCustomPoolTest(AsyncTest):
 
     def setUpClient(self):
         from chorde.clients.inproc import InprocCacheClient
-        from chorde.clients.async import AsyncWriteCacheClient
+        from chorde.clients.asyncache import AsyncWriteCacheClient
         from chorde.threadpool import ThreadPool
         return AsyncWriteCacheClient(InprocCacheClient(100), 100, 1,
             threadpool = functools.partial(ThreadPool(1).subqueue, "meh"))
@@ -218,7 +218,7 @@ class AsyncCustomPoolTest(AsyncTest):
 
 class AsyncProcessorTest(unittest.TestCase):
     def setUp(self):
-        from chorde.clients.async import AsyncCacheProcessor
+        from chorde.clients.asyncache import AsyncCacheProcessor
         from chorde.clients.inproc import InprocCacheClient
         self.client = AsyncCacheProcessor(1, InprocCacheClient(100))
 
@@ -263,7 +263,7 @@ class AsyncProcessorTest(unittest.TestCase):
 
 class AsyncProcessorCustomPoolTest(AsyncProcessorTest):
     def setUp(self):
-        from chorde.clients.async import AsyncCacheProcessor
+        from chorde.clients.asyncache import AsyncCacheProcessor
         from chorde.clients.inproc import InprocCacheClient
         from chorde.threadpool import ThreadPool
         self.client = AsyncCacheProcessor(1, InprocCacheClient(100),

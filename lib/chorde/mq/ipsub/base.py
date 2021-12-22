@@ -5,16 +5,11 @@ import logging
 import json
 import os
 from collections import defaultdict
+from past.builtins import unicode
+from base64 import b64encode
 
-try:
-    import cPickle
-except ImportError:
-    import pickle as cPickle  # lint:ok
-
-try:
-    import cStringIO
-except ImportError:
-    import StringIO as cStringIO  # lint:ok
+import pickle
+import io
 
 __ALL__ = (
     'EVENT_INCOMING_UPDATE',
@@ -117,10 +112,10 @@ class BaseIPSub(object):
         self.last_idle = time.time()
         self.last_tic = time.time()
 
-        self.identity = "%x-%x-%s" % (
+        self.identity = b"%x-%x-%s" % (
             os.getpid(),
             id(self),
-            os.urandom(8).encode("base64").strip('\t =\n'),
+            b64encode(os.urandom(8)).strip(b'\t =\n'),
         )
 
     def _idle(self):
@@ -252,7 +247,7 @@ class BaseIPSub(object):
                 prefix = update[0][:MAX_PREFIX]
             called = set()
             rrv = rv = None
-            for cb_prefix, callbacks in listeners.items():
+            for cb_prefix, callbacks in list(listeners.items()):
                 if prefix is None or prefix.startswith(cb_prefix):
                     byebye = set()
                     for callback in set(callbacks):
@@ -353,12 +348,12 @@ class BaseIPSub(object):
                 sPickles, they both work out-of-the-box.
         """
         def dumps(x):
-            io = cStringIO.StringIO()
+            io = io.StringIO()
             p = pickler(io,2)
             p.dump(x)
             return io.getvalue()
         def loads(x):
-            io = cStringIO.StringIO(x)
+            io = io.StringIO(x)
             p = unpickler(io)
             return p.load()
         def load(x):
@@ -367,7 +362,7 @@ class BaseIPSub(object):
 
     @staticmethod
     def register_default_pyobj():
-        BaseIPSub.register_pyobj(cPickle.Pickler, cPickle.Unpickler)
+        BaseIPSub.register_pyobj(pickle.Pickler, pickle.Unpickler)
 
     @staticmethod
     def encode_payload(encoding, payload):

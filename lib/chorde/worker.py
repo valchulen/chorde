@@ -41,7 +41,7 @@ class WorkerThread(Thread):
             finally:
                 _callCleanupHooks()
                 self.running = False
-        except Exception,e:
+        except Exception as e:
             self._exc = e
             _logger.error("Exception ocurred in worker thread:", exc_info = True)
 

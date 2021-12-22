@@ -61,7 +61,7 @@ class IPSubTest(unittest.TestCase):
         self.ipsub_thread.start()
         self.ipsub2_thread.start()
 
-        for i in xrange(10):
+        for i in range(10):
             time.sleep(0.1)
             if self.ipsub.is_running and self.ipsub2.is_running:
                 break
@@ -107,7 +107,7 @@ class IPSubTest(unittest.TestCase):
         self._make_ipsub()
         time.sleep(0.1)
         self.ipsub_thread.start()
-        for i in xrange(11):
+        for i in range(11):
             time.sleep(0.1)
             if self.ipsub.is_running:
                 break
@@ -244,7 +244,7 @@ def _check_start_ipsub(port1, port2):
     ipsub_thread = threading.Thread(target=ipsub_obj.run)
     ipsub_thread.daemon = True
     ipsub_thread.start()
-    for _ in xrange(50):
+    for _ in range(50):
         time.sleep(0.1)
         if ipsub_obj.is_running:
             break
@@ -270,7 +270,7 @@ class IPSubConcurrencyTest(unittest.TestCase):
 
     def test_concurrent_fork(self):
         processes = []
-        for i in xrange(16):
+        for i in range(16):
             p = multiprocessing.Process(
                 target=_check_start_ipsub,
                 args=(self.port1, self.port2))

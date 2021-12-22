@@ -41,8 +41,8 @@ def cacheStats():
 
     with _caches_mutex:
         rv = {}
-        for cache in _caches.iterkeys():
-            fname = cache.func_name
+        for cache in _caches.keys():
+            fname = cache.__name__
 
             # Sometimes, functions are different but named the same. Usually
             # they're related, so we aggregate those stats.
@@ -53,7 +53,7 @@ def cacheStats():
 
 def cachePurge(timeout = 0, sleeptime = None):
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = list(_caches.keys())
 
     for cache in caches:
         if sleeptime is not None:
@@ -96,7 +96,7 @@ def cacheClear():
     """
 
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = list(_caches.keys())
 
     for cache in caches:
         cache.clear()
@@ -137,7 +137,7 @@ class InprocCacheClient(base.BaseCacheClient):
         _register_inproc(self)
 
     @property
-    def async(self):
+    def is_async(self):
         return False
 
     @property
@@ -196,7 +196,7 @@ class InprocCacheClient(base.BaseCacheClient):
             ttl = ttl - time()
             return rv, ttl
         elif default is baseNONE:
-            raise CacheMissError, key
+            raise CacheMissError(key)
         else:
             return default, -1
 
