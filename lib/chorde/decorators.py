@@ -79,7 +79,7 @@ def _make_namespace(f, salt = None, salt2 = None):
             body_digest.update(salt2)
         if fcode:
             body_digest.update(getattr(fcode, 'co_code', ''))
-        return "%s.%s#%s" % (mname,fname,b64encode(body_digest.digest()).strip("=\n"))
+        return "%s.%s#%s" % (mname,fname,b64encode(body_digest.digest()).rstrip("=\n"))
     except:
         return repr(f)
 
