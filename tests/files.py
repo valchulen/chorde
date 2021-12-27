@@ -109,7 +109,7 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
     def testLRU(self):
         client = self.client
         bigval = "12" * chorde.clients.files.MMAP_THRESHOLD
-        maxentries = SIZE / len(bigval)
+        maxentries = SIZE // len(bigval)
 
         for i in range(maxentries+1):
             client.put(i, bigval+str(i), 86400)
@@ -131,7 +131,7 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
         client = self.client
         cap = client.capacity
         bigval = "12" * chorde.clients.files.MMAP_THRESHOLD
-        maxentries = SIZE / len(bigval)
+        maxentries = SIZE // len(bigval)
 
         for i in range(maxentries*2):
             client.put(i,bigval,86400)

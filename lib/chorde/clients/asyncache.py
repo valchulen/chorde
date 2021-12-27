@@ -259,7 +259,7 @@ class AsyncCacheWriterPool:
                 kev = None
             del w
 
-            if thread_id is not None and thread_id not in list(map(operator.itemgetter(0), list(self.workset.values()))):
+            if thread_id is not None and thread_id not in map(operator.itemgetter(0), list(self.workset.values())):
                 try:
                     self.threadset.remove(thread_id)
                 except KeyError:

@@ -13,7 +13,7 @@ try:
 except:
     no_pyrex = True
 
-VERSION = "0.9.0"
+VERSION = "1.0.0"
 
 version_path = os.path.join(os.path.dirname(__file__), 'lib', 'chorde', '_version.py')
 if not os.path.exists(version_path):
@@ -124,7 +124,7 @@ setup(
         "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
         "Programming Language :: Python",
         "Programming Language :: Cython",
-        "Programming Language :: Python :: 2",
+        "Programming Language :: Python :: 3",
         "Topic :: Software Development :: Libraries",
         "Operating System :: OS Independent",
     ],
