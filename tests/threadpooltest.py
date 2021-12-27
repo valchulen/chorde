@@ -283,7 +283,7 @@ class MultiQueueTest(TestCase):
         qsequence = [(mean,"mean"), (simple,"simple")]
 
         # Ensure full buffering before test start, to make sure
-        # proper batch priorization is taking place, as it won't
+        # proper batch prioritization is taking place, as it won't
         # under light load
         barrier = Event()
         for i in range(32):
