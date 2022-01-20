@@ -247,7 +247,7 @@ class ThreadPool:
             self.__dequeue = iter(iqueue).__next__
             if itotal:
                 ftotal = float(itotal)
-                self.__busyfactors = dict([(qname, quant/ftotal) for qname,quant in iquantities.items()])
+                self.__busyfactors = {qname: quant/ftotal for qname,quant in iquantities.items()}
             else:
                 self.__busyfactors = {}
         elif self.__dequeue is not self.__exhausted:
