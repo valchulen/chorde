@@ -25,7 +25,7 @@ class BenchThreadpoolBase(Benchmark):
 class BenchThreadpoolLatency(BenchThreadpoolBase):
 
     def __init__(self, **kw):
-        super(BenchThreadpoolLatency, self).__init__(prefix=['latench'], **kw)
+        super(BenchThreadpoolLatency, self).__init__(prefix=['latency'], **kw)
 
     def calibration(self, threadpool):
         lambda:None
