@@ -35,7 +35,7 @@ if __name__ == '__main__':
     args_parser.add_argument('-v', '--verbose', action="store_true", default=False,
         help = "Show verbose progress messages")
     args_parser.add_argument('-l', '--list', action="store_true",
-        help = "List all available menchmark suites")
+        help = "List all available benchmark suites")
     args_parser.add_argument('-S', '--series', type=int, default=10,
         help = "Specify how many series of runs to execute to get runtime statistics")
     args_parser.add_argument('-T', '--runtime', type=float, default=5.0,
