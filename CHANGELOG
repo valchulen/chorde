@@ -3,8 +3,13 @@
 All notable changes to this project will be documented here.
 
 ## [1.0.0] - Unreleased
+### Removed
 - Dropped Python 2.x support
+
+### Added
 - Added Python 3.6+ support
+
+### Changes
 - Renamed fn.async() decorator call into fn.bg() to make it
   Python 3 compatible
 - Renamed clients.async module to clients.asyncache
