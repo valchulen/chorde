@@ -242,16 +242,12 @@ class InprocCacheClient(base.BaseCacheClient):
         return retentions
 
     def contains(self, key, ttl = None, baseNONE = base.NONE, time = time.time):
-        if key in self.store:
+        rv = self.store.get(key, baseNONE)
+        if rv is not baseNONE:
             if ttl is None:
                 ttl = 0
-
-            rv = self.store.get(key, baseNONE)
-            if rv is not baseNONE:
-                store_ttl = rv[1] - time()
-                return store_ttl > ttl
-            else:
-                return False
+            store_ttl = rv[1] - time()
+            return store_ttl > ttl
         else:
             return False
 
