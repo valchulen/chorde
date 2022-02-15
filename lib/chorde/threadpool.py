@@ -247,7 +247,7 @@ class ThreadPool:
             self.__dequeue = iter(iqueue).__next__
             if itotal:
                 ftotal = float(itotal)
-                self.__busyfactors = dict([(qname, quant/ftotal) for qname,quant in iquantities.items()])
+                self.__busyfactors = {qname: quant/ftotal for qname,quant in iquantities.items()}
             else:
                 self.__busyfactors = {}
         elif self.__dequeue is not self.__exhausted:
@@ -486,17 +486,17 @@ class ThreadPool:
         self._enqueue(queue, task)
 
     def apply(self, task, args = (), kwargs = {}, queue = None, timeout = None):
-        rv = []
+        rv = None
         ev = threading.Event()
         def stask():
+            nonlocal rv
             try:
-                rv.append(task(*args, **kwargs))
+                rv = task(*args, **kwargs)
             except:
-                rv.append(ExceptionWrapper(sys.exc_info()))
+                rv = ExceptionWrapper(sys.exc_info())
             ev.set()
         self._enqueue(queue, stask)
         if ev.wait(timeout):
-            rv = rv[0]
             if isinstance(rv, ExceptionWrapper):
                 rv.reraise()
             else:
