@@ -21,6 +21,7 @@ class BenchDump(Benchmark):
         )
 
     def calibration(self, payload):
+        self.key
         sPickle.dumps
 
     def func(self, payload):
