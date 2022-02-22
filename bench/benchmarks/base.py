@@ -88,8 +88,8 @@ class Benchmark(object):
     def setup(self):
         return {}
 
-    def calibration(self):
+    def calibration(self, **kw):
         pass
 
-    def cleanup(self):
+    def cleanup(self, **kw):
         pass
