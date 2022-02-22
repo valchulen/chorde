@@ -29,7 +29,7 @@ import threading
 from binascii import hexlify, unhexlify
 
 import pickle as cPickle  # lint:ok
-from io import StringIO  # lint:ok
+from io import BytesIO  # lint:ok
 
 class SecurePickler(object):
     def __init__(self, checksum_key, file, *p, **kw):
@@ -45,7 +45,7 @@ class SecurePickler(object):
         try:
             return self.local.buf
         except AttributeError:
-            self.local.buf = buf = StringIO()
+            self.local.buf = buf = BytesIO()
             return buf
 
     @buf.deleter
@@ -77,11 +77,11 @@ class SecurePickler(object):
         # dump to underlying pickler, then pick up the results
         self.pickler.dump(val)
         rv = self.buf.getvalue()
-        self.buf.reset()
+        self.buf.seek(0)
         self.buf.truncate()
 
         # compute HMAC, and prepend to output
-        md = hmac.HMAC(self.checksum_key, rv, checksum_algo).hexdigest()
+        md = hmac.HMAC(self.checksum_key, rv, checksum_algo).hexdigest().encode("ascii")
         self.file.write(hexlify(struct.pack('<L',len(rv))))
         self.file.write(md)
         self.file.write(rv)
@@ -100,7 +100,7 @@ class SecureUnpickler(object):
         try:
             return self.local.buf
         except AttributeError:
-            self.local.buf = buf = StringIO()
+            self.local.buf = buf = BytesIO()
             return buf
 
     @buf.deleter
@@ -140,17 +140,17 @@ class SecureUnpickler(object):
         data = self.file.read(datalen)
         ref_md.update(data)
 
-        ref_md = ref_md.hexdigest()
+        ref_md = ref_md.hexdigest().encode("ascii")
         if ref_md != md:
             raise ValueError("MAC mismatch unpickling")
 
         buf = self.buf
-        buf.reset()
+        buf.seek(0)
         buf.write(data)
         buf.truncate()
-        buf.reset()
+        buf.seek(0)
         rv = self.unpickler.load()
-        buf.reset()
+        buf.seek(0)
         buf.truncate()
         return rv
 
@@ -159,7 +159,7 @@ def dump(key, obj, file, *p, **kw):
     pickler.dump(obj)
 
 def dumps(key, obj, *p, **kw):
-    buf = StringIO()
+    buf = BytesIO()
     pickler = SecurePickler(key, buf, *p, **kw)
     pickler.dump(obj)
     return buf.getvalue()
@@ -169,6 +169,6 @@ def load(key, file, *p, **kw):
     return unpickler.load()
 
 def loads(key, str, *p, **kw):
-    buf = StringIO(str)
+    buf = BytesIO(str)
     unpickler = SecureUnpickler(key, buf, *p, **kw)
     return unpickler.load()
