@@ -82,7 +82,7 @@ class SlowSlot(object):
 
     @value.setter
     def value(self, val):
-        self._raw_mmap[self._raw_slice] = bytes(buffer(self._ctype(val or 0)))
+        self._raw_mmap[self._raw_slice] = bytes(self._ctype(val or 0))
 
     @property
     def flat(self):
@@ -235,12 +235,12 @@ class SharedCounterGenericBase(object):
                 try:
                     # Fill with zeros
                     size = cls.size(slots)
-                    zeros = '\x00' * 1024
+                    zeros = b'\x00' * 1024
                     while size >= 1024:
                         os.write(tmpfileno, zeros)
                         size -= 1024
                     if size:
-                        os.write(tmpfileno, buffer(zeros,0,size))
+                        os.write(tmpfileno, zeros[:size])
                     # WHYNOT zeros = '\x00' * size; os.write(tmfileno, zeros)
 
                     # And swap
@@ -352,15 +352,26 @@ class SharedCounterGenericBase(object):
         if bitmap is not None:
             # Release slot
             self.bitmap_slot.value = False
+        del bitmap
 
-        # Release possibly fd-holding resources
+        # Flush any pending writes
         basemap = getattr(self, 'basemap', None)
         if basemap is not None:
             basemap.flush()
+
+        # Release possibly fd-holding resources
+        del self.slots
+        del self.slot
+        del self.basemap
+        del self.bitmap
+        del self.bitmap_slot
+        del self.timestamp
+        del self.cached_timestamp
+        del self.cached_value
+        del self.myslot
+
+        if basemap is not None:
             basemap.close()
-        self.bitmap = None
-        self.slots = None
-        self.basemap = None
 
     def __del__(self):
         self.close()
