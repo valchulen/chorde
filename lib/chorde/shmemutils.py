@@ -360,15 +360,15 @@ class SharedCounterGenericBase(object):
             basemap.flush()
 
         # Release possibly fd-holding resources
-        del self.slots
-        del self.slot
-        del self.basemap
-        del self.bitmap
-        del self.bitmap_slot
-        del self.timestamp
-        del self.cached_timestamp
-        del self.cached_value
-        del self.myslot
+        self.slots = None
+        self.slot = None
+        self.basemap = None
+        self.bitmap = None
+        self.bitmap_slot = None
+        self.timestamp = None
+        self.cached_timestamp = None
+        self.cached_value = None
+        self.myslot = None
 
         if basemap is not None:
             basemap.close()
