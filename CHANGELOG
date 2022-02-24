@@ -20,6 +20,9 @@ All notable changes to this project will be documented here.
 - Lock pools and deadlock detection from chorde.serialize have
   been removed (no longer used)
 
+### Bugfixes
+- Fixed high latench (50ms) of missing `async()()` calls
+
 ## [0.8.4] - 2021-09-29
 ### Bugfixes
 - Apply TTL namespace variation on all code paths.
