@@ -477,8 +477,9 @@ class AsyncCacheWriterPool:
                     else:
                         busyloop += 1
                         if busyloop > 5:
-                            if ev is done_event and busyloop > 20 and ev.isSet():
-                                ev.clear()
+                            if ev is done_event:
+                                if busyloop > 20 and ev.isSet():
+                                    ev.clear()
                             else:
                                 sleep(0.05)
                 else:
@@ -500,8 +501,9 @@ class AsyncCacheWriterPool:
                     else:
                         busyloop += 1
                         if busyloop > 5:
-                            if ev is done_event and busyloop > 20 and ev.isSet():
-                                ev.clear()
+                            if ev is done_event:
+                                if busyloop > 20 and ev.isSet():
+                                    ev.clear()
                             else:
                                 sleep(0.05)
                 else:
