@@ -48,7 +48,7 @@ class BenchBgDecorator(BenchSimpleDecorator):
 
     @staticmethod
     def callmode(func):
-        return func.async()
+        return func.bg()
 
 
 class BenchBgLazyDecorator(BenchSimpleDecorator):
@@ -57,7 +57,7 @@ class BenchBgLazyDecorator(BenchSimpleDecorator):
 
     @staticmethod
     def callmode(func):
-        func = func.async()
+        func = func.bg()
         def fcall(*p, **kw):
             try:
                 return func(*p, **kw)
