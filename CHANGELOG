@@ -7,6 +7,10 @@ All notable changes to this project will be documented here.
 - Lock pools and deadlock detection from chorde.serialize have
   been removed (no longer used)
 
+### Bugfixes
+- Fix alternative slot search in SharedCounter when the autoselected
+  slot is occupied.
+
 ## [0.8.4] - 2021-09-29
 ### Bugfixes
 - Apply TTL namespace variation on all code paths.
