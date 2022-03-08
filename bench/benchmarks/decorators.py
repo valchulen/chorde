@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
 
-from random import random, choice
+from random import random
 
 from .base import Benchmark
 from chorde import decorators
