@@ -82,7 +82,7 @@ class SlowSlot(object):
 
     @value.setter
     def value(self, val):
-        self._raw_mmap[self._raw_slice] = bytes(buffer(self._ctype(val or 0)))
+        self._raw_mmap[self._raw_slice] = bytes(self._ctype(val or 0))
 
     @property
     def flat(self):
@@ -160,6 +160,7 @@ class SharedCounterGenericBase(object):
                     nslot = (slot+offs) % slots
                     if not bitmap[nslot]:
                         slot = nslot
+                        break
                 else:
                     raise AssertionError("All slots occupied")
 
@@ -235,12 +236,12 @@ class SharedCounterGenericBase(object):
                 try:
                     # Fill with zeros
                     size = cls.size(slots)
-                    zeros = '\x00' * 1024
+                    zeros = b'\x00' * 1024
                     while size >= 1024:
                         os.write(tmpfileno, zeros)
                         size -= 1024
                     if size:
-                        os.write(tmpfileno, buffer(zeros,0,size))
+                        os.write(tmpfileno, zeros[:size])
                     # WHYNOT zeros = '\x00' * size; os.write(tmfileno, zeros)
 
                     # And swap
@@ -352,15 +353,26 @@ class SharedCounterGenericBase(object):
         if bitmap is not None:
             # Release slot
             self.bitmap_slot.value = False
+        del bitmap
 
-        # Release possibly fd-holding resources
+        # Flush any pending writes
         basemap = getattr(self, 'basemap', None)
         if basemap is not None:
             basemap.flush()
-            basemap.close()
-        self.bitmap = None
+
+        # Release possibly fd-holding resources
         self.slots = None
+        self.slot = None
         self.basemap = None
+        self.bitmap = None
+        self.bitmap_slot = None
+        self.timestamp = None
+        self.cached_timestamp = None
+        self.cached_value = None
+        self.myslot = None
+
+        if basemap is not None:
+            basemap.close()
 
     def __del__(self):
         self.close()
