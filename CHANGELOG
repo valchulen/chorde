@@ -8,6 +8,7 @@ All notable changes to this project will be documented here.
   been removed (no longer used)
 
 ### Bugfixes
+- Fixed high latench (50ms) of missing `async()()` calls
 - Fix alternative slot search in SharedCounter when the autoselected
   slot is occupied.
 
