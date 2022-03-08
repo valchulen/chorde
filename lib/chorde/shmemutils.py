@@ -160,6 +160,7 @@ class SharedCounterGenericBase(object):
                     nslot = (slot+offs) % slots
                     if not bitmap[nslot]:
                         slot = nslot
+                        break
                 else:
                     raise AssertionError, "All slots occupied"
 
