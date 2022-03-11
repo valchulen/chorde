@@ -44,6 +44,9 @@ try:
 except ImportError:
     skipIfNoLZ4 = unittest.skip("lz4 support not built in")
 
+if os.environ.get('SKIP_MEMCACHE') == 'true':
+    skipIfNoMemcached = unittest.skip("Skipped by environment option")
+
 class K:
     pass
 
