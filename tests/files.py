@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import time
 import mmap
+from io import IOBase
 
 import os.path
 
@@ -52,12 +53,36 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
 
     def testMmap(self):
         client = self.client
-        bigval = "12" * chorde.clients.files.MMAP_THRESHOLD
+        bigval = b"12" * chorde.clients.files.MMAP_THRESHOLD
         client.put("somekey", bigval, 86400)
         cachedval = client.get("somekey")
 
-        self.assertEqual(buffer(bigval), buffer(cachedval))
+        self.assertEqual(bytearray(bigval), bytearray(cachedval))
         self.assertIsInstance(cachedval, mmap.mmap)
+
+    def testBytes(self):
+        client = self.client
+        byteval = b"1234"
+        client.put("somekey", byteval, 86400)
+        cachedval = client.get("somekey")
+
+        self.assertEqual(byteval, cachedval)
+
+    def testUnicode(self):
+        client = self.client
+        strval = "Ït`s unicód€!"
+        client.put("somekey", strval, 86400)
+        cachedval = client.get("somekey")
+
+        self.assertEqual(strval, cachedval)
+
+    def testUnicodeKey(self):
+        client = self.client
+        strval = "Ït`s unicód€! It's bæck"
+        client.put("som€key", strval, 86400)
+        cachedval = client.get("som€key")
+
+        self.assertEqual(strval, cachedval)
 
     def testFile(self):
         client = self.client
@@ -78,7 +103,7 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
         del tmp
 
         tmp = client.get("weefile")
-        self.assertIsInstance(tmp, file)
+        self.assertIsInstance(tmp, IOBase)
         self.assertTrue(os.path.exists(tmp.name))
         self.assertEqual(tmp.read(), rnd)
         tmp.close()
@@ -100,7 +125,7 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
         del tmp
 
         tmp = client.get("weefile")
-        self.assertIsInstance(tmp, file)
+        self.assertIsInstance(tmp, IOBase)
         self.assertTrue(os.path.exists(tmp.name))
         self.assertEqual(tmp.read(), rnd)
         tmp.close()
@@ -108,11 +133,11 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
 
     def testLRU(self):
         client = self.client
-        bigval = "12" * chorde.clients.files.MMAP_THRESHOLD
+        bigval = b"12" * chorde.clients.files.MMAP_THRESHOLD
         maxentries = SIZE // len(bigval)
 
         for i in range(maxentries+1):
-            client.put(i, bigval+str(i), 86400)
+            client.put(i, bigval+bytes(i), 86400)
 
             time.sleep(TIME_RESOLUTION*2)
 
@@ -120,17 +145,17 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
                 self.assertTrue(client.contains(i-1))
             self.assertTrue(client.contains(i))
             cachedval = client.get(i)
-            self.assertTrue(buffer(cachedval, 0, len(bigval)) == buffer(bigval))
-            self.assertTrue(buffer(cachedval, len(bigval)) == buffer(str(i)))
+            self.assertTrue(bytearray(cachedval)[:len(bigval)] == bytearray(bigval))
+            self.assertTrue(bytearray(cachedval)[len(bigval):] == bytearray(bytes(i)))
             del cachedval
         self.assertFalse(client.contains(0))
-        self.assertTrue(client.contains(maxentries/2))
+        self.assertTrue(client.contains(maxentries//2))
 
     def testLimit(self):
         # Gotta be lenient on usage tests, since there's unknown overhead
         client = self.client
         cap = client.capacity
-        bigval = "12" * chorde.clients.files.MMAP_THRESHOLD
+        bigval = b"12" * chorde.clients.files.MMAP_THRESHOLD
         maxentries = SIZE // len(bigval)
 
         for i in range(maxentries*2):
