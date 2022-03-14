@@ -8,16 +8,28 @@ import cython
 from chorde.clients import base
 
 cdef object CacheMissError, CancelledError, TimeoutError
-cdef object CacheMissErrorCached, CancelledErrorCached, TimeoutErrorCached
 cdef object wref, functools_partial
 CacheMissError = base.CacheMissError
 CancelledError = base.CancelledError
 TimeoutError = base.TimeoutError
-CacheMissErrorCached = CacheMissError()
-CancelledErrorCached = CancelledError()
-TimeoutErrorCached = TimeoutError()
 wref = weakref.ref
 functools_partial = functools.partial
+
+cdef bint strip_tracebacks
+strip_tracebacks = False
+
+
+def set_strip_tracebacks(bint strip):
+    """ Sets traceback stripping behavior for async futures
+
+    Async tracebacks have a tendency to cause memory leaks. Stripping them in
+    production deployments is a good idea to avoid them, but keep them around
+    during testing or non-production environments to get better diagnostic
+    information and be able to detect those leaks.
+    """
+    global strip_tracebacks
+    strip_tracebacks = strip
+
 
 @cython.freelist(100)
 cdef class ExceptionWrapper:
@@ -27,10 +39,34 @@ cdef class ExceptionWrapper:
     def __cinit__(self, value):
         self.value = value
 
-    def reraise(self):
+    @cython.ccall
+    @cython.locals(strip=cython.bint)
+    def reraise(self, strip=True):
         exc = self.value
-        del self.value
-        raise exc[0], exc[1], exc[2]
+        if strip:
+            del self.value
+        try:
+            exc_typ, exc_obj, exc_tb = exc
+        finally:
+            # Don't leave references to the exc/tb in the frame
+            del exc
+        try:
+            if not strip:
+                raise exc_typ(*exc_obj.args) from exc_obj
+            elif exc_tb is not None:
+                if exc_obj is not None:
+                    if getattr(exc_obj, '__traceback__') is not exc_tb:
+                        exc_obj = exc_obj.with_traceback(exc_tb)
+                    raise exc_obj
+                else:
+                    raise exc_typ().with_traceback(exc_tb)
+            elif exc_obj is not None:
+                raise exc_obj
+            else:
+                raise exc_typ()
+        finally:
+            # Don't leave references to the exc/tb in the frame
+            del exc_typ, exc_obj, exc_tb
 
 @cython.freelist(100)
 cdef class WeakCallback:
@@ -128,7 +164,7 @@ cdef class Future:
         thread is the only one owning references to this future, and much faster.
         """
         cdef object old, cbs, _cb
-        
+
         if self._value is not NONE:
             # No setting twice
             return
@@ -156,7 +192,7 @@ cdef class Future:
                     else:
                         error = logging.error
                     error("Error in async callback", exc_info = True)
-    
+
     cpdef set(self, value):
         """
         Set the future's result as either a value, an exception wrappedn in ExceptionWrapper, or
@@ -194,7 +230,7 @@ cdef class Future:
     def _exc_nothreads(self, exc_info):
         """
         Shorthand for setting an exception result from an exc_info tuple
-        as returned by sys.exc_info(), without thread safety. 
+        as returned by sys.exc_info(), without thread safety.
         See _set_nothreads
         """
         self._set_nothreads(ExceptionWrapper.__new__(ExceptionWrapper, exc_info))
@@ -203,11 +239,13 @@ cdef class Future:
         """
         Set the Future's exception object.
         """
+        if strip_tracebacks and getattr(exception, '__traceback__', None) is not None:
+            exception = exception.with_traceback(None)
         self.exc((type(exception),exception,None))
 
     def on_value(self, callback):
         """
-        When and if the operation completes without exception, the callback 
+        When and if the operation completes without exception, the callback
         will be invoked with its result.
         """
         return self._on_stuff(ValueCallback.__new__(ValueCallback, callback))
@@ -260,7 +298,7 @@ cdef class Future:
         """
         return self.on_any(
             defer.set_result,
-            functools_partial(defer.set_exception, CacheMissErrorCached),
+            functools_partial(defer.set_exception, CacheMissError()),
             DeferExceptionCallback.__new__(DeferExceptionCallback, defer)
         )
 
@@ -349,8 +387,8 @@ cdef class Future:
             self._running = 0
 
             # Notify waiters and callbacks
-            self.set_exception(CancelledErrorCached) 
-            
+            self.set_exception(CancelledError())
+
             return False
         else:
             self._running = 1
@@ -364,21 +402,24 @@ cdef class Future:
         """
         cdef object value
         cdef ExceptionWrapper exc_value
-        
+
         if self._value is not NONE:
             value = self._value
             if isinstance(value, ExceptionWrapper):
                 exc_value = <ExceptionWrapper>value
-                raise exc_value.value[0], exc_value.value[1], exc_value.value[2]
+                try:
+                    exc_value.reraise(False)
+                finally:
+                    del exc_value, value
             elif value is CacheMissError:
-                raise CacheMissErrorCached
+                raise CacheMissError()
             else:
                 return value
         elif self._cancelled:
-            raise CancelledErrorCached
+            raise CancelledError()
         else:
             if timeout is not None and timeout == 0:
-                raise TimeoutErrorCached
+                raise TimeoutError()
             else:
                 # Wait for it
                 if self._done_event is None:
@@ -386,9 +427,9 @@ cdef class Future:
                 if not norecurse and (self._value is not NONE or self._done_event.wait(timeout)):
                     return self.c_result(0, 1)
                 elif self._cancelled:
-                    raise CancelledErrorCached
+                    raise CancelledError()
                 else:
-                    raise TimeoutErrorCached
+                    raise TimeoutError()
 
     def result(self, timeout=None, norecurse=False):
         """
@@ -402,12 +443,12 @@ cdef class Future:
         """
         If the operation resulted in an exception, return the exception object.
         Otherwise, return None. If the operation has been cancelled, raises CancelledError,
-        and if timeout is specified and not None, and the specified time elapses without 
+        and if timeout is specified and not None, and the specified time elapses without
         a result available, raises TimeoutError.
         """
         cdef object value
         cdef ExceptionWrapper exc_value
-        
+
         if self._value is not NONE:
             value = self._value
             if isinstance(value, ExceptionWrapper):
@@ -418,13 +459,16 @@ cdef class Future:
             else:
                 return None
         elif self._cancelled:
-            raise CancelledErrorCached
+            raise CancelledError()
         else:
             try:
                 self.c_result(timeout, 0)
                 return None
             except CancelledError:
                 raise
-            except Exception,e:
-                return e
-        
+            except Exception as e:
+                try:
+                    return e
+                finally:
+                    del e
+
