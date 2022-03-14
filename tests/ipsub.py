@@ -4,6 +4,7 @@ import multiprocessing
 import time
 import unittest
 import logging
+import os
 
 skipIfUnsupported = lambda c : c
 
@@ -15,6 +16,9 @@ try:
         skipIfUnsupported = unittest.skip("No messaging support built in")
 except ImportError:
     skipIfUnsupported = unittest.skip("No ZMQ available")
+
+if os.environ.get('SKIP_IPSUB') == 'true':
+    skipIfUnsupported = unittest.skip("Skipped by environment option")
 
 @skipIfUnsupported
 class IPSubTest(unittest.TestCase):
