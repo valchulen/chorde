@@ -14,6 +14,7 @@ All notable changes to this project will be documented here.
   Python 3 compatible
 - Renamed clients.async module to clients.asyncache
   (to make it Python 3 compatible)
+- Key/value picklers now **must** return bytes
 
 ## [0.9.0] - Unreleased
 ### Removed
@@ -21,7 +22,7 @@ All notable changes to this project will be documented here.
   been removed (no longer used)
 
 ### Bugfixes
-- Fixed high latench (50ms) of missing `async()()` calls
+- Fixed high latency (50ms) of missing `async()()` calls
 - Fix alternative slot search in SharedCounter when the autoselected
   slot is occupied.
 
