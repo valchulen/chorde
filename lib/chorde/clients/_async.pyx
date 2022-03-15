@@ -40,8 +40,7 @@ cdef class ExceptionWrapper:
         self.value = value
 
     @cython.ccall
-    @cython.locals(strip=cython.bint)
-    def reraise(self, strip=True):
+    def reraise(self, bint strip=True):
         exc = self.value
         if strip:
             del self.value
