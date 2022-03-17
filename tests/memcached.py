@@ -57,7 +57,7 @@ class MemcacheStoreTest(TestCase):
         from chorde.clients.memcached import MemcachedClient
         import threading
         client = MemcachedClient([],
-            checksum_key = "test",
+            checksum_key = b"test",
             encoding_cache = threading.local() )
         self.assertRaises(CacheMissError, client.get, 4)
 
@@ -65,7 +65,7 @@ class MemcacheStoreTest(TestCase):
         from chorde.clients.memcached import MemcachedClient
         import threading
         client = MemcachedClient([],
-            checksum_key = "test",
+            checksum_key = b"test",
             encoding_cache = threading.local(),
             strict_no_servers = True)
         self.assertRaises(NoServersError, client.get, 4)
@@ -74,13 +74,13 @@ class MemcacheStoreTest(TestCase):
         from chorde.clients.memcached import MemcachedClient
         import threading
         c1 = MemcachedClient(["127.0.0.1:11211","127.0.0.2:11211","127.0.0.3:11211"],
-            checksum_key = "test",
+            checksum_key = b"test",
             encoding_cache = threading.local() )
         c2 = MemcachedClient(["127.0.0.1:11211","127.0.0.3:11211"],
-            checksum_key = "test",
+            checksum_key = b"test",
             encoding_cache = threading.local() )
         c3 = MemcachedClient(["127.0.0.3:11211"],
-            checksum_key = "test",
+            checksum_key = b"test",
             encoding_cache = threading.local() )
 
         # mock connects
@@ -108,7 +108,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         from chorde.clients.memcached import MemcachedClient
         import threading
         rv = MemcachedClient([DEFAULT_CLIENT_ADDR],
-            checksum_key = "test",
+            checksum_key = b"test",
             encoding_cache = threading.local(),
             **kwargs )
         rv.client.flush_all()
@@ -144,7 +144,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def testLongStringKey(self):
         client = self.client
         k = "abracadabra"
-        k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
+        k = k * (getattr(self.client, 'max_backing_key_length', 2048) // len(k) + 1)
         client.put(k, "patadecabra2", 10)
         self.assertEqual(client.get(k), "patadecabra2")
 
@@ -157,7 +157,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def testLongUTFStringKey(self):
         client = self.client
         k = u"ábracadíbra".encode("utf8")
-        k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
+        k = k * (getattr(self.client, 'max_backing_key_length', 2048) // len(k) + 1)
         client.put(k, "patadecabra2", 10)
         self.assertEqual(client.get(k), "patadecabra2")
 
@@ -170,7 +170,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def testLongUnicodeStringKey(self):
         client = self.client
         k = u"ábracadíbra"
-        k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
+        k = k * (getattr(self.client, 'max_backing_key_length', 2048) // len(k) + 1)
         client.put(k, "patadecabra2", 10)
         self.assertEqual(client.get(k), "patadecabra2")
 
@@ -183,7 +183,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def testSpacedLongStringKey(self):
         client = self.client
         k = "abra cadabra"
-        k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
+        k = k * (getattr(self.client, 'max_backing_key_length', 2048) // len(k) + 1)
         client.put(k, "patadecabra4", 10)
         self.assertEqual(client.get(k), "patadecabra4")
 
@@ -211,11 +211,11 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
             short_key,exact = client.shorten_key("bigkey2")
             client.put("bigkey2", bigval, 60)
             time.sleep(1) # let it write
-            old_index_page = client.client.get(short_key+"|0")
+            old_index_page = client.client.get(short_key+b"|0")
             old_page_prefix = client._page_prefix(old_index_page, short_key)
-            client.put("bigkey2", bigval + "ENDMARK", 60)
-            self.assertIsNone(client.client.get(old_page_prefix+"1"), "Not expired") # should have expired
-            self.assertEqual(client.get("bigkey2"), bigval + "ENDMARK")
+            client.put("bigkey2", bigval + b"ENDMARK", 60)
+            self.assertIsNone(client.client.get(old_page_prefix+b"1"), "Not expired") # should have expired
+            self.assertEqual(client.get("bigkey2"), bigval + b"ENDMARK")
 
     def testRenewBigValue(self):
         bigval = self.BIG_VALUE
@@ -261,7 +261,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         client = self.client
         client.put("bigkey1", bigval, 60)
         shorten_key, _ = client.shorten_key('bigkey1')
-        client.client.delete(shorten_key + '|0')
+        client.client.delete(shorten_key + b'|0')
 
         with self.assertRaises(CacheMissError):
             client.get("bigkey1")
@@ -271,9 +271,9 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         client = self.client
         client.put("bigkey1", bigval, 60)
         shorten_key, _ = client.shorten_key('bigkey1')
-        page = client.client.get(shorten_key + '|0')
+        page = client.client.get(shorten_key + b'|0')
         page_prefix = client._page_prefix(page, shorten_key)
-        client.client.delete(page_prefix + '1')
+        client.client.delete(page_prefix + b'1')
 
         with self.assertRaises(CacheMissError):
             client.get("bigkey1")
@@ -288,7 +288,7 @@ class ElastiCacheTest(MemcacheTest):
         from chorde.clients.elasticache import ElastiCacheClient
         import threading
         rv = ElastiCacheClient([DEFAULT_CLIENT_ADDR],
-            checksum_key = "test",
+            checksum_key = b"test",
             encoding_cache = threading.local(),
             **kwargs)
         rv.client.flush_all()
@@ -310,7 +310,7 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
         decorated_key = client.key_decorator('bigkey1')
         shorten_key, _ = client.client.shorten_key(decorated_key)
 
-        client.client.client.delete(shorten_key + '|0')
+        client.client.client.delete(shorten_key + b'|0')
 
         with self.assertRaises(CacheMissError):
             client.get("bigkey1")
@@ -322,10 +322,10 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
         client.put("bigkey1", bigval, 60)
         decorated_key = client.key_decorator('bigkey1')
         shorten_key, _ = client.client.shorten_key(decorated_key)
-        page = client.client.client.get(shorten_key + '|0')
+        page = client.client.client.get(shorten_key + b'|0')
         page_prefix = client.client._page_prefix(page, shorten_key)
 
-        client.client.client.delete(page_prefix + '1')
+        client.client.client.delete(page_prefix + b'1')
 
         with self.assertRaises(CacheMissError):
             client.get("bigkey1")
@@ -339,9 +339,9 @@ class UncompressedMemcacheTest(MemcacheTest):
 @skipIfNoMemcached
 class CustomPicklerMemcacheTest(MemcacheTest):
     def setUpClient(self):
-        import json
+        from chorde.clients.memcached import json_pickler
         return super(CustomPicklerMemcacheTest, self).setUpClient(
-            pickler = json)
+            pickler = json_pickler)
 
     def testObjectKey(self):
         # This should fail
@@ -376,11 +376,11 @@ class BuiltinNamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
         self.rclient = self.setUpClient()
         self.rclient.client.flush_all()
         self.bclient = MemcachedClient([DEFAULT_CLIENT_ADDR],
-            checksum_key = "test2",
+            checksum_key = b"test2",
             namespace = "testns1",
             encoding_cache = threading.local() )
         return MemcachedClient([DEFAULT_CLIENT_ADDR],
-            checksum_key = "test3",
+            checksum_key = b"test3",
             namespace = "testns2",
             encoding_cache = threading.local() )
 
