@@ -62,10 +62,34 @@ except ImportError:
         def __init__(self, exc):
             self.exc = exc
 
-        def reraise(self):
-            exc = self.exc
-            del self.exc
-            raise exc[0](exc[1]).with_traceback(exc[2])
+        def reraise(self, strip=True):
+            exc = self.value
+            if strip:
+                del self.value
+            try:
+                exc_typ, exc_obj, exc_tb = exc
+            finally:
+                # Don't leave references to the exc/tb in the frame
+                del exc
+            try:
+                if not strip:
+                    # Can't raise the same exception object multiple times,
+                    # tracebacks accumulate and leak. Use proper chaining.
+                    raise exc_typ(*exc_obj.args) from exc_obj
+                elif exc_tb is not None:
+                    if exc_obj is not None:
+                        if getattr(exc_obj, '__traceback__') is not exc_tb:
+                            exc_obj = exc_obj.with_traceback(exc_tb)
+                        raise exc_obj
+                    else:
+                        raise exc_typ().with_traceback(exc_tb)
+                elif exc_obj is not None:
+                    raise exc_obj
+                else:
+                    raise exc_typ()
+            finally:
+                # Don't leave references to the exc/tb in the frame
+                del exc_typ, exc_obj, exc_tb
 
 class WaitIter:
     def __init__(self, event, timeout = None):
