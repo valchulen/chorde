@@ -47,24 +47,69 @@ except ImportError:
     json = None  # lint:ok
 JSON_SEPARATORS = (',',':')
 
+class BasePickler(object):
+    """ Serialization/Deserialization strategy encapsulation
+
+    A pickler, in contrast with how Python's picklers work, just encapsulates
+    3 methods to serialize and deserialize: dump, dumps, and load.
+
+    Pickler objects should contain no state as they will be long lived,
+    but they may contain immutable configuration.
+    """
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+    def dumps(self, obj):
+        """ Serialize the object obj into a byte string """
+        raise NotImplementedError("%s class must implement dumps", type(self).__name__)
+
+    def loads(self, s):
+        """ Read an object from the byte string s and return it """
+        raise NotImplementedError("%s class must implement loads", type(self).__name__)
+
+    def dump(self, obj, f):
+        """ Serialize the object obj into the binary file-like object f """
+        f.write(self.dumps(obj))
+
+class KeyPickler(BasePickler):
+    """ Serialization/Deserialization strategy meant for keys
+
+    Key serialization is limited to never returning control characters in their
+    serialized output, because they're forbidden for memcache keys.
+    """
+
+class ValuePickler(BasePickler):
+    """ Serialization/Deserialization strategy meant for values
+
+    Value serialization must handle large dump calls efficiently and have
+    otherwise no constraints.
+    """
+
 try:
     try:
         import ujson as cjson_
     except ImportError:
         import cjson as cjson_  # lint:ok
 
-    class cjson_pickler:  # lint:ok
-        loads = cjson_.decode
-        dumps = staticmethod(lambda x, protocol=None, separators=None, encode = cjson_.encode : encode(x))
+    class JSONValuePickler(ValuePickler):  # lint:ok
+        def loads(self, s, loads=cjson_.decode):
+            return loads(s)
+
+        def dumps(self, obj, dumps=cjson_.encode):
+            return dumps(obj)
+
 except ImportError:
     try:
         import simplejson as cjson_  # lint:ok
     except ImportError:
         import json as cjson_  # lint:ok
 
-    class cjson_pickler:  # lint:ok
-        loads = cjson_.loads
-        dumps = staticmethod(lambda x, protocol=None, separators=None, encode = cjson_.dumps : encode(x).encode('ascii'))
+    class JSONValuePickler(ValuePickler):  # lint:ok
+        def loads(self, s, loads=cjson_.loads):
+            return loads(s)
+
+        def dumps(self, obj, dumps=cjson_.dumps):
+            return dumps(obj).encode('ascii')
 
 class JSONTextEncoder(json.JSONEncoder):
     encoding = 'utf8'
@@ -78,16 +123,28 @@ class JSONTextEncoder(json.JSONEncoder):
 class JSONASCIIEncoder(JSONTextEncoder):
     encoding = 'ascii'
 
-class json_pickler:
-    loads = staticmethod(json.loads)
+class JSONKeyPickler(KeyPickler):
+    text_encoder = JSONTextEncoder
 
-    @staticmethod
-    def dumps(x, protocol=None, *p, **kw):
-        return json.dumps(x, cls=JSONTextEncoder, *p, **kw).encode('ascii')
+    def loads(self, s, loads=json.loads):
+        return loads(s)
 
-    @staticmethod
-    def dump(x, fp, protocol=None, *p, **kw):
-        return json.dump(x, io.TextIOWrapper(fp, encoding='ascii'), cls=JSONTextEncoder, *p, **kw)
+    def dumps(self, obj, dumps=json.dumps):
+        return dumps(obj, cls=self.text_encoder, separators=JSON_SEPARATORS).encode('ascii')
+
+    def dump(self, obj, f):
+        return json.dump(obj, io.TextIOWrapper(f, encoding='ascii'), cls=self.text_encoder)
+
+class PickleValuePickler(ValuePickler):
+
+    def dumps(self, obj, dumps=pickle.dumps):
+        return dumps(obj, 3)
+
+    def dump(self, f, obj, dump=pickle.dump):
+        return dump(f, obj, 3)
+
+    def loads(self, s, loads=pickle.loads):
+        return loads(s)
 
 class ZlibFile:
     def __init__(self, fileobj, level = 9):
@@ -1003,7 +1060,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         self.version_prefix = b'3,'
 
-        self.pickler = pickler or pickle
+        self.pickler = pickler or PickleValuePickler()
         self.key_pickler = key_pickler or self.pickler
 
         # make room for the hash prefix
@@ -1082,7 +1139,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 zpfx = self.compress_prefix
             except:
                 # Try pickling
-                key = b"P#"+b64encode(self.key_pickler.dumps(key,3))
+                key = b"P#"+b64encode(self.key_pickler.dumps(key))
                 zpfx = self.compress_prefix
         elif isinstance(key, unicode):
             key = b"U#" + key.encode("utf-8")
@@ -1159,10 +1216,10 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             sio = BytesIO()
             if self.compress:
                 with self.compress_file_class(sio, 1) as zio:
-                    self.pickler.dump((key,value),zio,3)
+                    self.pickler.dump((key,value),zio)
                 del zio
             else:
-                self.pickler.dump((key,value),sio,3)
+                self.pickler.dump((key,value),sio)
             encoded = sio.getvalue()
             sio.close()
             del sio
@@ -1687,20 +1744,15 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
     requires no checksum key and is thus faster.
 
     Params:
-        key_pickler: specify a json-like implementation. It must support loads
-            and dumps, and dumps must take a "separators" keyword argument
-            just as stdlib json.dumps does, but it doesn't need to honour it
-            aside from not generating control chars (spaces).
+        key_pickler: specify a KeyPickler implementation. It must support loads
+            and dumps. It must not generating control chars (spaces).
             You can use cjson for instance, but you'll have to wrap it as it
             doesn't support separators and it will generate spaces.
             Do not pass Pickle or its other implementations, as it will work,
             but the pickle protocol isn't secure. Use MemcachedClient
             if you need the features of pickling.
-        pickler: specify a json-like implementation. Like key_pickler, except
-            it can completely dishonor separators without major issues, as
-            spaces and control chars will be accepted for values. If not
-            specified, key_pickler will be used. It must accept a protocol
-            argument after the object just like pickle.dump does.
+        pickler: specify a ValuePickler implementation. Like key_pickler, except
+            it can generate spaces and control chars without major issues.
 
         failfast_time, failfast_size: (optional) If given, a small in-process
             cache of misses will be kept in order to avoid repeated queries
@@ -1734,8 +1786,8 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
 
         self.max_backing_key_length = max_backing_key_length
         self.max_backing_value_length = max_backing_value_length - 32 # 32-bytes for various overheads
-        self.key_pickler = key_pickler or json_pickler
-        self.pickler = pickler or key_pickler or cjson_pickler
+        self.key_pickler = key_pickler or JSONKeyPickler()
+        self.pickler = pickler or key_pickler or JSONValuePickler()
         self.namespace = namespace
 
         if self.namespace:
@@ -1901,13 +1953,13 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
             workev.wait(1)
 
     def encode_key(self, key):
-        return self.key_pickler.dumps((self.namespace, key), separators = JSON_SEPARATORS)
+        return self.key_pickler.dumps((self.namespace, key))
 
     def encode(self, key, ttl, value):
         # Always pickle & compress, since we'll always unpickle.
         # Note: compress with very little effort (level=1),
         #   otherwise it's too expensive and not worth it
-        return self.pickler.dumps((value, ttl), separators = JSON_SEPARATORS)
+        return self.pickler.dumps((value, ttl))
 
     def decode(self, value):
         value, ttl = self.pickler.loads(value)

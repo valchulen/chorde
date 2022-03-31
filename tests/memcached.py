@@ -339,9 +339,9 @@ class UncompressedMemcacheTest(MemcacheTest):
 @skipIfNoMemcached
 class CustomPicklerMemcacheTest(MemcacheTest):
     def setUpClient(self):
-        from chorde.clients.memcached import json_pickler
+        from chorde.clients.memcached import JSONKeyPickler
         return super(CustomPicklerMemcacheTest, self).setUpClient(
-            pickler = json_pickler)
+            pickler = JSONKeyPickler())
 
     def testObjectKey(self):
         # This should fail
