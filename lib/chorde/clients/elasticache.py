@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import memcache
 import socket
+import six
 
 from . import memcached
 
@@ -20,7 +21,7 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
         if not cluster_description:
             cluster_description = c.get_config("cluster")
         if cluster_description:
-            cluster_description = cluster_description.split()
+            cluster_description = cluster_description.decode("utf8").split()
         if not cluster_description or len(cluster_description) <= 1:
             # Default, go directly to the configuration entry point
             return [entrypoint] if fallback is None else fallback
@@ -32,6 +33,8 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
             ]
 
     def get_config(self, key):
+        if isinstance(key, six.text_type):
+            key = key.encode("utf8")
         self.check_key(key)
         server, key = self._get_server(key)
         if not server:
@@ -41,7 +44,7 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
             self._statlog("config get")
 
             try:
-                server.send_cmd("config get %s" % (key,))
+                server.send_cmd(b"config get %s" % (key,))
                 rkey = flags = rlen = None
 
                 rkey, flags, rlen, = self._expectconfigvalue(server, raise_exception=True)
@@ -51,7 +54,7 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
                 try:
                     value = self._recv_value(server, flags, rlen)
                 finally:
-                    server.expect("END", raise_exception=True)
+                    server.expect(b"END", raise_exception=True)
             except (memcache._Error, socket.error) as msg:
                 if isinstance(msg, tuple): msg = msg[1]
                 server.mark_dead(msg)
@@ -75,7 +78,7 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
         if not line:
             line = server.readline(raise_exception)
 
-        if line and line[:6] == "CONFIG":
+        if line and line[:6] == b"CONFIG":
             resp, rkey, flags, len = line.split()
             flags = int(flags)
             rlen = int(len)
