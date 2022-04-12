@@ -33,9 +33,9 @@ __ALL__ = (
     'BaseIPSub',
 )
 
-FRAME_HEARTBEAT = "__HeyDude__"
-FRAME_UPDATE_OK = "OK"
-FRAME_UPDATE_DROPPED = "DROP"
+FRAME_HEARTBEAT = b"__HeyDude__"
+FRAME_UPDATE_OK = b"OK"
+FRAME_UPDATE_DROPPED = b"DROP"
 FRAME_VALID_UPDATE_REPLIES = (FRAME_UPDATE_OK, FRAME_UPDATE_DROPPED)
 
 # EVENT KEY                         message payload format
@@ -65,8 +65,8 @@ EVENT_NAMES = {
 
 IDENTITY_EVENTS = (EVENT_INCOMING_UPDATE,)
 
-FRAME_UPDATE_OK = "OK"
-FRAME_UPDATE_DROPPED = "DROP"
+FRAME_UPDATE_OK = b"OK"
+FRAME_UPDATE_DROPPED = b"DROP"
 FRAME_VALID_UPDATE_REPLIES = (FRAME_UPDATE_OK, FRAME_UPDATE_DROPPED)
 
 EVENT_FOR_REPLY = {
@@ -80,21 +80,21 @@ IDLE_PERIOD = 0.5
 TIC_PERIOD = 1.0
 
 ENCODINGS = {
-    'json' : lambda x : json.dumps(x, separators=(',',':')),
-    'bytes' : lambda x : x,
-    'utf8' : lambda x : x.encode('utf8') if isinstance(x, unicode) else x,
+    b'json' : lambda x : json.dumps(x, separators=(',',':')).encode("ascii"),
+    b'bytes' : lambda x : x,
+    b'utf8' : lambda x : x.encode('utf8') if isinstance(x, unicode) else x,
 }
 
 DECODINGS = {
-    'json' : json.loads,
-    'bytes' : lambda x : x,
-    'utf8' : lambda x : x.decode('utf8'),
+    b'json' : json.loads,
+    b'bytes' : lambda x : x,
+    b'utf8' : lambda x : x.decode('utf8'),
 }
 
 STREAMDECODINGS = {
-    'json' : json.load,
-    'bytes' : lambda x : x.read(),
-    'utf8' : lambda x : x.read().decode('utf8'),
+    b'json' : json.load,
+    b'bytes' : lambda x : x.read(),
+    b'utf8' : lambda x : x.read().decode('utf8'),
 }
 
 class BrokerReply(object):
@@ -145,7 +145,7 @@ class BaseIPSub(object):
         """
         try:
             self.last_tic = time.time() - TIC_PERIOD
-            self._pushsocket().send("tic")
+            self._pushsocket().send(b"tic")
         except zmq.ZMQError:
             # Shit happens, probably not connected
             pass
@@ -174,6 +174,8 @@ class BaseIPSub(object):
         once (per instance, not function name). They should return fast,
         or the I/O thread may stall.
         """
+        if isinstance(prefix, unicode):
+            prefix = prefix.encode("utf8")
         self.listeners[event][prefix].add(callback)
         if event in IDENTITY_EVENTS:
             # Those are external, so we must subscribe
@@ -196,6 +198,8 @@ class BaseIPSub(object):
         """
         Removes the specified listener. See listen.
         """
+        if isinstance(prefix, unicode):
+            prefix = prefix.encode("utf8")
         if prefix in self.listeners[event]:
             try:
                 self.listeners[event][prefix].remove(callback)
@@ -292,25 +296,25 @@ class BaseIPSub(object):
         """
         Publish the message using the 'json' encoding. See publish.
         """
-        self.publish(prefix, ['json',ENCODINGS['json'](payload)], timeout)
+        self.publish(prefix, [b'json',ENCODINGS[b'json'](payload)], timeout)
 
     def publish_pyobj(self, prefix, payload, timeout = None):
         """
         Publish the message using the 'pyobj' encoding. See publish.
         """
-        self.publish(prefix, ['pyobj',ENCODINGS['pyobj'](payload)], timeout)
+        self.publish(prefix, [b'pyobj',ENCODINGS[b'pyobj'](payload)], timeout)
 
     def publish_bytes(self, prefix, payload, timeout = None):
         """
         Publish the message using the 'bytes' encoding. See publish.
         """
-        self.publish(prefix, ['bytes',ENCODINGS['bytes'](payload)], timeout)
+        self.publish(prefix, [b'bytes',ENCODINGS[b'bytes'](payload)], timeout)
 
     def publish_unicode(self, prefix, payload, timeout = None):
         """
         Publish the message using the 'utf8' encoding. See publish.
         """
-        self.publish(prefix, ['utf8',ENCODINGS['utf8'](payload)], timeout)
+        self.publish(prefix, [b'utf8',ENCODINGS[b'utf8'](payload)], timeout)
 
     def publish_encode(self, prefix, encoding, payload, timeout = None):
         """
@@ -348,17 +352,17 @@ class BaseIPSub(object):
                 sPickles, they both work out-of-the-box.
         """
         def dumps(x):
-            io = io.StringIO()
-            p = pickler(io,2)
+            sio = io.BytesIO()
+            p = pickler(sio,2)
             p.dump(x)
-            return io.getvalue()
+            return sio.getvalue()
         def loads(x):
-            io = io.StringIO(x)
-            p = unpickler(io)
+            sio = io.BytesIO(x)
+            p = unpickler(sio)
             return p.load()
         def load(x):
             return unpickler(x).load()
-        BaseIPSub.register_encoding('pyobj', dumps, loads, load)
+        BaseIPSub.register_encoding(b'pyobj', dumps, loads, load)
 
     @staticmethod
     def register_default_pyobj():

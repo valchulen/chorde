@@ -119,7 +119,7 @@ class IPSubTest(unittest.TestCase):
         self.ipsub.publish_pyobj('msg3',None)
         self.ipsub.publish_pyobj('msg4',None)
         time.sleep(0.1)
-        self.assertEqual(updates, ['msg1','msg2','msg3','msg4'])
+        self.assertEqual(updates, [b'msg1',b'msg2',b'msg3',b'msg4'])
 
     def test_tic(self):
         updates = []
@@ -201,7 +201,7 @@ class IPSubTest(unittest.TestCase):
         time.sleep(0.1)
         self.assertEqual(len(updates), 1)
         for prefix, event, message in updates:
-            assert prefix.startswith('msg')
+            assert prefix.startswith(b'msg')
 
     def test_simple_pub_with_sub_prefix_r(self):
         updates = []
@@ -215,7 +215,7 @@ class IPSubTest(unittest.TestCase):
         time.sleep(0.1)
         self.assertEqual(len(updates), 1)
         for prefix, event, message in updates:
-            assert prefix.startswith('msg')
+            assert prefix.startswith(b'msg')
 
     def test_update_reply_payload(self):
         updates = []
@@ -233,8 +233,8 @@ class IPSubTest(unittest.TestCase):
         broker.listen_decode('msg', ipsub.EVENT_INCOMING_UPDATE, req)
         listener.listen('', ipsub.EVENT_UPDATE_ACKNOWLEDGED, rep)
         time.sleep(0.1)
-        listener.publish_pyobj('msg',"2")
-        listener.publish_pyobj('msg',"1")
+        listener.publish_pyobj('msg',b"2")
+        listener.publish_pyobj('msg',b"1")
         time.sleep(0.1)
         self.assertEqual(len(updates), 2)
         self.assertEqual(len(replies), 2)

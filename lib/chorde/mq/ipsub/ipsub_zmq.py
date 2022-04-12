@@ -15,7 +15,7 @@ __ALL__ = (
     'ZMQIPSub',
 )
 
-FRAME_HEARTBEAT = "__HeyDude__"
+FRAME_HEARTBEAT = b"__HeyDude__"
 
 BROKER_PUB_HWM = 1000
 BROKER_REP_HWM = 1000
@@ -191,7 +191,7 @@ class ZMQIPSub(BaseIPSub):
                                 if len_(pack) > 1:
                                     # ^ else Wakeup call, ignore
                                     put_nowait(pack)
-                                elif pack[0] == "tic":
+                                elif pack[0] == b"tic":
                                     owner._tic()
                                     tic_count = 100
                                 del pack
@@ -281,7 +281,7 @@ class ZMQIPSub(BaseIPSub):
                                 if len_(pack) > 1:
                                     # ^ else Wakeup call, ignore
                                     put_nowait(pack)
-                                elif pack[0] == "tic":
+                                elif pack[0] == b"tic":
                                     owner._tic()
                                     tic_count = 100
                                 del pack
@@ -574,6 +574,8 @@ class ZMQIPSub(BaseIPSub):
                 socket.send(FRAME_UPDATE_OK)
 
     def publish(self, prefix, payload, timeout = None, _ident = thread.get_ident):
+        if isinstance(prefix, unicode):
+            prefix = prefix.encode("utf8")
         parts = [ prefix, self.identity ] + payload
         if _ident() == self.fsm_thread_id:
             try:
@@ -595,7 +597,7 @@ class ZMQIPSub(BaseIPSub):
                 # Don't block, mute means awaken and not catching up anyway
                 push = self._pushsocket()
                 if push.poll(1, zmq.POLLOUT):
-                    push.send("")
+                    push.send(b"")
             except zmq.ZMQError:
                 # Shit happens, probably not connected
                 pass

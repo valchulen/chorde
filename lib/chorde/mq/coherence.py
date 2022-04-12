@@ -15,6 +15,7 @@ from . import ipsub
 
 from chorde.clients import CacheMissError
 from chorde.clients import inproc
+from chorde.clients.memcached import JSONASCIIEncoder
 
 P2P_HWM = 10
 INPROC_HWM = 1 # Just for wakeup signals
@@ -120,7 +121,7 @@ def _noop(*p, **kw):
 class CoherenceManager(object):
     def __init__(self, namespace, private, shared, ipsub_,
             p2p_pub_bindhosts = DEFAULT_P2P_BINDHOSTS,
-            encoding = 'pyobj',
+            encoding = b'pyobj',
             synchronous = False,
             quick_refresh = False,
             stable_hash = stable_hash,
@@ -178,6 +179,11 @@ class CoherenceManager(object):
             logger = logging.getLogger('chorde.mq.coherence')
         self.logger = logger
 
+        if isinstance(encoding, unicode):
+            encoding = encoding.encode("utf8")
+        if isinstance(namespace, unicode):
+            namespace = namespace.encode("utf8")
+
         self.private = private
         self.shared = shared
         self.ipsub = ipsub_
@@ -209,17 +215,17 @@ class CoherenceManager(object):
         self.p2p_pub_binds = [ipsub_.identity] # default contact is ipsub identity
 
         # Active broadcasts
-        self.delprefix = namespace + '|c|del|'
-        self.delackprefix = namespace + '|c|delack|'
+        self.delprefix = namespace + b'|c|del|'
+        self.delackprefix = namespace + b'|c|delack|'
 
         # Listener -> Broker requests
-        self.pendprefix = namespace + '|c|pend|'
-        self.pendqprefix = namespace + '|c|pendq|'
-        self.doneprefix = namespace + '|c|done|'
-        self.abortprefix = namespace + '|c|abrt|'
+        self.pendprefix = namespace + b'|c|pend|'
+        self.pendqprefix = namespace + b'|c|pendq|'
+        self.doneprefix = namespace + b'|c|done|'
+        self.abortprefix = namespace + b'|c|abrt|'
 
         # Broker -> Listener requests
-        self.listpendqprefix = namespace + '|c|listpendq|'
+        self.listpendqprefix = namespace + b'|c|listpendq|'
 
         # FSM state event lister handles, not registered yet
         self.encoded_pending = None
@@ -268,7 +274,7 @@ class CoherenceManager(object):
         waiter = self.waiter(self, txid) # subscribe before publishing, or we'll miss it
         if key is CLEAR:
             # Cannot use any other encoding for this
-            encoding = 'pyobj'
+            encoding = b'pyobj'
         else:
             encoding = self.encoding
         self.ipsub.publish_encode(self.delprefix, encoding, (txid, key), timeout = timeout)
@@ -568,7 +574,7 @@ class CoherenceManager(object):
                 rv = (rv, now, self.p2p_pub_binds)
         if lock and rv is None:
             self.group_pending[key] = (txid, now, contact)
-        return ipsub.BrokerReply(json.dumps(rv))
+        return ipsub.BrokerReply(json.dumps(rv, cls=JSONASCIIEncoder).encode("ascii"))
 
     @_weak_callback
     def _on_list_pending_query(self, prefix, event, payload):
@@ -730,7 +736,7 @@ class CoherenceManager(object):
                     contact_cell[:] = contact
                     signaler = ctx.socket(zmq.PAIR)
                     signaler.connect(waiter_id)
-                    signaler.send("")
+                    signaler.send(b"")
                     signaler.close()
                     return False
                 else:
