@@ -11,6 +11,8 @@ import weakref
 import zlib
 import socket
 import select
+import io
+from  binascii import hexlify
 from threading import Event, Thread, Lock
 from past.builtins import basestring, unicode
 from base64 import b64encode
@@ -24,8 +26,9 @@ STATS_CACHE_TIME = 1
 # memcache doesn't allow TTL bigger than 2038
 MAX_MEMCACHE_TTL = 0x7FFFFFFF - 1
 
+
 import pickle
-from io import StringIO
+from io import BytesIO
 
 try:
     from select import poll
@@ -35,28 +38,108 @@ except ImportError:
 from chorde import sPickle
 from chorde.dnsutils import ThreadLocalDynamicResolvingClient, AsyncThreadLocalDynamicResolvingClient
 
-try:
-    try:
-        import json
-    except ImportError:
-        import simplejson as json  # lint:ok
-except ImportError:
-    json = None  # lint:ok
+import json
+
 JSON_SEPARATORS = (',',':')
+
+class BasePickler(object):
+    """ Serialization/Deserialization strategy encapsulation
+
+    A pickler, in contrast with how Python's picklers work, just encapsulates
+    3 methods to serialize and deserialize: dump, dumps, and loads.
+
+    Pickler objects should contain no state as they will be long lived,
+    but they may contain immutable configuration.
+    """
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+    def dumps(self, obj):
+        """ Serialize the object obj into a byte string """
+        raise NotImplementedError("%s class must implement dumps", type(self).__name__)
+
+    def loads(self, s):
+        """ Read an object from the byte string s and return it """
+        raise NotImplementedError("%s class must implement loads", type(self).__name__)
+
+    def dump(self, obj, f):
+        """ Serialize the object obj into the binary file-like object f """
+        f.write(self.dumps(obj))
+
+class KeyPickler(BasePickler):
+    """ Serialization/Deserialization strategy meant for keys
+
+    Key serialization is limited to never returning control characters in their
+    serialized output, because they're forbidden for memcache keys.
+    """
+
+class ValuePickler(BasePickler):
+    """ Serialization/Deserialization strategy meant for values
+
+    Value serialization must handle large dump calls efficiently and have
+    otherwise no constraints.
+    """
 
 try:
     try:
         import ujson as cjson_
     except ImportError:
         import cjson as cjson_  # lint:ok
-    class cjson:  # lint:ok
-        loads = cjson_.decode
-        dumps = staticmethod(lambda x, separators=None, encode = cjson_.encode : encode(x))
+
+    class JSONValuePickler(ValuePickler):  # lint:ok
+        def loads(self, s, loads=cjson_.decode):
+            return loads(s)
+
+        def dumps(self, obj, dumps=cjson_.encode):
+            return dumps(obj)
+
 except ImportError:
     try:
-        import simplejson as cjson  # lint:ok
+        import simplejson as cjson_  # lint:ok
     except ImportError:
-        import json as cjson  # lint:ok
+        import json as cjson_  # lint:ok
+
+    class JSONValuePickler(ValuePickler):  # lint:ok
+        def loads(self, s, loads=cjson_.loads):
+            return loads(s)
+
+        def dumps(self, obj, dumps=cjson_.dumps):
+            return dumps(obj).encode('ascii')
+
+class JSONTextEncoder(json.JSONEncoder):
+    encoding = 'utf8'
+
+    def default(self, o):
+        if isinstance(o, bytes):
+            return o.decode(self.encoding)
+        else:
+            return super().default(o)
+
+class JSONASCIIEncoder(JSONTextEncoder):
+    encoding = 'ascii'
+
+class JSONKeyPickler(KeyPickler):
+    text_encoder = JSONTextEncoder
+
+    def loads(self, s, loads=json.loads):
+        return loads(s)
+
+    def dumps(self, obj, dumps=json.dumps):
+        return dumps(obj, cls=self.text_encoder, separators=JSON_SEPARATORS).encode('ascii')
+
+    def dump(self, obj, f):
+        return json.dump(obj, io.TextIOWrapper(f, encoding='ascii'), cls=self.text_encoder)
+
+class PickleValuePickler(ValuePickler):
+
+    def dumps(self, obj, dumps=pickle.dumps):
+        return dumps(obj, 3)
+
+    def dump(self, f, obj, dump=pickle.dump):
+        return dump(f, obj, 3)
+
+    def loads(self, s, loads=pickle.loads):
+        return loads(s)
 
 class ZlibFile:
     def __init__(self, fileobj, level = 9):
@@ -81,6 +164,15 @@ class ZlibFile:
             self.flush()
             self.closed = True
 
+    def readable(self):
+        return False
+
+    def writable(self):
+        return True
+
+    def seekable(self):
+        return False
+
     def __del__(self):
         self.close()
 
@@ -90,19 +182,24 @@ class ZlibFile:
     def __exit__(self, type, value, traceback):
         self.close()
 
-default_compression_pfx = zlib_compress_prefix = 'z'
+default_compression_pfx = zlib_compress_prefix = b'z'
 default_compress_file_class = zlib_compress_file_class = ZlibFile
 default_decompress_fn = zlib_decompress_fn = zlib.decompress
 
-stamp_prefix = "#vc#"
+stamp_prefix = b"#vc#"
 
 try:
-    import lz4
+    try:
+        # We're only using block compression, so this simplifies calls
+        import lz4.block as lz4
+    except ImportError:
+        # Older versions of lz4 had it right in the lz4 module
+        import lz4
 
     class LZ4File:
         def __init__(self, fileobj, level = 9):
             self.fileobj = fileobj
-            self.buffer = StringIO()
+            self.buffer = BytesIO()
             self.flushed = True
             self.closed = False
 
@@ -113,7 +210,7 @@ try:
         def flush(self):
             if not self.flushed:
                 self.fileobj.write(lz4.compress(self.buffer.getvalue()))
-                self.buffer.reset()
+                self.buffer.seek(0)
                 self.buffer.truncate()
                 self.flushed = True
             self.fileobj.flush()
@@ -122,6 +219,15 @@ try:
             if not self.closed:
                 self.flush()
                 self.closed = True
+
+        def readable(self):
+            return False
+
+        def writable(self):
+            return True
+
+        def seekable(self):
+            return False
 
         def __del__(self):
             self.close()
@@ -132,7 +238,7 @@ try:
         def __exit__(self, type, value, traceback):
             self.close()
 
-    lz4_compress_prefix = 'lz4'
+    lz4_compress_prefix = b'lz4'
     lz4_compress_file_class = LZ4File
     lz4_decompress_fn = lz4.decompress
 except:
@@ -223,7 +329,7 @@ class MemcachedStoreClient(memcache.Client):
         server_hash_function = self.server_hashes_function = self.server_hash_function = getattr(
             self, 'server_hash_function', memcache.serverHashFunction)
         server_hashes = sorted([
-            (server_hash_function("%s:%s:%s" % (server.ip, server.port, self.SERVER_HASH_SALT)), i)
+            (server_hash_function(("%s:%s:%s" % (server.ip, server.port, self.SERVER_HASH_SALT)).encode("ascii")), i)
             for i,server in enumerate(self.servers)
         ])
         if server_hashes:
@@ -241,6 +347,8 @@ class MemcachedStoreClient(memcache.Client):
 
         if isinstance(key, tuple):
             serverhash, key = key
+        elif isinstance(key, unicode):
+            serverhash = server_hash_function(key.encode("ascii"))
         else:
             serverhash = server_hash_function(key)
 
@@ -256,7 +364,7 @@ class MemcachedStoreClient(memcache.Client):
             server = self.buckets[server_ix]
             if server.connect():
                 return server, key
-            serverhash = server_hash_function(str(serverhash) + str(i))
+            serverhash = server_hash_function(ascii(serverhash) + ascii(i))
             if server_hashes:
                 self._server_ix = server_ix = server_indexes[bisect.bisect_left(server_hashes, serverhash)]
             else:
@@ -277,7 +385,7 @@ class MemcachedStoreClient(memcache.Client):
     def check_key(self, key, key_extra_len=0,
             isinstance = isinstance, tuple = tuple, bytes = bytes,
             unicode = unicode, basestring = basestring, len = len,
-            tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in range(256))):
+            tmap = b''.join(b'\x01' if c<33 or c == 127 else b'\x00' for c in range(256))):
         """Checks sanity of key.  Fails if:
             Key length is > SERVER_MAX_KEY_LENGTH (Raises MemcachedKeyLength).
             Contains control characters  (Raises MemcachedKeyCharacterError).
@@ -301,7 +409,7 @@ class MemcachedStoreClient(memcache.Client):
             len(key) + key_extra_len > self.server_max_key_length:
             raise self.MemcachedKeyLengthError("Key length is > %s"
                      % self.server_max_key_length)
-        if any(map(ord, key.translate(tmap))):
+        if 1 in key.translate(tmap):
             raise self.MemcachedKeyCharacterError(
                     "Control characters not allowed")
 
@@ -316,12 +424,11 @@ class MemcachedStoreClient(memcache.Client):
             if not buffers:
                 return {}
             sockets = {
-                server.socket : [server, buf]
+                server.socket : [server, memoryview(buf)]
                 for server, buf in buffers.items()
             }
             fdmap = { sock.fileno() : sock for sock in sockets }.__getitem__
             unsent = {}
-            buffer_ = buffer
             len_ = len
             sendflags = socket.MSG_DONTWAIT
             socket_error_timeout = socket.timeout
@@ -371,10 +478,10 @@ class MemcachedStoreClient(memcache.Client):
                             sockets.pop(sock)
                             poller.unregister(sock)
                         else:
-                            state[1] = buffer_(buf, sent)
+                            state[1] = buf[sent:]
             return unsent
 
-        def get_multi(self, keys, key_prefix=''):
+        def get_multi(self, keys, key_prefix=b''):
             '''
             Retrieves multiple keys from the memcache doing just one query.
 
@@ -418,7 +525,7 @@ class MemcachedStoreClient(memcache.Client):
 
             # send out all requests on each server before reading anything
             unsent = self._send_multi({
-                server : "get %s\r\n" % (" ".join(server_keys[server]),)
+                server : b"get %s\r\n" % (b" ".join(server_keys[server]),)
                 for server in server_keys.keys()
             })
             dead_servers = list(unsent.keys())
@@ -466,7 +573,7 @@ class MemcachedStoreClient(memcache.Client):
                         try:
                             while 1:
                                 line = server.readline()
-                                if not line or line == 'END':
+                                if not line or line == b'END':
                                     sockets.pop(sock)
                                     poller.unregister(sock)
                                     break
@@ -477,7 +584,7 @@ class MemcachedStoreClient(memcache.Client):
                                         val = self._recv_value(server, flags, rlen)
                                         retvals[prefixed_to_orig_key[rkey]] = val   # un-prefix returned key.
                                 # Go on unless there's no more lines to read
-                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
+                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or b'\r\n' in server.buffer)):
                                     break
                         except (memcache._Error, socket.error) as msg:
                             if isinstance(msg, tuple): msg = msg[1]
@@ -543,11 +650,11 @@ class MemcachedStoreClient(memcache.Client):
                             mapping[prefixed_to_orig_key[key]],
                             min_compress_len)
                     if store_info:
-                        write("set %s %d %d %d\r\n%s\r\n" % (key, store_info[0],
+                        write(b"set %s %d %d %d\r\n%s\r\n" % (key, store_info[0],
                                 time, store_info[1], store_info[2]))
                     else:
                         notstored.append(prefixed_to_orig_key[key])
-                server_commands[server] = ''.join(bigcmd)
+                server_commands[server] = b''.join(bigcmd)
             unsent = self._send_multi(server_commands)
             dead_servers = list(unsent.keys())
             del unsent, server_commands
@@ -601,14 +708,14 @@ class MemcachedStoreClient(memcache.Client):
                         try:
                             while 1:
                                 line = server.readline()
-                                if line == 'STORED':
+                                if line == b'STORED':
                                     state[1] -= 1
                                     if state[1] <= 0:
                                         sockets.pop(sock)
                                         poller.unregister(sock)
                                         break
                                 # Go on unless there's no more lines to read
-                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
+                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or b'\r\n' in server.buffer)):
                                     break
                         except (memcache._Error, socket.error) as msg:
                             if isinstance(msg, tuple): msg = msg[1]
@@ -677,7 +784,7 @@ class MemcachedStoreClient(memcache.Client):
                 del pops[:]
             return unsent
 
-        def get_multi(self, keys, key_prefix=''):  # lint:ok
+        def get_multi(self, keys, key_prefix=b''):  # lint:ok
             '''
             Retrieves multiple keys from the memcache doing just one query.
 
@@ -721,7 +828,7 @@ class MemcachedStoreClient(memcache.Client):
 
             # send out all requests on each server before reading anything
             unsent = self._send_multi({
-                server : "get %s\r\n" % (" ".join(server_keys[server]),)
+                server : b"get %s\r\n" % (" ".join(server_keys[server]),)
                 for server in server_keys.keys()
             })
             dead_servers = list(unsent.keys())
@@ -756,7 +863,7 @@ class MemcachedStoreClient(memcache.Client):
                         try:
                             while 1:
                                 line = server.readline()
-                                if not line or line == 'END':
+                                if not line or line == b'END':
                                     sockets.pop(sock)
                                     break
                                 else:
@@ -766,7 +873,7 @@ class MemcachedStoreClient(memcache.Client):
                                         val = self._recv_value(server, flags, rlen)
                                         retvals[prefixed_to_orig_key[rkey]] = val   # un-prefix returned key.
                                 # Go on unless there's no more lines to read
-                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
+                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or b'\r\n' in server.buffer)):
                                     break
                         except (memcache._Error, socket.error) as msg:
                             if isinstance(msg, tuple): msg = msg[1]
@@ -831,11 +938,11 @@ class MemcachedStoreClient(memcache.Client):
                             mapping[prefixed_to_orig_key[key]],
                             min_compress_len)
                     if store_info:
-                        write("set %s %d %d %d\r\n%s\r\n" % (key, store_info[0],
+                        write(b"set %s %d %d %d\r\n%s\r\n" % (key, store_info[0],
                                 time, store_info[1], store_info[2]))
                     else:
                         notstored.append(prefixed_to_orig_key[key])
-                server_commands[server] = ''.join(bigcmd)
+                server_commands[server] = b''.join(bigcmd)
             unsent = self._send_multi(server_commands)
             dead_servers = list(unsent.keys())
             del unsent, server_commands
@@ -870,13 +977,13 @@ class MemcachedStoreClient(memcache.Client):
                         try:
                             while 1:
                                 line = server.readline()
-                                if line == 'STORED':
+                                if line == b'STORED':
                                     state[1] -= 1
                                     if state[1] <= 0:
                                         sockets.pop(sock)
                                         break
                                 # Go on unless there's no more lines to read
-                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
+                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or b'\r\n' in server.buffer)):
                                     break
                         except (memcache._Error, socket.error) as msg:
                             if isinstance(msg, tuple): msg = msg[1]
@@ -910,7 +1017,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             key_pickler = None,
             client_pickler = None,
             client_unpickler = None,
-            client_pickler_key = ';',
+            client_pickler_key = b';',
             namespace = None,
             compress = True,
             compress_prefix = default_compression_pfx,
@@ -922,6 +1029,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             **client_args):
         if checksum_key is None:
             raise ValueError("MemcachedClient requires a checksum key for security checks")
+
+        if isinstance(namespace, unicode):
+            namespace = namespace.encode('utf8')
 
         self.max_backing_value_length = max_backing_value_length - 256 # 256-bytes for page header and other overhead
         self.last_seen_stamp = 0
@@ -937,15 +1047,15 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if client_pickler is None:
             self.client_pickler = lambda *p, **kw: sPickle.SecurePickler(checksum_key, *p, **kw)
             self.client_unpickler = lambda *p, **kw: sPickle.SecureUnpickler(checksum_key, *p, **kw)
-            self.client_pickler_key = '%s,' % (sPickle.checksum_algo_name,)
+            self.client_pickler_key = b'%s,' % (sPickle.checksum_algo_name.encode("ascii"),)
         else:
             self.client_pickler = client_pickler
             self.client_unpickler = client_unpickler
             self.client_pickler_key = client_pickler_key
 
-        self.version_prefix = '2,'
+        self.version_prefix = b'3,'
 
-        self.pickler = pickler or pickle
+        self.pickler = pickler or PickleValuePickler()
         self.key_pickler = key_pickler or self.pickler
 
         # make room for the hash prefix
@@ -966,7 +1076,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if 'pickleProtocol' not in client_args:
             # use binary protocol, otherwise binary data gets inflated
             # unreasonably when pickling
-            client_args['pickleProtocol'] = 2
+            client_args['pickleProtocol'] = 3
 
         client_args['pickler'] = self.client_pickler
         client_args['unpickler'] = self.client_unpickler
@@ -1013,28 +1123,28 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         return self.stats.get('bytes', 0)
 
     def shorten_key(self, key,
-            tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in range(256)),
+            tmap = b''.join(b'\x01' if c<33 or c == 127 else b'\x00' for c in range(256)),
             isinstance = isinstance, basestring = basestring, unicode = unicode, ord = ord, any = any, len = len ):
         # keys cannot be anything other than strings
         exact = True
         if not isinstance(key, basestring):
             try:
                 # Try JSON
-                key = "J#"+json.dumps(key, separators=JSON_SEPARATORS)
+                key = b"J#"+json.dumps(key, separators=JSON_SEPARATORS)
                 zpfx = self.compress_prefix
             except:
                 # Try pickling
-                key = "P#"+b64encode(self.key_pickler.dumps(key,2))
+                key = b"P#"+b64encode(self.key_pickler.dumps(key))
                 zpfx = self.compress_prefix
         elif isinstance(key, unicode):
-            key = "U#" + key.encode("utf-8")
+            key = b"U#" + key.encode("utf-8")
             zpfx = self.compress_prefix
         else:
-            zpfx = self.compress_prefix + '#'
+            zpfx = self.compress_prefix + b'#'
 
         # keys cannot contain control characters or spaces
-        if any(map(ord, key.translate(tmap))):
-            key = "B#" + b64encode(key)
+        if 1 in key.translate(tmap):
+            key = b"B#" + b64encode(key)
             zpfx = self.compress_prefix
 
         if self.compress:
@@ -1045,24 +1155,24 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             # and shorten it by truncating and perhaps appending an MD5 hash.
             exact = False
             try:
-                key = "H%s#%s" % (hashlib.md5(key).digest().encode("hex"),key[:self.max_backing_key_length-48])
+                key = b"H%s#%s" % (hexlify(hashlib.md5(key).digest()),key[:self.max_backing_key_length-48])
             except ImportError:
-                key = "H%08X#%s" % (hash(key), key[:self.max_backing_key_length-16])
+                key = b"H%08X#%s" % (hash(key), key[:self.max_backing_key_length-16])
 
         if not key:
-            key = "#NULL#"
+            key = b"#NULL#"
 
         if self.namespace:
-            key = "%s|%s" % (self.namespace,key)
+            key = b"%s|%s" % (self.namespace,key)
 
-        return "%s%s%s" % (self.client_pickler_key, self.version_prefix, key), exact
+        return b"%s%s%s" % (self.client_pickler_key, self.version_prefix, key), exact
 
     def get_version_stamp(self, short_key = None):
         if short_key is None:
             stamp_key = stamp_prefix
         else:
             # 8-bit hash to spread stamp keys, doesn't really need to be totally uniform, just almost
-            stamp_key = "%s%02x" % (stamp_prefix, abs(zlib.adler32(short_key)) % 127)
+            stamp_key = b"%s%02x" % (stamp_prefix, abs(zlib.adler32(short_key)) % 127)
         try:
             stamp = self.client.incr(stamp_key)
         except ValueError:
@@ -1098,13 +1208,13 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             # Always pickle & compress, since we'll always unpickle.
             # Note: compress with very little effort (level=1),
             #   otherwise it's too expensive and not worth it
-            sio = StringIO()
+            sio = BytesIO()
             if self.compress:
                 with self.compress_file_class(sio, 1) as zio:
-                    self.pickler.dump((key,value),zio,2)
+                    self.pickler.dump((key,value),zio)
                 del zio
             else:
-                self.pickler.dump((key,value),sio,2)
+                self.pickler.dump((key,value),sio)
             encoded = sio.getvalue()
             sio.close()
             del sio
@@ -1112,15 +1222,15 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             if self.encoding_cache is not None:
                 self.encoding_cache.cache = (value, encoded)
 
-        npages = (len(encoded) + self.max_backing_value_length - 1) // self.max_backing_value_length
         pagelen = self.max_backing_value_length
+        npages = (len(encoded) + pagelen - 1) // pagelen
         if npages > 1:
             version = self.get_version_stamp(short_key)
         else:
             # No need to do versioning for single-page values
             version = 1
         page = 0
-        for page,start in enumerate(range(0,len(encoded),self.max_backing_value_length)):
+        for page,start in enumerate(range(0,len(encoded),pagelen)):
             yield (npages, page, ttl, version, encoded[start:start+pagelen])
 
         assert page == npages-1
@@ -1138,7 +1248,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                  or npages != ref_npages
                  or not (0 <= page < ref_npages)
                  or data[page] is not None
-                 or not isinstance(pagedata,str) ):
+                 or not isinstance(pagedata,bytes) ):
                 raise ValueError("Inconsistent data in cache")
             data[page] = pagedata
 
@@ -1152,7 +1262,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             pages.clear()
 
         # join pages, decompress, unpickle
-        data = ''.join(data)
+        data = b''.join(data)
 
         if self.encoding_cache is not None:
             # Check against the cached encoding just in case it's the same
@@ -1176,7 +1286,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     def _getTtl(self, key, default, decode = True, ttl_skip = None, promote_callback = None,
             short_key = None, pages = None, method = None, multi_method = None,
             force_all_pages = False, valid_sequence_types = (list, tuple),
-            return_stale = False ):
+            return_stale = False, _ninf=float('-inf')):
         now = time.time()
 
         if decode:
@@ -1214,7 +1324,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 return cached
 
         if pages is None:
-            pages = { 0 : method(short_key+"|0") }
+            pages = { 0 : method(short_key+b"|0") }
 
         first_page = pages[0]
         if first_page is None or not isinstance(first_page,valid_sequence_types) or len(first_page) != 5:
@@ -1236,7 +1346,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             return default, -1
         # Check failfast cache, before making a huge effort decoding for not
         # When there's a key collision, this avoids misses being expensive
-        elif self._failfast_cache.get(key) > (now - self.failfast_time):
+        elif self._failfast_cache.get(key, _ninf) > (now - self.failfast_time):
             return default, -1
 
         if npages > 1:
@@ -1249,10 +1359,10 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             try:
                 cached_key, cached_value = self.decode_pages(pages, key)
             except ValueError as e:
-                if npages > 1 and multi_method and e.message == "Inconsistent data in cache":
+                if npages > 1 and multi_method and e.args == ("Inconsistent data in cache",):
                     # try again, maybe there was a write between gets
                     pages.clear()
-                    pages[0] = first_page = method(short_key+"|0")
+                    pages[0] = first_page = method(short_key+b"|0")
                     npages = first_page[0]
                     page_prefix = self._page_prefix(first_page, short_key)
                     pages.update( multi_method(range(1,npages), key_prefix=page_prefix) )
@@ -1336,13 +1446,13 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             multi_method = simple_multi_method(method)
 
         if pages is None:
-            pages = multi_method([ short_key+"|0" for short_key in short_keys ])
+            pages = multi_method([ short_key+b"|0" for short_key in short_keys ])
 
         # Fill out the remaining keys
         remaining_keys = []
         page_map = {}
         for short_key in short_keys:
-            first_key = short_key+"|0"
+            first_key = short_key+b"|0"
             first_page = pages.get(first_key)
             if first_page is None:
                 # Miss or invalid first page, discard
@@ -1365,7 +1475,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
             if npages > 1:
                 page_prefix = self._page_prefix(first_page, short_key)
-                page_keys = [ page_prefix + str(i) for i in range(1,npages) ]
+                page_keys = [ page_prefix + ascii(i) for i in range(1,npages) ]
                 remaining_keys.extend(page_keys)
                 for page_key in page_keys:
                     page_map[page_key] = short_key
@@ -1384,7 +1494,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         # Sort out pages by short_key, and decode by feeding to _getTtl
         key_pages = collections.defaultdict(dict)
         for page_key, page in pages.items():
-            key_pages[page_map[page_key]][int(page_key.rsplit('|',1)[-1])] = page
+            key_pages[page_map[page_key]][int(page_key.rsplit(b'|',1)[-1])] = page
 
         for short_key, key_pages in key_pages.items():
             key = key_map.get(short_key)
@@ -1448,7 +1558,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 now = time.time()
                 page = raw_pages[0]
                 new_page = page[:2] + (max(ttl + now, page[2]),) + page[3:]
-                success = self.client.cas(short_key+"|0", new_page, ttl)
+                success = self.client.cas(short_key+b"|0", new_page, ttl)
                 if success:
                     cached = self._succeedfast_cache.get(key, NONE)
                     if cached is not NONE:
@@ -1461,7 +1571,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 self.client.reset_cas()
 
     def _page_prefix(self, first_page, short_key):
-        return short_key+("|%04x|" % (first_page[3] & 0xFF))
+        return short_key+(b"|%04x|" % (first_page[3] & 0xFF))
 
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
@@ -1484,7 +1594,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             pages[0] = first_page
 
             # Backup old page metadata to expire previous pages and allow memcache to free them earlier
-            old_page = self.client.get(short_key+"|0")
+            old_page = self.client.get(short_key+b"|0")
             if old_page:
                 # Only the metadata is interesting, get rid of the data (which is BIG)
                 old_page = old_page[:-1] + (None,)
@@ -1492,7 +1602,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             old_page = None
 
         # First page with a simple set
-        success = self.client.set(short_key+"|0", pages[0], min(ttl, MAX_MEMCACHE_TTL))
+        success = self.client.set(short_key+b"|0", pages[0], min(ttl, MAX_MEMCACHE_TTL))
 
         # Delete old versions' content pages, if any are left over (no longer reachable)
         if success and old_page:
@@ -1517,9 +1627,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         for pageno in pages:
             if pageno:
-                page_key = "%s%d" % (page_prefix, pageno)
+                page_key = b"%s%d" % (page_prefix, pageno)
             else:
-                page_key = short_key + "|0"
+                page_key = short_key + b"|0"
             try:
                 del self._usucceedfast_cache[page_key]
             except:
@@ -1529,7 +1639,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         # delete the first page
         # let all other pages just expire
         short_key,exact = self.shorten_key(key)
-        page_key = short_key+"|0"
+        page_key = short_key+b"|0"
         self.client.delete(page_key)
 
         try:
@@ -1559,7 +1669,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if ttl is None:
             # Exploit the fact that append returns True on success (the key exists)
             # and False on failure (the key doesn't exist), with minimal bandwidth
-            exists = self.client.append(short_key+"|0","")
+            exists = self.client.append(short_key+b"|0",b"")
         else:
             # But not for ttl checks, those need to check the contents
             exists = True
@@ -1590,7 +1700,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                     npages = first_page[0]
                     page_prefix = self._page_prefix(first_page, short_key)
                     for page in range(1, npages):
-                        if not self.client.append("%s%d" % (page_prefix,page),""):
+                        if not self.client.append(b"%s%d" % (page_prefix,page),b""):
                             return False
                     return True
                 else:
@@ -1629,19 +1739,15 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
     requires no checksum key and is thus faster.
 
     Params:
-        key_pickler: specify a json-like implementation. It must support loads
-            and dumps, and dumps must take a "separators" keyword argument
-            just as stdlib json.dumps does, but it doesn't need to honour it
-            aside from not generating control chars (spaces).
+        key_pickler: specify a KeyPickler implementation. It must support loads
+            and dumps. It must not generating control chars (spaces).
             You can use cjson for instance, but you'll have to wrap it as it
             doesn't support separators and it will generate spaces.
-            Do not pass Pickle or its other  implementations, as it will work,
-            but the pickle protocol isn't  secure. Use MemcachedClient
+            Do not pass Pickle or its other implementations, as it will work,
+            but the pickle protocol isn't secure. Use MemcachedClient
             if you need the features of pickling.
-        pickler: specify a json-like implementation. Like key_pickler, except
-            it can completely dishonor separators without major issues, as
-            spaces and control chars will be accepted for values. If not
-            specified, key_pickler will be used.
+        pickler: specify a ValuePickler implementation. Like key_pickler, except
+            it can generate spaces and control chars without major issues.
 
         failfast_time, failfast_size: (optional) If given, a small in-process
             cache of misses will be kept in order to avoid repeated queries
@@ -1670,10 +1776,13 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
             max_backing_key_length,
             memcache.SERVER_MAX_KEY_LENGTH)
 
+        if isinstance(namespace, unicode):
+            namespace = namespace.encode("ascii")
+
         self.max_backing_key_length = max_backing_key_length
         self.max_backing_value_length = max_backing_value_length - 32 # 32-bytes for various overheads
-        self.key_pickler = key_pickler or json
-        self.pickler = pickler or key_pickler or cjson
+        self.key_pickler = key_pickler or JSONKeyPickler()
+        self.pickler = pickler or key_pickler or JSONValuePickler()
         self.namespace = namespace
 
         if self.namespace:
@@ -1839,19 +1948,19 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
             workev.wait(1)
 
     def encode_key(self, key):
-        return self.key_pickler.dumps((self.namespace, key), separators = JSON_SEPARATORS)
+        return self.key_pickler.dumps((self.namespace, key))
 
     def encode(self, key, ttl, value):
         # Always pickle & compress, since we'll always unpickle.
         # Note: compress with very little effort (level=1),
         #   otherwise it's too expensive and not worth it
-        return self.pickler.dumps((value, ttl), separators = JSON_SEPARATORS)
+        return self.pickler.dumps((value, ttl))
 
     def decode(self, value):
         value, ttl = self.pickler.loads(value)
         return value, ttl
 
-    def _getTtl(self, key, default, ttl_skip = None, encoded = False, raw_key = None):
+    def _getTtl(self, key, default, ttl_skip = None, encoded = False, raw_key = None, _ninf=float('-inf')):
         # Quick check for a concurrent put
         if encoded:
             value = NONE
@@ -1863,7 +1972,8 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
             # Not in queue, get from memcached, and decode
             if not encoded:
                 # Check failfast cache, before contacting the remote client
-                if self._failfast_cache is not None and self._failfast_cache.get(key) > (now - self.failfast_time):
+                if (self._failfast_cache is not None
+                        and self._failfast_cache.get(key, _ninf) > (now - self.failfast_time)):
                     return default, -1
 
                 raw_key = key
@@ -1896,7 +2006,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
         else:
             return value, ttl
 
-    def _getTtlMulti(self, keys, default, ttl_skip = None, encoded = False, raw_keys = None):
+    def _getTtlMulti(self, keys, default, ttl_skip = None, encoded = False, raw_keys = None, _ninf=float('-inf')):
         now = time.time()
 
         # Quick check for a concurrent put
@@ -1914,7 +2024,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
                     continue
 
                 # Check failfast cache, before contacting the remote client
-                if failfast_cache is not None and failfast_cache.get(key) > (now - failfast_time):
+                if failfast_cache is not None and failfast_cache.get(key, _ninf) > (now - failfast_time):
                     yield key, (default, -1)
                     continue
 
@@ -1929,7 +2039,7 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
         # Not in queue, get from memcached, and decode
         if not encoded:
             raw_keys = keys
-            keys = map(self.encode_key, keys)
+            keys = list(map(self.encode_key, keys))
             key_map = dict(zip(keys, raw_keys))
 
         values = self.client.get_multi(keys)
@@ -2041,19 +2151,20 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
         if self._failfast_cache is not None:
             self._failfast_cache.clear()
 
-    def contains(self, key, ttl = None):
+    def contains(self, key, ttl = None, _ninf=float('-inf')):
         # Quick check against worker queues
         if key in self.queueset or key in self.workset:
             return True
 
         # Check failfast cache, before contacting the remote client
-        if self._failfast_cache is not None and self._failfast_cache.get(key) > (time.time() - self.failfast_time):
+        if (self._failfast_cache is not None
+                and self._failfast_cache.get(key, _ninf) > (time.time() - self.failfast_time)):
             return False
 
         # Else exploit the fact that append returns True on success (the key exists)
         # and False on failure (the key doesn't exist), with minimal bandwidth
         encoded_key = self.encode_key(key)
-        exists = self.client.append(encoded_key,"")
+        exists = self.client.append(encoded_key,b"")
         if exists:
             if ttl is None:
                 return True

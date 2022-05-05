@@ -15,6 +15,10 @@ All notable changes to this project will be documented here.
 - Renamed clients.async module to clients.asyncache
   (to make it Python 3 compatible)
 - Key/value picklers now **must** return bytes
+- Key/value picklers are now strategy instances instead
+  of namespaces. Check the new interface when migrating
+  code that passes custom picklers. New picklers must implement
+  the appropriate BasePickler subclass.
 - Futures no longer strip exception tracebacks by default.
   This follows Python 3's new traceback handling behavior,
   but it may cause additional memory leaks due to the way
