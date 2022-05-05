@@ -19,6 +19,12 @@ All notable changes to this project will be documented here.
   of namespaces. Check the new interface when migrating
   code that passes custom picklers. New picklers must implement
   the appropriate BasePickler subclass.
+- Futures no longer strip exception tracebacks by default.
+  This follows Python 3's new traceback handling behavior,
+  but it may cause additional memory leaks due to the way
+  tracebacks hold references to frames and all local variables.
+  It is recommended that stripping is re-enabled for production
+  code using `chorde.clients.asyncache.set_strip_tracebacks(True)`.
 
 ## [0.9.0] - Unreleased
 ### Removed
