@@ -51,7 +51,7 @@ class BasePickler(object):
     """ Serialization/Deserialization strategy encapsulation
 
     A pickler, in contrast with how Python's picklers work, just encapsulates
-    3 methods to serialize and deserialize: dump, dumps, and load.
+    3 methods to serialize and deserialize: dump, dumps, and loads.
 
     Pickler objects should contain no state as they will be long lived,
     but they may contain immutable configuration.
