@@ -38,13 +38,8 @@ except ImportError:
 from chorde import sPickle
 from chorde.dnsutils import ThreadLocalDynamicResolvingClient, AsyncThreadLocalDynamicResolvingClient
 
-try:
-    try:
-        import json
-    except ImportError:
-        import simplejson as json  # lint:ok
-except ImportError:
-    json = None  # lint:ok
+import json
+
 JSON_SEPARATORS = (',',':')
 
 class BasePickler(object):
