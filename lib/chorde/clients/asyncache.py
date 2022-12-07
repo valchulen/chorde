@@ -33,6 +33,7 @@ SPECIAL = set(map(id,[_NONE, _DELETE, _EXPIRE, _PURGE, _CLEAR, _RENEW, REGET]))
 def is_special(value):
     return id(value) in SPECIAL
 
+
 class Defer(object):
     """
     Wrap a callable in this, and pass it as a value to an AsyncWriteCacheClient,
@@ -871,7 +872,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
         return str(self)
 
 try:
-    from ._async import ExceptionWrapper, Future
+    from ._async import ExceptionWrapper, Future, set_strip_tracebacks
 except ImportError:
     import warnings
     warnings.warn("_async extension module not built in, "
@@ -879,16 +880,53 @@ except ImportError:
         "explicit synchronization. Decreased performance will be noticeable")
     del warnings
 
+    strip_tracebacks = False
+
+    def set_strip_tracebacks(strip):
+        """ Sets traceback stripping behavior for async futures
+
+        Async tracebacks have a tendency to cause memory leaks. Stripping them in
+        production deployments is a good idea to avoid them, but keep them around
+        during testing or non-production environments to get better diagnostic
+        information and be able to detect those leaks.
+        """
+        global strip_tracebacks
+        strip_tracebacks = strip
+
     class ExceptionWrapper(object):  # lint:ok
         __slots__ = ('value',)
 
         def __init__(self, value):
             self.value = value
 
-        def reraise(self):
+        def reraise(self, strip=True):
             exc = self.value
-            del self.value
-            raise exc[0](exc[1]).with_traceback(exc[2])
+            if strip:
+                del self.value
+            try:
+                exc_typ, exc_obj, exc_tb = exc
+            finally:
+                # Don't leave references to the exc/tb in the frame
+                del exc
+            try:
+                if not strip:
+                    # Can't raise the same exception object multiple times,
+                    # tracebacks accumulate and leak. Use proper chaining.
+                    raise exc_typ(*exc_obj.args) from exc_obj
+                elif exc_tb is not None:
+                    if exc_obj is not None:
+                        if getattr(exc_obj, '__traceback__') is not exc_tb:
+                            exc_obj = exc_obj.with_traceback(exc_tb)
+                        raise exc_obj
+                    else:
+                        raise exc_typ().with_traceback(exc_tb)
+                elif exc_obj is not None:
+                    raise exc_obj
+                else:
+                    raise exc_typ()
+            finally:
+                # Don't leave references to the exc/tb in the frame
+                del exc_typ, exc_obj, exc_tb
 
     class Future(object):  # lint:ok
         __slots__ = (
@@ -992,6 +1030,8 @@ except ImportError:
             """
             Set the Future's exception object.
             """
+            if strip_tracebacks and getattr(exception, '__traceback__', None) is not None:
+                exception = exception.with_traceback(None)
             self.exc((type(exception),exception,None))
 
         def on_value(self, callback):
@@ -1162,16 +1202,19 @@ except ImportError:
             if hasattr(self, '_value'):
                 value = self._value
                 if isinstance(value, ExceptionWrapper):
-                    raise value.value[0](value.value[1]).with_traceback(value.value[2])
+                    try:
+                        value.reraise(False)
+                    finally:
+                        del value
                 elif value is CacheMissError:
-                    raise CacheMissError
+                    raise CacheMissError()
                 else:
                     return self._value
             elif self.cancelled():
-                raise CancelledError
+                raise CancelledError()
             else:
                 if timeout == 0:
-                    raise TimeoutError
+                    raise TimeoutError()
                 else:
                     # Wait for it
                     event = getattr(self, '_done_event', None)
@@ -1185,12 +1228,12 @@ except ImportError:
                         if event.wait(timeout) and not norecurse:
                             return self.result(0, norecurse=True)
                         elif self.cancelled():
-                            raise CancelledError
+                            raise CancelledError()
                         else:
                             time.sleep(0) # < give other threads a chance
                             event = self._done_event
                     else:
-                        raise TimeoutError
+                        raise TimeoutError()
 
         def exception(self, timeout=None):
             """
@@ -1208,7 +1251,7 @@ except ImportError:
                 else:
                     return None
             elif self.cancelled():
-                raise CancelledError
+                raise CancelledError()
             else:
                 try:
                     self.result()
@@ -1216,7 +1259,10 @@ except ImportError:
                 except CancelledError:
                     raise
                 except Exception as e:
-                    return e
+                    try:
+                        return e
+                    finally:
+                        del e
 
 
 def makeFutureWrapper(base):
