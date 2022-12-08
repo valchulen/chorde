@@ -28,6 +28,10 @@ MIN_UPDATE_REPLY_FRAMES = 1
 MAX_UPDATE_REPLY_FRAMES = 1
 MAX_UPDATE_REPLY_FIRSTFRAME = 10
 
+ADDRINUSE_ERRNOS = (zmq.EADDRINUSE,)
+if hasattr(zmq, 'ENODEV'):
+    ADDRINUSE_ERRNOS += (zmq.ENODEV,)
+
 if hasattr(zmq, 'HWM'):
     # Has single HWM
     def set_hwm(sock, hwm):
@@ -81,7 +85,7 @@ class ZMQIPSub(BaseIPSub):
                         owner._bind()
                         break
                     except zmq.ZMQError as e:
-                        if e.errno in (zmq.EADDRINUSE, zmq.ENODEV):
+                        if e.errno in ADDRINUSE_ERRNOS:
                             # Not a transient error, shortcut to listener
                             return self.transition(ZMQIPSub.FSM.Listener)
                     except Exception as e:
