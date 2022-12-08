@@ -163,6 +163,12 @@ class AsyncCacheWriterPool:
                         self._writer_threadpool = AsyncCacheWriterThreadPool(self.workers)
         return self._writer_threadpool
 
+    def join(self):
+        if self._writer_threadpool is not None:
+            self._writer_threadpool.join()
+        if self._defer_threadpool is not None:
+            self._defer_threadpool.join()
+
     @staticmethod
     def _writer(self, key, reentrant = True):
         # self is weakref
