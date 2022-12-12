@@ -1849,10 +1849,10 @@ class FastMemcachedClient(AsyncDynamicResolvingMemcachedClient):
         self.queueset[key] = value
         self.workev.set()
 
-        if not self._bgwriter_thread or not self._bgwriter_thread.isAlive():
+        if not self._bgwriter_thread or not self._bgwriter_thread.is_alive():
             with self._spawning_lock:
-                if not self._bgwriter_thread or not self._bgwriter_thread.isAlive():
-                    if not self._bgwriter_thread or not self._bgwriter_thread.isAlive():
+                if not self._bgwriter_thread or not self._bgwriter_thread.is_alive():
+                    if not self._bgwriter_thread or not self._bgwriter_thread.is_alive():
                         bgwriter_thread = MemcacheWriterThread(self._bgwriter, weakref.ref(self))
                         bgwriter_thread.setDaemon(True)
                         bgwriter_thread.start()
