@@ -5,3 +5,4 @@ dnspython
 Cython>=0.22
 clru
 future
+six
