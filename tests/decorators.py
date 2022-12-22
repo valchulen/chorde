@@ -827,6 +827,11 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         ev.clear()
         retval2 = get_random2.future()().result(0.25)
         self.assertEqual(retval, retval2)
+
+        # First time might be missed due to pub-sub mechanics, second time around should definitely work
+        retval2 = get_random2.future()().result(0.25)
+        self.assertEqual(retval, retval2)
+
         ev.wait(1)
         self.assertTrue(ev.isSet())
 

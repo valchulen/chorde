@@ -578,7 +578,7 @@ class ZMQIPSub(BaseIPSub):
                 socket.send(FRAME_UPDATE_OK)
 
     def publish(self, prefix, payload, timeout = None, _ident = thread.get_ident):
-        if isinstance(prefix, unicode):
+        if isinstance(prefix, str):
             prefix = prefix.encode("utf8")
         parts = [ prefix, self.identity ] + payload
         if _ident() == self.fsm_thread_id:
