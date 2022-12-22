@@ -5,7 +5,6 @@ import logging
 import json
 import os
 from collections import defaultdict
-from past.builtins import unicode
 from base64 import b64encode
 
 import pickle
@@ -82,7 +81,7 @@ TIC_PERIOD = 1.0
 ENCODINGS = {
     b'json' : lambda x : json.dumps(x, separators=(',',':')).encode("ascii"),
     b'bytes' : lambda x : x,
-    b'utf8' : lambda x : x.encode('utf8') if isinstance(x, unicode) else x,
+    b'utf8' : lambda x : x.encode('utf8') if isinstance(x, str) else x,
 }
 
 DECODINGS = {
@@ -174,7 +173,7 @@ class BaseIPSub(object):
         once (per instance, not function name). They should return fast,
         or the I/O thread may stall.
         """
-        if isinstance(prefix, unicode):
+        if isinstance(prefix, str):
             prefix = prefix.encode("utf8")
         self.listeners[event][prefix].add(callback)
         if event in IDENTITY_EVENTS:
@@ -198,7 +197,7 @@ class BaseIPSub(object):
         """
         Removes the specified listener. See listen.
         """
-        if isinstance(prefix, unicode):
+        if isinstance(prefix, str):
             prefix = prefix.encode("utf8")
         if prefix in self.listeners[event]:
             try:
