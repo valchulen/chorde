@@ -315,6 +315,8 @@ class BaseIPSub(object):
         """
         self.publish(prefix, [b'utf8',ENCODINGS[b'utf8'](payload)], timeout)
 
+    publish_str = publish_unicode
+
     def publish_encode(self, prefix, encoding, payload, timeout = None):
         """
         Publish the message using a custom encoding (must be registered with register_encoding).
