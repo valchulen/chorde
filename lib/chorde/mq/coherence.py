@@ -9,7 +9,6 @@ import zmq
 import time
 import operator
 import logging
-from past.builtins import unicode
 
 from . import ipsub
 
@@ -59,7 +58,7 @@ def _psufix(x):
 HASHES = {
     int : lambda x : hash(x) & 0xFFFFFFFF, # hash(x:int) = x, but must be 64/32-bit compatible
     bytes : _psufix, # prefix+suffix is ok for most
-    unicode : lambda x : _psufix(x.encode("utf8")),
+    str : lambda x : _psufix(x.encode("utf8")),
     list : len,
     set : len,
     dict : len,
@@ -179,9 +178,9 @@ class CoherenceManager(object):
             logger = logging.getLogger('chorde.mq.coherence')
         self.logger = logger
 
-        if isinstance(encoding, unicode):
+        if isinstance(encoding, str):
             encoding = encoding.encode("utf8")
-        if isinstance(namespace, unicode):
+        if isinstance(namespace, str):
             namespace = namespace.encode("utf8")
 
         self.private = private
