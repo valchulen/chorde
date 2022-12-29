@@ -279,8 +279,9 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
             client.get("bigkey1")
 
 
-    testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
-    testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
+    # These are not implemented for memcache
+    testClear = None
+    testPurge = None
 
 @skipIfNoMemcached
 class ElastiCacheTest(MemcacheTest):
@@ -402,8 +403,9 @@ class FastMemcacheTest(CacheClientTestMixIn, TestCase):
         # Manually clear memcached
         self.client.client.flush_all()
 
-    testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
-    testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
+    # These are not implemented for memcache
+    testClear = None
+    testPurge = None
 
     # Unreliable due to async write queue
     testGetStale = None
