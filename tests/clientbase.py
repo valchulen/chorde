@@ -174,6 +174,9 @@ class CacheClientTestMixIn:
         self.assertEqual(v, 10)
         self.assertTrue(ttl < 10)
 
+    def _sync(self, client):
+        pass
+
     def testClear(self):
         client = self.client
         client.put(4, 11, 10)
@@ -182,6 +185,7 @@ class CacheClientTestMixIn:
         self.assertEqual(client.get(5), 12)
 
         client.clear()
+        self._sync(client)
         self.assertRaises(CacheMissError, client.get, 4)
         self.assertRaises(CacheMissError, client.get, 5)
 
@@ -195,6 +199,7 @@ class CacheClientTestMixIn:
         self.assertTrue(client.getTtl(4, None)[0] is not None)
         self.assertEqual(client.get(5), 16)
         client.purge(0)
+        self._sync(client)
         self.assertTrue(client.getTtl(4, None)[0] is None)
         self.assertEqual(client.get(5), 16)
 

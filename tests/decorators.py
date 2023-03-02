@@ -810,13 +810,15 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
             self.assertEqual(f.result(0.1), retval)
 
     def test_coherent_renew_time(self):
-        # Without namespace, should create one with the function name
+        # Force the same namespace between both decorated functions to force a collision
         ev = threading.Event()
-        @self.decorator(3.8, ttl_spread=False)
+        @self.decorator(3.8, ttl_spread=False, namespace="test_coherent_renew")
         def get_random():
             ev.set()
             return random.random()
-        get_random2 = self.decorator2(5, async_ttl=4, renew_time=0.5, future_sync_check=True)(get_random.uncached)
+        get_random2 = self.decorator2(
+            5, async_ttl=4, renew_time=0.5, future_sync_check=True,
+            namespace="test_coherent_renew")(get_random.uncached)
 
         retval = get_random.future()().result(0.25)
 
@@ -825,6 +827,11 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         ev.clear()
         retval2 = get_random2.future()().result(0.25)
         self.assertEqual(retval, retval2)
+
+        # First time might be missed due to pub-sub mechanics, second time around should definitely work
+        retval2 = get_random2.future()().result(0.25)
+        self.assertEqual(retval, retval2)
+
         ev.wait(1)
         self.assertTrue(ev.isSet())
 

@@ -199,7 +199,7 @@ class ThreadpoolMultiprocessingCompatiblitityTest(ThreadpoolTest):
         pool.__init__() # hackish, but works
 
     # multiprocessing.pool.ThreadPool isn't that great with latency
-    testAsyncLatency = unittest.expectedFailure(ThreadpoolTest.testAsyncLatency)
+    testAsyncLatency = None
 
 class MultiQueueTest(TestCase):
     def setUp(self):

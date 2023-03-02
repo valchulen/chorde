@@ -15,7 +15,7 @@ __ALL__ = (
     'ZMQIPSub',
 )
 
-FRAME_HEARTBEAT = "__HeyDude__"
+FRAME_HEARTBEAT = b"__HeyDude__"
 
 BROKER_PUB_HWM = 1000
 BROKER_REP_HWM = 1000
@@ -27,6 +27,10 @@ INPROC_HWM = BROKER_PUB_HWM * 2
 MIN_UPDATE_REPLY_FRAMES = 1
 MAX_UPDATE_REPLY_FRAMES = 1
 MAX_UPDATE_REPLY_FIRSTFRAME = 10
+
+ADDRINUSE_ERRNOS = (zmq.EADDRINUSE,)
+if hasattr(zmq, 'ENODEV'):
+    ADDRINUSE_ERRNOS += (zmq.ENODEV,)
 
 if hasattr(zmq, 'HWM'):
     # Has single HWM
@@ -81,7 +85,7 @@ class ZMQIPSub(BaseIPSub):
                         owner._bind()
                         break
                     except zmq.ZMQError as e:
-                        if e.errno in (zmq.EADDRINUSE, zmq.ENODEV):
+                        if e.errno in ADDRINUSE_ERRNOS:
                             # Not a transient error, shortcut to listener
                             return self.transition(ZMQIPSub.FSM.Listener)
                     except Exception as e:
@@ -191,7 +195,7 @@ class ZMQIPSub(BaseIPSub):
                                 if len_(pack) > 1:
                                     # ^ else Wakeup call, ignore
                                     put_nowait(pack)
-                                elif pack[0] == "tic":
+                                elif pack[0] == b"tic":
                                     owner._tic()
                                     tic_count = 100
                                 del pack
@@ -281,7 +285,7 @@ class ZMQIPSub(BaseIPSub):
                                 if len_(pack) > 1:
                                     # ^ else Wakeup call, ignore
                                     put_nowait(pack)
-                                elif pack[0] == "tic":
+                                elif pack[0] == b"tic":
                                     owner._tic()
                                     tic_count = 100
                                 del pack
@@ -574,6 +578,8 @@ class ZMQIPSub(BaseIPSub):
                 socket.send(FRAME_UPDATE_OK)
 
     def publish(self, prefix, payload, timeout = None, _ident = thread.get_ident):
+        if isinstance(prefix, str):
+            prefix = prefix.encode("utf8")
         parts = [ prefix, self.identity ] + payload
         if _ident() == self.fsm_thread_id:
             try:
@@ -595,7 +601,7 @@ class ZMQIPSub(BaseIPSub):
                 # Don't block, mute means awaken and not catching up anyway
                 push = self._pushsocket()
                 if push.poll(1, zmq.POLLOUT):
-                    push.send("")
+                    push.send(b"")
             except zmq.ZMQError:
                 # Shit happens, probably not connected
                 pass

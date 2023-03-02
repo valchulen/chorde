@@ -197,8 +197,9 @@ class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
         self.assertEquals(self.client.get(4), 7)
 
     # Purge is asynchronous and purges the writing queue first,
-    # so guaranteeing sync semantics isn't really efficient
-    testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
+    # so try to guaranteeing sync semantics by syncing after purge
+    def _sync(self, client):
+        self.client.writer.join()
 
     # Testing limits cannot be done deterministically because of the
     # concurrent worker, so don't bother
