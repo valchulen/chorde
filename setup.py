@@ -13,7 +13,7 @@ try:
 except:
     no_pyrex = True
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 version_path = os.path.join(os.path.dirname(__file__), 'lib', 'chorde', '_version.py')
 if not os.path.exists(version_path):
