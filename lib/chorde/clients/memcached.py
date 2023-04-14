@@ -364,7 +364,7 @@ class MemcachedStoreClient(memcache.Client):
             server = self.buckets[server_ix]
             if server.connect():
                 return server, key
-            serverhash = server_hash_function(ascii(serverhash) + ascii(i))
+            serverhash = server_hash_function((ascii(serverhash) + ascii(i)).encode("ascii"))
             if server_hashes:
                 self._server_ix = server_ix = server_indexes[bisect.bisect_left(server_hashes, serverhash)]
             else:
