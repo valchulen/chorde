@@ -27,7 +27,6 @@ import hmac
 import struct
 import threading
 from binascii import hexlify, unhexlify
-from past.builtins import unicode
 
 import pickle as cPickle  # lint:ok
 from io import BytesIO  # lint:ok
@@ -83,9 +82,9 @@ class SecurePickler(object):
 
         # compute HMAC, and prepend to output
         checksum_key = self.checksum_key
-        if isinstance(checksum_key, unicode):
+        if isinstance(checksum_key, str):
             checksum_key = checksum_key.encode("ascii")
-        md = hmac.HMAC(self.checksum_key, rv, checksum_algo).hexdigest().encode("ascii")
+        md = hmac.HMAC(checksum_key, rv, checksum_algo).hexdigest().encode("ascii")
         self.file.write(hexlify(struct.pack('<L',len(rv))))
         self.file.write(md)
         self.file.write(rv)

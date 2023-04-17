@@ -1478,7 +1478,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 page_keys = [ page_prefix + ascii(i) for i in range(1,npages) ]
                 remaining_keys.extend(page_keys)
                 for page_key in page_keys:
-                    page_map[page_key] = short_key
+                    page_map[page_key.encode("ascii")] = short_key
 
         if not decode and not force_all_pages:
             # Nothing else to do
