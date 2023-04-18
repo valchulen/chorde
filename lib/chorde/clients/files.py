@@ -382,7 +382,7 @@ class FilesCacheClient(base.BaseCacheClient):
         return rv
 
     def _mkpath(self, key):
-        khash = hashlib.md5(key).hexdigest().encode("ascii")
+        khash = hashlib.md5(key).hexdigest()
         return (khash[:2], khash[2:4], khash[4:6], khash[6:])
 
     def _mktmp(self, **kw):
