@@ -364,7 +364,7 @@ class MemcachedStoreClient(memcache.Client):
             server = self.buckets[server_ix]
             if server.connect():
                 return server, key
-            serverhash = server_hash_function(ascii(serverhash) + ascii(i))
+            serverhash = server_hash_function((ascii(serverhash) + ascii(i)).encode("ascii"))
             if server_hashes:
                 self._server_ix = server_ix = server_indexes[bisect.bisect_left(server_hashes, serverhash)]
             else:
@@ -1475,7 +1475,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
             if npages > 1:
                 page_prefix = self._page_prefix(first_page, short_key)
-                page_keys = [ page_prefix + ascii(i) for i in range(1,npages) ]
+                page_keys = [ page_prefix + ascii(i).encode("ascii") for i in range(1,npages) ]
                 remaining_keys.extend(page_keys)
                 for page_key in page_keys:
                     page_map[page_key] = short_key
